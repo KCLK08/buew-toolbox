@@ -2823,10 +2823,17 @@
   }
 
   function safeFileName(value) {
-    const cleaned = String(value || 'bautagebuch')
-      .replace(/[^a-zA-Z0-9_.-]+/g, '_')
+    const dashSeparatorToken = 'BTBDASHSEPTOKEN';
+    const normalized = String(value || 'bautagebuch')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\s-\s/g, dashSeparatorToken);
+    const cleaned = normalized
+      .replace(/[^a-zA-Z0-9_.\- ]+/g, '_')
+      .replace(/ +/g, '_')
       .replace(/_+/g, '_')
-      .replace(/^_+|_+$/g, '');
+      .replace(/^_+|_+$/g, '')
+      .replace(new RegExp(dashSeparatorToken, 'g'), ' - ');
     return cleaned || 'bautagebuch';
   }
 
