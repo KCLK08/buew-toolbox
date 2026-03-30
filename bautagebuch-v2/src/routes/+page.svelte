@@ -3126,7 +3126,9 @@
         Speziell für die feste Vorlage-eBTB gebaut: kein Template-Wechsel, klare Schrittführung und direkter PDF-Export.
       </p>
     </div>
-    <a class="toolbox-link" href="/buew-toolbox/">Zur Toolbox</a>
+    {#if view === 'home'}
+      <a class="toolbox-link" href="/buew-toolbox/">Zur Toolbox</a>
+    {/if}
   </header>
 
   {#if view === 'home'}
