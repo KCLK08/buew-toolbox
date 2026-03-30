@@ -2866,7 +2866,7 @@
         downloadFile(baseBytes, exportedFileName);
         exportInfo = 'BTB-PDF exportiert.';
       } else if (exportMode === RUN_FINISH_EXPORT_MODE_PHOTO) {
-        const photoDocFileName = `${baseFileName}_fotodoku.pdf`;
+        const photoDocFileName = `${baseFileName}_Fotodoku.pdf`;
         const photoDocBytes = await buildPhotoDocPdfBytes({
           title: `Fotodokumentation - ${String(activeRun.title || 'Bautagebuch').trim() || 'Bautagebuch'}`,
           entries: photoEntries
