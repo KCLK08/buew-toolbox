@@ -88,6 +88,7 @@
   const MAX_RUN_TEXTAREA_HEIGHT = 168;
   const PHOTO_DOC_SECTION_ID = 'photo-doc';
   const PHOTO_DOC_ENABLED_RUN_KEY = '__photoDoc:enabled';
+  const DAY_MS = 24 * 60 * 60 * 1000;
   const RUN_FINISH_EXPORT_MODE_BTB = 'btb_only';
   const RUN_FINISH_EXPORT_MODE_PHOTO = 'photo_doc_only';
   const RUN_FINISH_EXPORT_MODE_MERGED = 'btb_with_photo_doc';
@@ -98,6 +99,9 @@
   let newRunNameInput = '';
   let homeSelectionMode = false;
   let selectedHomeRunIds = [];
+  let homeRunWeekGroups = [];
+  let homeExpandedWeekKeySet = new Set();
+  let homeExpandedWeekKeys = [];
   let homeRunSelectionPulseIds = [];
   let homeRunSelectionPulseTimer = null;
   let homeRunDeleteBusy = false;
@@ -237,8 +241,22 @@
   $: selectedHomeRunCount = selectedHomeRunIds.length;
   $: selectableHomeRunIds = runs.map((run) => String(run?.runId || '').trim()).filter(Boolean);
   $: selectedHomeRunIdSet = new Set(selectedHomeRunIds.map((runId) => String(runId || '').trim()).filter(Boolean));
+  $: homeRunWeekGroups = buildHomeRunWeekGroups(runs);
+  $: homeExpandedWeekKeySet = new Set(
+    homeExpandedWeekKeys.map((key) => String(key || '').trim()).filter(Boolean)
+  );
   $: homeRunSelectionPulseIdSet = new Set(homeRunSelectionPulseIds.map((runId) => String(runId || '').trim()).filter(Boolean));
   $: allHomeRunsSelected = selectableHomeRunIds.length > 0 && selectedHomeRunCount >= selectableHomeRunIds.length;
+  $: {
+    const allowedWeekKeys = new Set(homeRunWeekGroups.map((group) => String(group?.weekKey || '').trim()).filter(Boolean));
+    const filteredWeekKeys = homeExpandedWeekKeys.filter((key) => allowedWeekKeys.has(String(key || '').trim()));
+    if (
+      filteredWeekKeys.length !== homeExpandedWeekKeys.length ||
+      filteredWeekKeys.some((key, index) => key !== homeExpandedWeekKeys[index])
+    ) {
+      homeExpandedWeekKeys = filteredWeekKeys;
+    }
+  }
   $: {
     const normalizedFinishMode = normalizeRunFinishExportMode(runFinishExportMode);
     if (normalizedFinishMode !== runFinishExportMode) {
@@ -1315,6 +1333,134 @@
     return String(value || '').trim();
   }
 
+  function parseUtcDateParts(year, month, day) {
+    const y = Number(year);
+    const m = Number(month);
+    const d = Number(day);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+
+    const date = new Date(Date.UTC(y, m - 1, d));
+    if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return null;
+    return date;
+  }
+
+  function parseBtbDateValue(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+
+    const dmy = raw.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})$/);
+    if (dmy) {
+      const day = Number(dmy[1]);
+      const month = Number(dmy[2]);
+      const yearToken = Number(dmy[3]);
+      const year = dmy[3].length === 2 ? 2000 + yearToken : yearToken;
+      return parseUtcDateParts(year, month, day);
+    }
+
+    const ymd = raw.match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/);
+    if (ymd) {
+      return parseUtcDateParts(ymd[1], ymd[2], ymd[3]);
+    }
+
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parseUtcDateParts(parsed.getFullYear(), parsed.getMonth() + 1, parsed.getDate());
+  }
+
+  function btbDateFromRunValues(values = {}) {
+    const entries = Object.entries(values || {}).filter(([, value]) => String(value ?? '').trim().length > 0);
+    if (entries.length === 0) return null;
+
+    const keyPatterns = [/^Date1$/i, /^field:date1(?:-|$)/i, /date1/i];
+    for (const pattern of keyPatterns) {
+      for (const [key, value] of entries) {
+        if (!pattern.test(String(key || '').trim())) continue;
+        const parsed = parseBtbDateValue(value);
+        if (parsed) return parsed;
+      }
+    }
+    return null;
+  }
+
+  function btbDateFromRunTitle(title = '') {
+    const match = String(title || '').match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+    if (!match) return null;
+    return parseUtcDateParts(match[1], match[2], match[3]);
+  }
+
+  function btbDateForRun(run) {
+    const fromValues = btbDateFromRunValues(run?.values || {});
+    if (fromValues) return fromValues;
+    return btbDateFromRunTitle(run?.title || '');
+  }
+
+  function isoWeekMeta(date) {
+    const target = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    const weekday = target.getUTCDay() || 7;
+    target.setUTCDate(target.getUTCDate() + 4 - weekday);
+    const weekYear = target.getUTCFullYear();
+    const yearStart = new Date(Date.UTC(weekYear, 0, 1));
+    const weekNumber = Math.ceil((((target - yearStart) / DAY_MS) + 1) / 7);
+    return {
+      weekYear,
+      weekNumber
+    };
+  }
+
+  function buildHomeRunWeekGroups(runList = []) {
+    const groupMap = new Map();
+    const rows = Array.isArray(runList) ? runList : [];
+
+    for (const run of rows) {
+      const btbDate = btbDateForRun(run);
+      let weekKey = 'week:unknown';
+      let weekLabel = 'Ohne BTB-Datum';
+      let weekYear = null;
+      let weekNumber = null;
+
+      if (btbDate) {
+        const meta = isoWeekMeta(btbDate);
+        weekYear = meta.weekYear;
+        weekNumber = meta.weekNumber;
+        weekKey = `week:${weekYear}-${String(weekNumber).padStart(2, '0')}`;
+        weekLabel = `KW ${String(weekNumber).padStart(2, '0')}`;
+      }
+
+      if (!groupMap.has(weekKey)) {
+        groupMap.set(weekKey, {
+          weekKey,
+          weekLabel,
+          weekYear,
+          weekNumber,
+          items: []
+        });
+      }
+      groupMap.get(weekKey).items.push({ run, btbDate });
+    }
+
+    return [...groupMap.values()]
+      .sort((a, b) => {
+        const aKnown = a.weekYear != null && a.weekNumber != null;
+        const bKnown = b.weekYear != null && b.weekNumber != null;
+        if (aKnown !== bKnown) return aKnown ? -1 : 1;
+        if (!aKnown && !bKnown) return 0;
+        if (a.weekYear !== b.weekYear) return Number(b.weekYear) - Number(a.weekYear);
+        return Number(b.weekNumber) - Number(a.weekNumber);
+      })
+      .map((group) => ({
+        ...group,
+        runs: group.items
+          .sort((a, b) => {
+            const aTime = a.btbDate ? a.btbDate.getTime() : Number.NEGATIVE_INFINITY;
+            const bTime = b.btbDate ? b.btbDate.getTime() : Number.NEGATIVE_INFINITY;
+            if (aTime !== bTime) return bTime - aTime;
+            return String(b.run?.updatedAt || '').localeCompare(String(a.run?.updatedAt || ''));
+          })
+          .map((entry) => entry.run)
+      }));
+  }
+
   async function renameRunEntry(runLike, { scope = 'home' } = {}) {
     const runId = String(runLike?.runId || '').trim();
     if (!runId || typeof window === 'undefined') return;
@@ -1392,6 +1538,16 @@
     }
     homeError = '';
     homeInfo = '';
+  }
+
+  function toggleHomeWeekGroup(weekKey) {
+    const normalizedWeekKey = String(weekKey || '').trim();
+    if (!normalizedWeekKey) return;
+    if (homeExpandedWeekKeys.includes(normalizedWeekKey)) {
+      homeExpandedWeekKeys = homeExpandedWeekKeys.filter((key) => key !== normalizedWeekKey);
+    } else {
+      homeExpandedWeekKeys = [...homeExpandedWeekKeys, normalizedWeekKey];
+    }
   }
 
   function toggleHomeRunSelection(runId) {
@@ -3054,34 +3210,63 @@
             </div>
           {/if}
         </div>
-        <div class="template-list">
-          {#each runs as run}
-            {@const runId = String(run?.runId || '').trim()}
-            {@const runSelected = homeSelectionMode && selectedHomeRunIdSet.has(runId)}
-            {@const runPulsing = homeRunSelectionPulseIdSet.has(runId)}
-            <article
-              class="template-card"
-              class:template-card--home-selectable={homeSelectionMode}
-              class:selected-run={runSelected}
-              class:selected-run-pulse={runPulsing}
-              role={homeSelectionMode ? 'button' : undefined}
-              aria-pressed={homeSelectionMode ? runSelected : undefined}
-              on:click={(event) => handleHomeRunCardClick(event, runId)}
-              on:keydown={(event) => handleHomeRunCardKeydown(event, runId)}
-            >
-              <div>
-                <h3>{run.title}</h3>
-                <div class="meta">Status: {run.status === 'completed' ? 'Abgeschlossen' : 'In Arbeit'}</div>
-                <div class="meta">Zuletzt geändert: {new Date(run.updatedAt).toLocaleString('de-DE')}</div>
-                {#if runSelected}
-                  <span class="home-run-selection-pill">Ausgewählt</span>
-                {/if}
-              </div>
-              <div class="row">
-                <button type="button" class="primary" on:click|stopPropagation={() => openRun(run.runId)}>Öffnen</button>
-                <button type="button" on:click|stopPropagation={() => renameRunEntry(run, { scope: 'home' })}>Umbenennen</button>
-              </div>
-            </article>
+        <div class="home-week-groups">
+          {#each homeRunWeekGroups as weekGroup (weekGroup.weekKey)}
+            {@const weekExpanded = homeExpandedWeekKeySet.has(weekGroup.weekKey)}
+            <section class="home-week-group">
+              <button
+                type="button"
+                class="home-week-toggle"
+                aria-expanded={weekExpanded}
+                on:click={() => toggleHomeWeekGroup(weekGroup.weekKey)}
+              >
+                <span class="home-week-toggle-main">
+                  <strong>{weekGroup.weekLabel}</strong>
+                  {#if weekGroup.weekYear != null}
+                    <small>{weekGroup.weekYear}</small>
+                  {/if}
+                </span>
+                <span class="home-week-toggle-side">
+                  <span class="meta">{weekGroup.runs.length} BTB</span>
+                  <span class="home-week-chevron">{weekExpanded ? 'v' : '>'}</span>
+                </span>
+              </button>
+
+              {#if weekExpanded}
+                <div class="home-week-body">
+                  <div class="template-list">
+                    {#each weekGroup.runs as run}
+                      {@const runId = String(run?.runId || '').trim()}
+                      {@const runSelected = homeSelectionMode && selectedHomeRunIdSet.has(runId)}
+                      {@const runPulsing = homeRunSelectionPulseIdSet.has(runId)}
+                      <article
+                        class="template-card"
+                        class:template-card--home-selectable={homeSelectionMode}
+                        class:selected-run={runSelected}
+                        class:selected-run-pulse={runPulsing}
+                        role={homeSelectionMode ? 'button' : undefined}
+                        aria-pressed={homeSelectionMode ? runSelected : undefined}
+                        on:click={(event) => handleHomeRunCardClick(event, runId)}
+                        on:keydown={(event) => handleHomeRunCardKeydown(event, runId)}
+                      >
+                        <div>
+                          <h3>{run.title}</h3>
+                          <div class="meta">Status: {run.status === 'completed' ? 'Abgeschlossen' : 'In Arbeit'}</div>
+                          <div class="meta">Zuletzt geändert: {new Date(run.updatedAt).toLocaleString('de-DE')}</div>
+                          {#if runSelected}
+                            <span class="home-run-selection-pill">Ausgewählt</span>
+                          {/if}
+                        </div>
+                        <div class="row">
+                          <button type="button" class="primary" on:click|stopPropagation={() => openRun(run.runId)}>Öffnen</button>
+                          <button type="button" on:click|stopPropagation={() => renameRunEntry(run, { scope: 'home' })}>Umbenennen</button>
+                        </div>
+                      </article>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+            </section>
           {/each}
         </div>
       {/if}
@@ -4221,6 +4406,55 @@
     gap: 10px;
   }
 
+  .home-week-groups {
+    display: grid;
+    gap: 10px;
+  }
+
+  .home-week-group {
+    background: #fffefb;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+  }
+
+  .home-week-toggle {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    text-align: left;
+    width: 100%;
+  }
+
+  .home-week-toggle-main {
+    align-items: baseline;
+    display: inline-flex;
+    gap: 8px;
+  }
+
+  .home-week-toggle-main small {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .home-week-toggle-side {
+    align-items: center;
+    display: inline-flex;
+    gap: 8px;
+  }
+
+  .home-week-chevron {
+    font-family: monospace;
+    font-size: 14px;
+    font-weight: 700;
+    width: 10px;
+  }
+
+  .home-week-body {
+    margin-top: 10px;
+  }
+
   .template-card {
     align-items: center;
     background: #fffefb;
@@ -5088,6 +5322,17 @@
 
     .title-row .row button {
       flex: 1 1 160px;
+    }
+
+    .home-week-toggle {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .home-week-toggle-side {
+      justify-content: space-between;
+      width: 100%;
     }
 
     .run-nav {
