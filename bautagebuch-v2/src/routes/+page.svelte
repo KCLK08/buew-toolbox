@@ -3210,64 +3210,66 @@
             </div>
           {/if}
         </div>
-        <div class="home-week-groups">
-          {#each homeRunWeekGroups as weekGroup (weekGroup.weekKey)}
-            {@const weekExpanded = homeExpandedWeekKeySet.has(weekGroup.weekKey)}
-            <section class="home-week-group">
-              <button
-                type="button"
-                class="home-week-toggle"
-                aria-expanded={weekExpanded}
-                on:click={() => toggleHomeWeekGroup(weekGroup.weekKey)}
-              >
-                <span class="home-week-toggle-main">
-                  <strong>{weekGroup.weekLabel}</strong>
-                  {#if weekGroup.weekYear != null}
-                    <small>{weekGroup.weekYear}</small>
-                  {/if}
-                </span>
-                <span class="home-week-toggle-side">
-                  <span class="meta">{weekGroup.runs.length} BTB</span>
-                  <span class="home-week-chevron">{weekExpanded ? 'v' : '>'}</span>
-                </span>
-              </button>
+        <div class="home-runs-scroll">
+          <div class="home-week-groups">
+            {#each homeRunWeekGroups as weekGroup (weekGroup.weekKey)}
+              {@const weekExpanded = homeExpandedWeekKeySet.has(weekGroup.weekKey)}
+              <section class="home-week-group">
+                <button
+                  type="button"
+                  class="home-week-toggle"
+                  aria-expanded={weekExpanded}
+                  on:click={() => toggleHomeWeekGroup(weekGroup.weekKey)}
+                >
+                  <span class="home-week-toggle-main">
+                    <strong>{weekGroup.weekLabel}</strong>
+                    {#if weekGroup.weekYear != null}
+                      <small>{weekGroup.weekYear}</small>
+                    {/if}
+                  </span>
+                  <span class="home-week-toggle-side">
+                    <span class="meta">{weekGroup.runs.length} BTB</span>
+                    <span class="home-week-chevron">{weekExpanded ? 'v' : '>'}</span>
+                  </span>
+                </button>
 
-              {#if weekExpanded}
-                <div class="home-week-body">
-                  <div class="template-list">
-                    {#each weekGroup.runs as run}
-                      {@const runId = String(run?.runId || '').trim()}
-                      {@const runSelected = homeSelectionMode && selectedHomeRunIdSet.has(runId)}
-                      {@const runPulsing = homeRunSelectionPulseIdSet.has(runId)}
-                      <article
-                        class="template-card"
-                        class:template-card--home-selectable={homeSelectionMode}
-                        class:selected-run={runSelected}
-                        class:selected-run-pulse={runPulsing}
-                        role={homeSelectionMode ? 'button' : undefined}
-                        aria-pressed={homeSelectionMode ? runSelected : undefined}
-                        on:click={(event) => handleHomeRunCardClick(event, runId)}
-                        on:keydown={(event) => handleHomeRunCardKeydown(event, runId)}
-                      >
-                        <div>
-                          <h3>{run.title}</h3>
-                          <div class="meta">Status: {run.status === 'completed' ? 'Abgeschlossen' : 'In Arbeit'}</div>
-                          <div class="meta">Zuletzt geändert: {new Date(run.updatedAt).toLocaleString('de-DE')}</div>
-                          {#if runSelected}
-                            <span class="home-run-selection-pill">Ausgewählt</span>
-                          {/if}
-                        </div>
-                        <div class="row">
-                          <button type="button" class="primary" on:click|stopPropagation={() => openRun(run.runId)}>Öffnen</button>
-                          <button type="button" on:click|stopPropagation={() => renameRunEntry(run, { scope: 'home' })}>Umbenennen</button>
-                        </div>
-                      </article>
-                    {/each}
+                {#if weekExpanded}
+                  <div class="home-week-body">
+                    <div class="template-list">
+                      {#each weekGroup.runs as run}
+                        {@const runId = String(run?.runId || '').trim()}
+                        {@const runSelected = homeSelectionMode && selectedHomeRunIdSet.has(runId)}
+                        {@const runPulsing = homeRunSelectionPulseIdSet.has(runId)}
+                        <article
+                          class="template-card"
+                          class:template-card--home-selectable={homeSelectionMode}
+                          class:selected-run={runSelected}
+                          class:selected-run-pulse={runPulsing}
+                          role={homeSelectionMode ? 'button' : undefined}
+                          aria-pressed={homeSelectionMode ? runSelected : undefined}
+                          on:click={(event) => handleHomeRunCardClick(event, runId)}
+                          on:keydown={(event) => handleHomeRunCardKeydown(event, runId)}
+                        >
+                          <div>
+                            <h3>{run.title}</h3>
+                            <div class="meta">Status: {run.status === 'completed' ? 'Abgeschlossen' : 'In Arbeit'}</div>
+                            <div class="meta">Zuletzt geändert: {new Date(run.updatedAt).toLocaleString('de-DE')}</div>
+                            {#if runSelected}
+                              <span class="home-run-selection-pill">Ausgewählt</span>
+                            {/if}
+                          </div>
+                          <div class="row">
+                            <button type="button" class="primary" on:click|stopPropagation={() => openRun(run.runId)}>Öffnen</button>
+                            <button type="button" on:click|stopPropagation={() => renameRunEntry(run, { scope: 'home' })}>Umbenennen</button>
+                          </div>
+                        </article>
+                      {/each}
+                    </div>
                   </div>
-                </div>
-              {/if}
-            </section>
-          {/each}
+                {/if}
+              </section>
+            {/each}
+          </div>
         </div>
       {/if}
     </section>
@@ -4411,6 +4413,12 @@
     gap: 10px;
   }
 
+  .home-runs-scroll {
+    max-height: min(62vh, 760px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
   .home-week-group {
     background: #fffefb;
     border: 1px solid var(--border);
@@ -5333,6 +5341,10 @@
     .home-week-toggle-side {
       justify-content: space-between;
       width: 100%;
+    }
+
+    .home-runs-scroll {
+      max-height: min(56vh, 620px);
     }
 
     .run-nav {
