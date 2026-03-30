@@ -154,6 +154,7 @@
   let runPreviewQueue = Promise.resolve();
   let runFinishDialogOpen = false;
   let runFinishExportMode = RUN_FINISH_EXPORT_MODE_MERGED;
+  let runPendingPhotoDocDownload = null;
   let weatherSyncBusy = false;
   let runPhotoDoc = createEmptyRunPhotoDoc();
   let photoDocEditorOpen = false;
@@ -2817,8 +2818,48 @@
     return `${missing} Pflicht offen`;
   }
 
-  function downloadFile(bytes, fileName) {
-    const blob = new Blob([bytes], { type: 'application/pdf' });
+  function sleep(ms = 0) {
+    return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms || 0))));
+  }
+
+  function clearPendingPhotoDocDownload() {
+    runPendingPhotoDocDownload = null;
+  }
+
+  function queuePendingPhotoDocDownload(fileBytes, fileName) {
+    const normalizedName = String(fileName || '').trim();
+    if (!normalizedName) {
+      runPendingPhotoDocDownload = null;
+      return;
+    }
+    const blob =
+      fileBytes instanceof Blob ? fileBytes : new Blob([fileBytes], { type: 'application/pdf' });
+    runPendingPhotoDocDownload = {
+      fileName: normalizedName,
+      blob
+    };
+  }
+
+  async function downloadPendingPhotoDoc() {
+    const pending = runPendingPhotoDocDownload;
+    if (!pending?.blob || !pending?.fileName) return;
+    downloadFile(pending.blob, pending.fileName);
+    runInfo = 'Fotodoku-Download erneut gestartet.';
+  }
+
+  async function downloadFilesSequentially(files = [], { pauseMs = 260 } = {}) {
+    const list = (Array.isArray(files) ? files : []).filter((entry) => String(entry?.fileName || '').trim());
+    for (let index = 0; index < list.length; index += 1) {
+      const file = list[index];
+      downloadFile(file.bytes, file.fileName);
+      if (index < list.length - 1 && pauseMs > 0) {
+        await sleep(pauseMs);
+      }
+    }
+  }
+
+  function downloadFile(fileBytes, fileName) {
+    const blob = fileBytes instanceof Blob ? fileBytes : new Blob([fileBytes], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -2842,6 +2883,7 @@
     runError = '';
     runInfo = '';
     runReviewExpanded = true;
+    clearPendingPhotoDocDownload();
     if (!activeRun || !runTemplate || !runModel) return false;
 
     await flushRunAutosave();
@@ -2869,9 +2911,14 @@
           entries: photoEntries
         });
         const photoDocFileName = `${baseFileName}_fotodoku.pdf`;
-
-        downloadFile(baseBytes, btbFileName);
-        downloadFile(photoDocBytes, photoDocFileName);
+        queuePendingPhotoDocDownload(photoDocBytes, photoDocFileName);
+        await downloadFilesSequentially(
+          [
+            { bytes: baseBytes, fileName: btbFileName },
+            { bytes: photoDocBytes, fileName: photoDocFileName }
+          ],
+          { pauseMs: 320 }
+        );
         exportedFileNames.push(btbFileName);
         exportedFileNames.push(photoDocFileName);
         exportInfo = `2 PDFs exportiert: ${btbFileName} und ${photoDocFileName}.`;
@@ -2954,6 +3001,7 @@
     runPreviewTarget = { page: 1, rect: null };
     runFocusedFieldId = '';
     runPhotoDoc = createEmptyRunPhotoDoc();
+    clearPendingPhotoDocDownload();
     photoDocEditorOpen = false;
     clearPhotoDocObjectUrls();
     runFinishDialogOpen = false;
@@ -3359,6 +3407,16 @@
       {/if}
       {#if runError}
         <div class="notice error">{runError}</div>
+      {/if}
+      {#if runPendingPhotoDocDownload}
+        <div class="notice warn">
+          <div class="row between run-download-retry">
+            <span>
+              Falls dein Browser den zweiten Download blockiert hat, starte die Fotodoku hier erneut.
+            </span>
+            <button type="button" on:click={downloadPendingPhotoDoc}>Fotodoku erneut herunterladen</button>
+          </div>
+        </div>
       {/if}
 
       <div class="run-layout">
@@ -4204,6 +4262,17 @@
 
   .run-finish-actions {
     flex-wrap: wrap;
+  }
+
+  .run-download-retry {
+    align-items: center;
+    gap: 10px;
+    justify-content: space-between;
+    margin: 0;
+  }
+
+  .run-download-retry span {
+    max-width: 780px;
   }
 
   .template-list {
@@ -5098,6 +5167,11 @@
     .run-preview-nav {
       justify-content: flex-start;
       width: 100%;
+    }
+
+    .run-download-retry {
+      align-items: flex-start;
+      flex-direction: column;
     }
 
     .section-card {
