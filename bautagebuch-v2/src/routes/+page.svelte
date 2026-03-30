@@ -88,8 +88,9 @@
   const MAX_RUN_TEXTAREA_HEIGHT = 168;
   const PHOTO_DOC_SECTION_ID = 'photo-doc';
   const PHOTO_DOC_ENABLED_RUN_KEY = '__photoDoc:enabled';
+  const RUN_FINISH_EXPORT_MODE_BTB = 'btb_only';
+  const RUN_FINISH_EXPORT_MODE_PHOTO = 'photo_doc_only';
   const RUN_FINISH_EXPORT_MODE_MERGED = 'btb_with_photo_doc';
-  const RUN_FINISH_EXPORT_MODE_SEPARATE = 'photo_doc_separate';
 
   let view = 'home';
   let templates = [];
@@ -154,7 +155,6 @@
   let runPreviewQueue = Promise.resolve();
   let runFinishDialogOpen = false;
   let runFinishExportMode = RUN_FINISH_EXPORT_MODE_MERGED;
-  let runPendingPhotoDocDownload = null;
   let weatherSyncBusy = false;
   let runPhotoDoc = createEmptyRunPhotoDoc();
   let photoDocEditorOpen = false;
@@ -240,7 +240,7 @@
   $: homeRunSelectionPulseIdSet = new Set(homeRunSelectionPulseIds.map((runId) => String(runId || '').trim()).filter(Boolean));
   $: allHomeRunsSelected = selectableHomeRunIds.length > 0 && selectedHomeRunCount >= selectableHomeRunIds.length;
   $: {
-    const normalizedFinishMode = normalizeRunFinishExportMode(runFinishExportMode, runPhotoDoc);
+    const normalizedFinishMode = normalizeRunFinishExportMode(runFinishExportMode);
     if (normalizedFinishMode !== runFinishExportMode) {
       runFinishExportMode = normalizedFinishMode;
     }
@@ -383,20 +383,11 @@
     return value.entries.filter((entry) => entry?.photoBlob instanceof Blob);
   }
 
-  function canExportPhotoDocSeparately(value = runPhotoDoc) {
-    return isPhotoDocEnabled(value) && photoDocExportEntries(value).length > 0;
-  }
-
-  function normalizeRunFinishExportMode(mode, photoDoc = runPhotoDoc) {
+  function normalizeRunFinishExportMode(mode) {
     const normalizedMode = String(mode || '').trim();
-    const preferredMode =
-      normalizedMode === RUN_FINISH_EXPORT_MODE_SEPARATE
-        ? RUN_FINISH_EXPORT_MODE_SEPARATE
-        : RUN_FINISH_EXPORT_MODE_MERGED;
-    if (preferredMode === RUN_FINISH_EXPORT_MODE_SEPARATE && !canExportPhotoDocSeparately(photoDoc)) {
-      return RUN_FINISH_EXPORT_MODE_MERGED;
-    }
-    return preferredMode;
+    if (normalizedMode === RUN_FINISH_EXPORT_MODE_BTB) return RUN_FINISH_EXPORT_MODE_BTB;
+    if (normalizedMode === RUN_FINISH_EXPORT_MODE_PHOTO) return RUN_FINISH_EXPORT_MODE_PHOTO;
+    return RUN_FINISH_EXPORT_MODE_MERGED;
   }
 
   function isPhotoDocRequiredMissing(value = runPhotoDoc) {
@@ -2818,46 +2809,6 @@
     return `${missing} Pflicht offen`;
   }
 
-  function sleep(ms = 0) {
-    return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms || 0))));
-  }
-
-  function clearPendingPhotoDocDownload() {
-    runPendingPhotoDocDownload = null;
-  }
-
-  function queuePendingPhotoDocDownload(fileBytes, fileName) {
-    const normalizedName = String(fileName || '').trim();
-    if (!normalizedName) {
-      runPendingPhotoDocDownload = null;
-      return;
-    }
-    const blob =
-      fileBytes instanceof Blob ? fileBytes : new Blob([fileBytes], { type: 'application/pdf' });
-    runPendingPhotoDocDownload = {
-      fileName: normalizedName,
-      blob
-    };
-  }
-
-  async function downloadPendingPhotoDoc() {
-    const pending = runPendingPhotoDocDownload;
-    if (!pending?.blob || !pending?.fileName) return;
-    downloadFile(pending.blob, pending.fileName);
-    runInfo = 'Fotodoku-Download erneut gestartet.';
-  }
-
-  async function downloadFilesSequentially(files = [], { pauseMs = 260 } = {}) {
-    const list = (Array.isArray(files) ? files : []).filter((entry) => String(entry?.fileName || '').trim());
-    for (let index = 0; index < list.length; index += 1) {
-      const file = list[index];
-      downloadFile(file.bytes, file.fileName);
-      if (index < list.length - 1 && pauseMs > 0) {
-        await sleep(pauseMs);
-      }
-    }
-  }
-
   function downloadFile(fileBytes, fileName) {
     const blob = fileBytes instanceof Blob ? fileBytes : new Blob([fileBytes], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
@@ -2883,7 +2834,6 @@
     runError = '';
     runInfo = '';
     runReviewExpanded = true;
-    clearPendingPhotoDocDownload();
     if (!activeRun || !runTemplate || !runModel) return false;
 
     await flushRunAutosave();
@@ -2899,40 +2849,37 @@
         runValues
       });
       const photoEntries = photoDocExportEntries(runPhotoDoc);
-      const exportMode = normalizeRunFinishExportMode(photoDocExportMode, runPhotoDoc);
+      const exportMode = normalizeRunFinishExportMode(photoDocExportMode);
       const baseFileName = safeFileName(activeRun.title);
-      const exportedFileNames = [];
-      let exportInfo = '';
+      let exportedFileName = '';
+      let exportInfo = 'PDF exportiert.';
 
-      if (exportMode === RUN_FINISH_EXPORT_MODE_SEPARATE) {
-        const btbFileName = `${baseFileName}.pdf`;
+      if (exportMode === RUN_FINISH_EXPORT_MODE_BTB) {
+        exportedFileName = `${baseFileName}.pdf`;
+        downloadFile(baseBytes, exportedFileName);
+        exportInfo = 'BTB-PDF exportiert.';
+      } else if (exportMode === RUN_FINISH_EXPORT_MODE_PHOTO) {
+        const photoDocFileName = `${baseFileName}_fotodoku.pdf`;
         const photoDocBytes = await buildPhotoDocPdfBytes({
           title: `Fotodokumentation - ${String(activeRun.title || 'Bautagebuch').trim() || 'Bautagebuch'}`,
           entries: photoEntries
         });
-        const photoDocFileName = `${baseFileName}_fotodoku.pdf`;
-        queuePendingPhotoDocDownload(photoDocBytes, photoDocFileName);
-        await downloadFilesSequentially(
-          [
-            { bytes: baseBytes, fileName: btbFileName },
-            { bytes: photoDocBytes, fileName: photoDocFileName }
-          ],
-          { pauseMs: 320 }
-        );
-        exportedFileNames.push(btbFileName);
-        exportedFileNames.push(photoDocFileName);
-        exportInfo = `2 PDFs exportiert: ${btbFileName} und ${photoDocFileName}.`;
+        exportedFileName = photoDocFileName;
+        downloadFile(photoDocBytes, exportedFileName);
+        exportInfo =
+          photoEntries.length === 0
+            ? 'Fotodoku-PDF exportiert (ohne Bilder).'
+            : 'Fotodoku-PDF exportiert.';
       } else {
         const merged = await mergeBtbWithPhotoDoc({
           btbPdfBytes: baseBytes,
-          photoDocEnabled: isPhotoDocEnabled(runPhotoDoc),
+          photoDocEnabled: photoEntries.length > 0,
           photoEntries
         });
-        const fileName = `${baseFileName}.pdf`;
-        downloadFile(merged.bytes, fileName);
-        exportedFileNames.push(fileName);
+        exportedFileName = `${baseFileName}.pdf`;
+        downloadFile(merged.bytes, exportedFileName);
         const exportHint = merged.enabledWithoutImages
-          ? 'Hinweis: Fotodoku ist aktiviert, enthält aber keine Bilder.'
+          ? 'Hinweis: Fotodoku enthält keine Bilder.'
           : '';
         exportInfo = exportHint ? `PDF exportiert. ${exportHint}` : 'PDF exportiert.';
       }
@@ -2945,9 +2892,7 @@
         completedAt: new Date().toISOString()
       });
       if (nextRun) activeRun = nextRun;
-      for (const fileName of exportedFileNames) {
-        await addExportRecord({ runId: activeRun.runId, fileName });
-      }
+      await addExportRecord({ runId: activeRun.runId, fileName: exportedFileName });
       runExports = await listExports(activeRun.runId);
       runInfo = exportInfo;
       runAutosave = `Gespeichert ${nowLabel()}`;
@@ -3001,7 +2946,6 @@
     runPreviewTarget = { page: 1, rect: null };
     runFocusedFieldId = '';
     runPhotoDoc = createEmptyRunPhotoDoc();
-    clearPendingPhotoDocDownload();
     photoDocEditorOpen = false;
     clearPhotoDocObjectUrls();
     runFinishDialogOpen = false;
@@ -3407,16 +3351,6 @@
       {/if}
       {#if runError}
         <div class="notice error">{runError}</div>
-      {/if}
-      {#if runPendingPhotoDocDownload}
-        <div class="notice warn">
-          <div class="row between run-download-retry">
-            <span>
-              Falls dein Browser den zweiten Download blockiert hat, starte die Fotodoku hier erneut.
-            </span>
-            <button type="button" on:click={downloadPendingPhotoDoc}>Fotodoku erneut herunterladen</button>
-          </div>
-        </div>
       {/if}
 
       <div class="run-layout">
@@ -3897,37 +3831,46 @@
         <div class="dialog-panel" role="dialog" aria-modal="true" aria-labelledby="run-finish-title">
           <h3 id="run-finish-title">BTB abschließen</h3>
           <p class="meta">Was möchtest du als Nächstes tun?</p>
-          {#if canExportPhotoDocSeparately(runPhotoDoc)}
-            <fieldset class="radios run-finish-export-mode">
-              <legend>PDF-Export</legend>
-              <label class="check">
-                <input
-                  type="radio"
-                  name="run_finish_export_mode"
-                  value={RUN_FINISH_EXPORT_MODE_MERGED}
-                  checked={runFinishExportMode === RUN_FINISH_EXPORT_MODE_MERGED}
-                  on:change={(event) => (runFinishExportMode = normalizeRunFinishExportMode(event.currentTarget.value, runPhotoDoc))}
-                />
-                BTB mit Fotodoku
-              </label>
-              <label class="check">
-                <input
-                  type="radio"
-                  name="run_finish_export_mode"
-                  value={RUN_FINISH_EXPORT_MODE_SEPARATE}
-                  checked={runFinishExportMode === RUN_FINISH_EXPORT_MODE_SEPARATE}
-                  on:change={(event) => (runFinishExportMode = normalizeRunFinishExportMode(event.currentTarget.value, runPhotoDoc))}
-                />
-                Fotodoku getrennt
-              </label>
-            </fieldset>
-            <p class="meta">Bei "Fotodoku getrennt" werden zwei PDFs gespeichert (BTB + Fotodoku).</p>
-          {:else if isPhotoDocEnabled(runPhotoDoc)}
-            <p class="meta">Fotodoku ist aktiviert, enthält aber keine Bilder. Es wird nur eine BTB-PDF gespeichert.</p>
-          {/if}
+          <fieldset class="radios run-finish-export-mode">
+            <legend>PDF-Export</legend>
+            <label class="check">
+              <input
+                type="radio"
+                name="run_finish_export_mode"
+                value={RUN_FINISH_EXPORT_MODE_BTB}
+                checked={runFinishExportMode === RUN_FINISH_EXPORT_MODE_BTB}
+                on:change={(event) => (runFinishExportMode = normalizeRunFinishExportMode(event.currentTarget.value))}
+              />
+              BTB
+            </label>
+            <label class="check">
+              <input
+                type="radio"
+                name="run_finish_export_mode"
+                value={RUN_FINISH_EXPORT_MODE_PHOTO}
+                checked={runFinishExportMode === RUN_FINISH_EXPORT_MODE_PHOTO}
+                on:change={(event) => (runFinishExportMode = normalizeRunFinishExportMode(event.currentTarget.value))}
+              />
+              Fotodoku
+            </label>
+            <label class="check">
+              <input
+                type="radio"
+                name="run_finish_export_mode"
+                value={RUN_FINISH_EXPORT_MODE_MERGED}
+                checked={runFinishExportMode === RUN_FINISH_EXPORT_MODE_MERGED}
+                on:change={(event) => (runFinishExportMode = normalizeRunFinishExportMode(event.currentTarget.value))}
+              />
+              BTB + Fotodoku
+            </label>
+          </fieldset>
           <div class="row start run-finish-actions">
             <button type="button" class="primary" on:click={finishRunWithPdf}>
-              {runFinishExportMode === RUN_FINISH_EXPORT_MODE_SEPARATE ? 'PDFs herunterladen' : 'Download PDF'}
+              {runFinishExportMode === RUN_FINISH_EXPORT_MODE_BTB
+                ? 'BTB herunterladen'
+                : runFinishExportMode === RUN_FINISH_EXPORT_MODE_PHOTO
+                  ? 'Fotodoku herunterladen'
+                  : 'BTB + Fotodoku herunterladen'}
             </button>
             <button type="button" on:click={finishRunToStart}>Zurück zur Startseite</button>
             <button type="button" on:click={closeRunFinishDialog}>Abbrechen</button>
@@ -4262,17 +4205,6 @@
 
   .run-finish-actions {
     flex-wrap: wrap;
-  }
-
-  .run-download-retry {
-    align-items: center;
-    gap: 10px;
-    justify-content: space-between;
-    margin: 0;
-  }
-
-  .run-download-retry span {
-    max-width: 780px;
   }
 
   .template-list {
@@ -5167,11 +5099,6 @@
     .run-preview-nav {
       justify-content: flex-start;
       width: 100%;
-    }
-
-    .run-download-retry {
-      align-items: flex-start;
-      flex-direction: column;
     }
 
     .section-card {
