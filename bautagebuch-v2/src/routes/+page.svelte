@@ -3827,9 +3827,11 @@
       {#if runExports.length > 0}
         <div class="export-list">
           <h3>Export-Historie</h3>
-          {#each runExports as item}
-            <div class="meta">{item.fileName} · {new Date(item.exportedAt).toLocaleString('de-DE')}</div>
-          {/each}
+          <div class="export-list-scroll">
+            {#each runExports as item}
+              <div class="meta export-item">{item.fileName} · {new Date(item.exportedAt).toLocaleString('de-DE')}</div>
+            {/each}
+          </div>
         </div>
       {/if}
 
@@ -4990,8 +4992,22 @@
 
   .export-list {
     border-top: 1px solid var(--border);
+    display: grid;
+    gap: 8px;
     margin-top: 12px;
     padding-top: 12px;
+  }
+
+  .export-list-scroll {
+    display: grid;
+    gap: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  .export-item {
+    line-height: 1.35;
   }
 
   @media (max-width: 1040px) {
@@ -5106,6 +5122,10 @@
     .run-preview-nav {
       justify-content: flex-start;
       width: 100%;
+    }
+
+    .export-list-scroll {
+      max-height: 180px;
     }
 
     .section-card {
