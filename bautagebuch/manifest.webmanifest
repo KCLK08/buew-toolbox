@@ -1,0 +1,26 @@
+{
+  "name": "Bautagebuch",
+  "short_name": "Bautagebuch",
+  "start_url": "/buew-toolbox/bautagebuch/",
+  "scope": "/buew-toolbox/bautagebuch/",
+  "display": "standalone",
+  "background_color": "#eef4f6",
+  "theme_color": "#104f57",
+  "icons": [
+    {
+      "src": "/buew-toolbox/bautagebuch/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/buew-toolbox/bautagebuch/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/buew-toolbox/bautagebuch/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

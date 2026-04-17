@@ -1,0 +1,26 @@
+{
+  "name": "TB-Assistent",
+  "short_name": "TB-Assistent",
+  "start_url": "/buew-toolbox/tb-assistent/",
+  "scope": "/buew-toolbox/tb-assistent/",
+  "display": "standalone",
+  "background_color": "#f2f7fb",
+  "theme_color": "#0b3a53",
+  "icons": [
+    {
+      "src": "/buew-toolbox/tb-assistent/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/buew-toolbox/tb-assistent/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/buew-toolbox/tb-assistent/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

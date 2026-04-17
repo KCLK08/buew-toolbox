@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b3a53" />
+    <link rel="manifest" href="/buew-toolbox/tb-assistent/manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/buew-toolbox/tb-assistent/icons/apple-touch-icon.png" />
+    
+		<link rel="modulepreload" href="/buew-toolbox/tb-assistent/_app/immutable/entry/start.DzxatLDM.js">
+		<link rel="modulepreload" href="/buew-toolbox/tb-assistent/_app/immutable/chunks/entry.DE2dmdzq.js">
+		<link rel="modulepreload" href="/buew-toolbox/tb-assistent/_app/immutable/chunks/scheduler.DOCO80rQ.js">
+		<link rel="modulepreload" href="/buew-toolbox/tb-assistent/_app/immutable/entry/app.CjVJ_mnr.js">
+		<link rel="modulepreload" href="/buew-toolbox/tb-assistent/_app/immutable/chunks/preload-helper.D6kgxu3v.js">
+		<link rel="modulepreload" href="/buew-toolbox/tb-assistent/_app/immutable/chunks/index.Dq2CAwyl.js">
+  </head>
+  <body>
+    <div style="display: contents">
+			<script>
+				{
+					__sveltekit_30lgms = {
+						base: "/buew-toolbox/tb-assistent",
+						assets: "/buew-toolbox/tb-assistent"
+					};
+
+					const element = document.currentScript.parentElement;
+
+					Promise.all([
+						import("/buew-toolbox/tb-assistent/_app/immutable/entry/start.DzxatLDM.js"),
+						import("/buew-toolbox/tb-assistent/_app/immutable/entry/app.CjVJ_mnr.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element);
+					});
+				}
+			</script>
+		</div>
+  </body>
+</html>
