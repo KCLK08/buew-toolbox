@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineStatusBanner } from '../src/components/OfflineStatusBanner';
 import { colors } from '../src/constants/theme';
+import { ToastProvider } from '../src/contexts/ToastContext';
 import { useOfflineBootstrap } from '../src/hooks/useOfflineBootstrap';
 import { initBautagebuchDatabase } from '../src/native/bautagebuch/db/database';
 import { initSiteReportDatabase } from '../src/native/sitereport/db/database';
@@ -49,6 +50,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <ToastProvider>
       <StatusBar style="dark" />
       <View style={{ flex: 1, paddingTop: insets.top }}>
         <View style={{ paddingHorizontal: 16 }}>
@@ -70,11 +72,17 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="bautagebuch/run/[id]" />
-        <Stack.Screen name="bautagebuch/setup" />
+          <Stack.Screen name="bautagebuch/setup" />
+          <Stack.Screen name="sitereport/new-protocol" />
           <Stack.Screen name="sitereport/protocol/[id]" />
+          <Stack.Screen name="sitereport/protocol/[id]/edit" />
+          <Stack.Screen name="sitereport/protocol/[id]/wizard" />
+          <Stack.Screen name="sitereport/protocols/index" />
+          <Stack.Screen name="sitereport/exports/index" />
           <Stack.Screen name="sitereport/format-builder" />
         </Stack>
       </View>
+      </ToastProvider>
     </GestureHandlerRootView>
   );
 }
