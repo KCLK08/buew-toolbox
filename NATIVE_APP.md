@@ -13,8 +13,9 @@ Die Expo-App ist eine **eigenständige native Anwendung**, die dieselben Werkzeu
 | PDF-Export (BTB / Fotodoku / Merge) | ✅ |
 | Fotodokumentation | ✅ |
 | Setup-Editor | ✅ |
-| Live-PDF-Vorschau (Canvas) | 🔜 |
+| Live-Vorschau (Abschnitt) | ✅ |
 | PDF-Vorschau (Export) | ✅ |
+| Export-Cache / Liste | ✅ |
 
 ## SiteReport (nativ)
 
@@ -38,6 +39,5 @@ Die Expo-App ist eine **eigenständige native Anwendung**, die dieselben Werkzeu
 
 ## Nächste Schritte
 
-1. Live-PDF-Vorschau mit Feld-Overlays (optional, hoher Aufwand)
-2. On-Device-Tests: Setup-Editor, Export-Cache, Backup/Restore
-3. APK-Release nach Merge
+1. On-Device-Tests: Setup-Editor, Export-Cache, Backup/Restore
+2. APK-Release nach Merge

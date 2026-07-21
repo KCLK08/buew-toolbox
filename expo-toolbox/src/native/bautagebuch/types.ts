@@ -28,6 +28,15 @@ export type BautagebuchRun = {
   deleted_at: string | null;
 };
 
+export type BautagebuchExport = {
+  exportId: string;
+  runId: string;
+  fileName: string;
+  filePath: string;
+  exportedAt: string;
+  deleted_at: string | null;
+};
+
 export type BautagebuchTemplate = {
   templateId: string;
   templateName: string;
