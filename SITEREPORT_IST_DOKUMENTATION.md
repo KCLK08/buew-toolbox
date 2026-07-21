@@ -1,6 +1,6 @@
 # SiteReport — Technische IST-Dokumentation (Expo APK)
 
-> **Stand:** Juli 2026 (nach PWA-Paritäts-Refactoring)  
+> **Stand:** Juli 2026 (nach Premium-Native-UX-Polish, PR #27)  
 > **Zweck:** Vollständige Beschreibung des SiteReport-Moduls in der **BÜW-Toolbox Expo-App** für Weiterentwicklung ohne Quellcode-Zugriff.  
 > **Scope:** Ausschließlich die native Android-APK (`expo-toolbox/`). Keine PWA, kein WebView, keine SvelteKit-Referenz.
 
@@ -35,9 +35,9 @@
 
 Kernworkflow:
 
-1. Dashboard öffnen → „Neues Protokoll" (3-Schritt-Setup)
+1. Dashboard öffnen → **„Neues Protokoll starten"** (Hero-CTA, 3-Schritt-Setup)
 2. Tabellenformat wählen oder anlegen, Stammdaten + Logo erfassen
-3. Protokoll-Detail → Einträge über **Guided Entry Wizard** (Foto → Felder → Zusammenfassung)
+3. Protokoll-Detail → Einträge über **Guided Entry Wizard** (Foto → Felder → Status → Zusammenfassung)
 4. Protokoll abschließen (Speichern / PDF / Excel / beides) oder Export aus Export-Center
 
 Die App wird als **standalone Release-APK** verteilt (eingebettetes JS-Bundle, kein Metro-Server nötig).
@@ -52,29 +52,33 @@ Die App wird als **standalone Release-APK** verteilt (eingebettetes JS-Bundle, k
 
 | Bereich | Status |
 |---------|--------|
-| Dashboard mit Statistiken | ✅ |
-| Geführter Protokoll-Start (3 Schritte) | ✅ |
-| Guided Entry Wizard | ✅ |
-| Format-Builder (Spaltenvorlagen) | ✅ inkl. Up/Down-Reorder |
+| Dashboard mit Statistiken + Hero-CTA | ✅ |
+| Geführter Protokoll-Start (3 Schritte, WizardFooter) | ✅ |
+| Guided Entry Wizard (Animation, Haptik) | ✅ |
+| Format-Builder (Spaltenvorlagen, ↑/↓, Drag-Handle) | ✅ |
 | Firmenlogo | ✅ |
 | Stammdaten bearbeiten | ✅ |
 | PDF-Export | ✅ |
 | XLSX-Export | ✅ |
 | Export-Cache (Dateipfade + Re-Share) | ✅ |
-| Export-Center (eigener Screen) | ✅ |
+| Export-Center (eigener Screen, Bulk via „Auswahl") | ✅ |
 | Protokoll-Liste mit Bulk-Auswahl | ✅ |
 | Protokoll löschen (Einzel + Bulk) | ✅ |
 | Entry löschen | ✅ |
 | Protokoll abschließen (Modal) | ✅ |
 | Foto-Kompression + permanente Speicherung | ✅ |
-| Toast-Feedback | ✅ |
+| Toast-Feedback (animiert) | ✅ |
 | Bottom Sheets / Confirm Modals | ✅ |
+| Haptisches Feedback (expo-haptics) | ✅ |
+| Premium Native UX (Karten, Chips, Hero-Layout) | ✅ |
+| Suche / Sortierung in Listen | ⚠️ UI-Platzhalter vorbereitet |
+| Swipe-Aktionen | ⚠️ vorbereitet, nicht implementiert |
 | Offline-Betrieb | ✅ |
 | Multi-DB-Backup (Toolbox-Ebene) | ✅ |
 | Dark Mode | ⚠️ Tokens vorbereitet, nicht aktiv |
 | Cloud-Sync | ❌ |
 
-**Fazit:** Die Expo-App hat **funktionale Parität zur PWA** mit **nativer UX** (Karten, Wizard, Bulk, Modals). Verbleibende Lücken: Dark Mode, Cloud-Sync, Schema-Migrationen.
+**Fazit:** Die Expo-App hat **funktionale Parität zur PWA** und eine **professionelle native Mobile-UX** (Notion/Produktivitäts-App-Stil). Verbleibende Lücken: echte Suche/Sortierung, Swipe-Gesten, Dark Mode, Cloud-Sync, Schema-Migrationen.
 
 ### 1.4 Verwendete Technologien
 
@@ -90,6 +94,7 @@ Die App wird als **standalone Release-APK** verteilt (eingebettetes JS-Bundle, k
 | expo-image-manipulator | ~57 | Foto-Kompression (1600px, 0.75) |
 | expo-file-system | ~57 | Dateispeicher, Exporte, Fotos |
 | expo-sharing | ~57 | System-Share-Sheet |
+| expo-haptics | ~57 | Haptisches Feedback |
 | ExcelJS | 4.4.x | XLSX-Generierung |
 | pdf-lib | 1.17.x | PDF-Generierung |
 | Space Grotesk | Google Fonts | Typografie |
@@ -135,6 +140,7 @@ Details: [`ANDROID_APK.md`](ANDROID_APK.md)
 │   ├── contexts/ToastContext.tsx              # App-weite Toast-Meldungen
 │   ├── constants/theme.ts                     # Design Tokens
 │   ├── constants/tools.ts                     # Tab-Definition
+│   ├── lib/haptics.ts                         # Haptisches Feedback
 │   ├── hooks/useOfflineBootstrap.ts           # Backup/Restore
 │   ├── storage/backupService.ts               # Multi-DB-Backup
 │   └── native/sitereport/
@@ -171,7 +177,15 @@ Details: [`ANDROID_APK.md`](ANDROID_APK.md)
 | `colors.danger` | `#A12C24` | Fehler, Löschen |
 | Font | Space Grotesk 400/600/700 | Gesamte App |
 
-**Stil:** Professionell, minimalistisch, baustellen-tauglich, große Touchflächen, Karten-Layout.
+**Stil:** Professionelle Baustellen-App / moderne Produktivitäts-App (Notion Mobile, Apple Notes). Abgerundete Karten, Schatten, großzügige Abstände, große Touchflächen, klare visuelle Hierarchie, wenige Informationen pro Screen.
+
+**UX-Prinzipien:**
+
+- Eine klare Primäraktion pro Screen (fixierter Footer)
+- Sekundäraktionen als kompakte Chips, nicht als Button-Wand
+- Fortschritt immer sichtbar in Wizards (Schritt N von M, Dots, Balken, Animation)
+- Haptisches Feedback bei wichtigen Aktionen
+- Empty States mit Icon und Handlungsaufforderung
 
 ---
 
@@ -182,15 +196,18 @@ Details: [`ANDROID_APK.md`](ANDROID_APK.md)
 
 #### Aufbau
 
-1. **StatCards** — Protokolle, Einträge, Fotos, Exporte (2×2 Grid)
-2. **DashboardActionCards** — „Neues Protokoll" (Akzent), „Protokolle"
-3. **Aktive Protokolle** — letzte 3 als `ListItem`
-4. **Letzte Exporte** — letzte 3 als `ListItem`
-5. **FAB** `+` → Neues Protokoll
+1. **Header** — „SiteReport" / „Baustellen-Protokolle"
+2. **StatCards (2×2)** — Protokolle, Einträge, Fotos, Exporte (Exporte tappbar → Export-Center)
+3. **PrimaryActionCard** — große Hero-Karte: **„Neues Protokoll starten"** (Akzentfarbe, Chevron)
+4. **Link** — „Alle Protokolle anzeigen"
+5. **Zuletzt verwendet** — letzte 3 Protokolle als `ProtocolCard` (Datum, Einträge, Fotos als Chips)
+6. **Letzte Exporte** — letzte 3 als `ProtocolCard`
+7. **Empty State** — wenn keine Protokolle vorhanden
 
 #### Interaktion
 
 - Pull-to-Refresh
+- **Kein FAB mehr** — Primäraktion nur über Hero-Karte
 - Navigation zu `/sitereport/new-protocol`, `/sitereport/protocols`, `/sitereport/exports`
 
 ---
@@ -202,13 +219,15 @@ Details: [`ANDROID_APK.md`](ANDROID_APK.md)
 
 | Schritt | Inhalt |
 |---------|--------|
-| 1 — Allgemeine Daten | Protokollname*, Projekt, Beschreibung, Teilnehmer, Datum (readonly) |
-| 2 — Firmenlogo | Auswählen, Vorschau, ändern, entfernen |
+| 1 — Allgemeine Daten | Protokollname*, Projekt, Beschreibung, Teilnehmer, Datum (readonly in Karte) |
+| 2 — Firmenlogo | Auswählen, Vorschau, ändern, entfernen (gestrichelte Platzhalter-Fläche) |
 | 3 — Tabellenformat | Template wählen, neu/bearbeiten, `TablePreview` |
 
-**Abschluss:** „Protokoll erstellen" → `createProtocol()` → Navigate to Detail
+**Footer:** `WizardFooter` — Zurück (ab Schritt 2) | Weiter / Protokoll erstellen (side-by-side, fixiert unten)
 
-**UI:** `WizardStep` mit Fortschrittsbalken, Zurück/Weiter-Footer
+**UI:** `WizardStep` mit „Schritt N von M", Fortschritts-Dots, Balken, Fade/Slide-Animation beim Schrittwechsel
+
+**Haptik:** Leichtes Feedback bei Weiter/Zurück, Success bei Erstellen
 
 ---
 
@@ -219,10 +238,18 @@ Details: [`ANDROID_APK.md`](ANDROID_APK.md)
 
 #### Aufbau
 
-1. **Summary StatCards** — Datum, Einträge, Fotos, Offen
-2. **Aktionen** — Stammdaten bearbeiten, Export (Bottom Sheet), Protokoll abschließen
-3. **EntryCards** — Foto groß oben, Status-Badge, Felder, Bearbeiten/Löschen
-4. **Footer** — „+ Neuer Eintrag" → Wizard
+1. **ProtocolHero** — Protokolltitel, Projektname, Datum, Status-Badge (z. B. „3 offen" / „Alle erledigt")
+2. **StatCards (3er-Reihe)** — Einträge, Fotos, Offen
+3. **ActionChipRow** — Export, Bearbeiten, Abschließen (kompakte Chips, nicht gestapelte Buttons)
+4. **Einträge** — `SectionHeader` + `EntryCard`-Liste oder Empty State
+5. **Footer (fixiert)** — **„+ Neuer Eintrag"** als einzige Primäraktion
+
+#### EntryCard-Layout
+
+- Foto groß oben (220px) oder Platzhalter
+- Status-Badge
+- Bis zu 3 Datenfelder
+- Kompakte Aktions-Buttons: Bearbeiten / Löschen
 
 #### Abschluss-Modal (`ConfirmModal`)
 
@@ -233,7 +260,7 @@ Details: [`ANDROID_APK.md`](ANDROID_APK.md)
 | Excel erstellen | `closeProtocolWithExport('xlsx')` |
 | PDF + Excel | `closeProtocolWithExport('both')` |
 
-Export ohne Share-Sheet (`share: false`), Toast-Feedback.
+Export ohne Share-Sheet (`share: false`), Toast + Haptik.
 
 #### Export Bottom Sheet
 
@@ -259,13 +286,17 @@ Datum bleibt readonly (aus Protokoll-Record).
 
 #### Ablauf
 
-1. Pro Spalte ein Screen (`WizardStep` mit `1/N` Anzeige)
-2. **Foto-Spalte:** `PhotoCaptureStep` — große Kamera-Fläche, Vorschau, entfernen
-3. **Status-Spalte:** `StatusFieldStep` — Offen / Bearbeitung / Erledigt (farbige Buttons)
-4. **Andere Spalten:** `FieldStep` — ein Feld pro Screen
+1. Pro Spalte ein Screen (`WizardStep` mit „Schritt N von M", Dots, Animation)
+2. **Foto-Spalte:** `PhotoCaptureStep` — große Kamera-Fläche (320px), Vorschau, entfernen
+3. **Status-Spalte:** `StatusFieldStep` — große Touch-Buttons (Offen / Bearbeitung / Erledigt)
+4. **Andere Spalten:** `FieldStep` — ein großes Eingabefeld pro Screen, Auto-Focus
 5. **Zusammenfassung:** `ProtocolSummary` → Speichern
 
+**Footer:** `WizardFooter` — Zurück | Weiter / Speichern (fixiert unten)
+
 **Foto:** `captureProtocolPhoto()` → Kompression → `sitereport/photos/{protocolId}/{entryId}.jpg`
+
+**Haptik:** Light bei Navigation, Success bei Speichern
 
 **Query:** `entryId` gesetzt = Bearbeiten, sonst neuer Eintrag
 
@@ -276,9 +307,11 @@ Datum bleibt readonly (aus Protokoll-Record).
 **Datei:** `app/sitereport/protocols/index.tsx`  
 **Route:** `/sitereport/protocols`
 
-- **ProtocolCards** mit Titel, Projekt, Datum, Eintrags-/Fotoanzahl
+- **SearchFieldPlaceholder** — „Protokolle durchsuchen… (bald verfügbar)"
+- **Sortier-Platzhalter** — „Sortierung: Neueste zuerst" (Toast-Hinweis)
+- **ProtocolCards** mit Titel, Projekt, Datum/Einträge/Fotos als Chips
 - Einzel-Löschen (✕ + Alert)
-- **Bulk-Modus:** Checkboxen, Alle auswählen, Bulk-Export (Bottom Sheet), Bulk-Löschen
+- **Bulk-Modus** über Button **„Auswahl"** (nicht dauerhaft sichtig): Checkboxen, Alle, Bulk-Export (Bottom Sheet), Bulk-Löschen
 
 ---
 
@@ -287,9 +320,10 @@ Datum bleibt readonly (aus Protokoll-Record).
 **Datei:** `app/sitereport/exports/index.tsx`  
 **Route:** `/sitereport/exports`
 
-- **ExportCards** mit PDF/Excel-Badges
-- PDF/Excel teilen, Löschen
-- Bulk-Modus mit Mehrfach-Löschen
+- **SectionHeader** mit Anzahl + **„Auswahl"**-Toggle (Bulk nur bei Aktivierung)
+- **ExportCards** mit PDF/Excel-Icon-Kreisen, Protokollname, Datum
+- PDF/Excel teilen, Löschen (nur außerhalb Auswahl-Modus)
+- Bulk-Löschen im Auswahl-Modus
 
 ---
 
@@ -298,9 +332,9 @@ Datum bleibt readonly (aus Protokoll-Record).
 **Datei:** `app/sitereport/format-builder.tsx`  
 **Route:** `/sitereport/format-builder?mode=new|edit&templateId=...`
 
-- `FormatColumnCard` pro Spalte
-- Spalte hinzufügen/bearbeiten/entfernen, ↑/↓ Reorder
-- Foto-Spalte fest, nicht löschbar
+- `FormatColumnCard` pro Spalte mit Drag-Handle (≡), Positionsnummer (#N)
+- Spalte hinzufügen/bearbeiten/entfernen, ↑/↓ Reorder (mobile-optimiert)
+- Foto-Spalte fest (📷-Icon), nicht löschbar
 - Toast bei Speichern
 
 ---
@@ -309,9 +343,11 @@ Datum bleibt readonly (aus Protokoll-Record).
 
 | Element | Verwendung |
 |---------|------------|
-| `ToastProvider` | „Gespeichert", „Exportiert", „Gelöscht" (2,2s, animiert) |
-| `ConfirmModal` | Abschluss-Flow, kritische Bestätigungen |
-| `BottomSheet` | Export-Auswahl, Bulk-Export |
+| `ToastProvider` | „Gespeichert", „Exportiert", „Gelöscht" (animiert, ~2,2s) |
+| `ConfirmModal` | Abschluss-Flow, kritische Bestätigungen (fade) |
+| `BottomSheet` | Export-Auswahl, Bulk-Export (slide-up) |
+| `WizardFooter` | Fixierter Zurück/Weiter-Footer in allen Wizards |
+| `haptics.ts` | Light/Medium/Success/Selection Feedback |
 | `Alert.alert` | Löschen-Bestätigung, Kamera-Berechtigung, Fehler |
 
 ---
@@ -339,14 +375,14 @@ Root Stack (_layout.tsx) + ToastProvider
 
 ```
 Dashboard (Tab)
-├── Neues Protokoll (3 Schritte)
+├── Neues Protokoll (3 Schritte, WizardFooter)
 │   └── → Protokoll-Detail
 │       ├── Stammdaten bearbeiten
-│       ├── Entry Wizard (neu/bearbeiten)
-│       ├── Export (Bottom Sheet)
-│       └── Abschließen (Modal) → Protokoll-Liste
-├── Protokolle (Bulk)
-├── Export-Center
+│       ├── Entry Wizard (neu/bearbeiten, WizardFooter)
+│       ├── Export (Bottom Sheet via Chip)
+│       └── Abschließen (Modal via Chip) → Protokoll-Liste
+├── Protokolle (Bulk via „Auswahl")
+├── Export-Center (Bulk via „Auswahl")
 └── Format-Builder
 ```
 
@@ -374,7 +410,7 @@ Dashboard (Tab)
 
 ### 4.2 Tabellenformat
 
-Wie zuvor: Templates in SQLite, Seed „Standard Baustelle", ↑/↓ Reorder, `FormatColumnCard`.
+Templates in SQLite, Seed „Standard Baustelle", ↑/↓ Reorder, `FormatColumnCard` mit Drag-Handle-Optik.
 
 ### 4.3 Protokoll erstellen
 
@@ -410,8 +446,8 @@ Editierbar: Titel, Projekt, Beschreibung, Teilnehmer, Logo. Datum readonly.
 
 ### 4.8 PDF / XLSX Export
 
-Unverändert technisch (`pdf.js`, `xlsx-export.js`).  
-**Neu:** `exportProtocolPdf/Xlsx(protocol, { share: true|false })`.
+Technisch (`pdf.js`, `xlsx-export.js`).  
+`exportProtocolPdf/Xlsx(protocol, { share: true|false })`.
 
 ### 4.9 Export-Cache
 
@@ -427,7 +463,7 @@ Eigener Screen `/sitereport/exports`. `shareCachedExport`, `deleteCachedExport`,
 
 ### 4.11 Bulk-Auswahl
 
-Protokolle und Exporte: Selection-Mode mit Checkboxen, Alle auswählen, Bulk-Aktionen.
+Protokolle und Exporte: Selection-Mode über **„Auswahl"**-Button, Checkboxen (`SelectionCheckbox`), Alle auswählen, Bulk-Aktionen.
 
 ---
 
@@ -449,7 +485,7 @@ Permanenter Pfad unter `sitereport/photos/{protocolId}/{entryId}.jpg` (nicht meh
 
 ### 6.1 SQLite
 
-` sitereport_native.db` — unverändert (protocols, settings, templates, exports).
+`sitereport_native.db` — unverändert (protocols, settings, templates, exports).
 
 ### 6.2 Dateispeicherung
 
@@ -472,13 +508,13 @@ Beim Löschen: `deleteEntryPhoto()`. Beim Protokoll-Löschen: `deleteProtocolPho
 
 ### 6.4 Backup
 
-Unverändert — `backupService.ts` sichert `sitereport_native.db` mit Toolbox-DBs.
+`backupService.ts` sichert `sitereport_native.db` mit Toolbox-DBs.
 
 ---
 
 ## 7. Einstellungen
 
-Unverändert: Template (`settings.current`), Logo (`settings.logo`). Kein Dark Mode aktiv.
+Template (`settings.current`), Logo (`settings.logo`). Kein Dark Mode aktiv.
 
 ---
 
@@ -488,23 +524,36 @@ Unverändert: Template (`settings.current`), Logo (`settings.logo`). Kein Dark M
 
 | Komponente | Zweck |
 |------------|-------|
-| `ProtocolCard` | Protokoll-Karte mit Bulk-Checkbox |
-| `EntryCard` | Eintrag mit Foto, Status-Badge, Aktionen |
-| `ExportCard` | Export-Karte mit PDF/Excel-Badges |
-| `FormatColumnCard` | Spalten-Editor im Format-Builder |
-| `WizardStep` | Schritt-Anzeige mit Fortschrittsbalken |
-| `PhotoCaptureStep` | Kamera-UI im Wizard |
-| `FieldStep` | Einzelfeld im Wizard |
-| `StatusFieldStep` | Status-Auswahl (3 Optionen) |
+| `PrimaryActionCard` | Hero-CTA auf dem Dashboard |
+| `ProtocolCard` | Protokoll-Karte mit Chips (Datum, Einträge, Fotos), Bulk-Checkbox |
+| `ProtocolHero` | Hero-Header im Protokoll-Detail |
+| `EntryCard` | Eintrag mit Foto oben, Status-Badge, kompakte Aktionen |
+| `ExportCard` | Export-Karte mit PDF/Excel-Icons, Teilen/Löschen |
+| `FormatColumnCard` | Spalten-Editor mit Drag-Handle und ↑/↓ |
+| `WizardStep` | Schritt-Anzeige mit Dots, Balken, Animation |
+| `WizardFooter` | Fixierter Zurück/Weiter-Footer |
+| `PhotoCaptureStep` | Große Kamera-UI im Wizard |
+| `FieldStep` | Einzelfeld im Wizard (Auto-Focus) |
+| `StatusFieldStep` | Status-Auswahl (große Touch-Buttons) |
 | `ProtocolSummary` | Zusammenfassung vor Speichern |
 | `TablePreview` | Tabellenvorschau im Setup |
-| `DashboardActionCard` | Dashboard-Schnellaktionen |
+| `SectionHeader` | Abschnitts-Überschrift mit optionalem Link |
+| `ActionChipRow` | Sekundäraktionen als Chips |
+| `SelectionCheckbox` | Bulk-Auswahl-Checkbox |
+| `SearchFieldPlaceholder` | Suchfeld-Platzhalter (vorbereitet) |
+| `DashboardActionCard` | Legacy-Schnellaktion (nicht mehr auf Dashboard) |
 | `ConfirmModal` | Native Modal für Bestätigungen |
 | `BottomSheet` | Slide-up Sheet für Export-Auswahl |
 
 ### 8.2 Shared Mobile (`src/components/mobile/`)
 
-`Screen`, `PrimaryButton`, `TextField`, `ListItem`, `Card`, `StatCard`, `StatusBadge`, `EmptyState`, `Fab`
+`Screen`, `PrimaryButton`, `TextField`, `ListItem`, `Card`, `StatCard`, `StatusBadge`, `EmptyState` (mit Icon), `Fab` (nicht mehr auf SiteReport-Dashboard)
+
+### 8.3 Utilities (`src/lib/`)
+
+| Datei | Zweck |
+|-------|-------|
+| `haptics.ts` | `hapticLight`, `hapticMedium`, `hapticSuccess`, `hapticSelection` |
 
 ---
 
@@ -514,7 +563,7 @@ Unverändert: Template (`settings.current`), Logo (`settings.logo`). Kein Dark M
 
 | API | Beschreibung |
 |-----|--------------|
-| `showToast(message)` | Kurze Meldung unten, auto-hide |
+| `showToast(message)` | Kurze Meldung unten, animiert, auto-hide |
 
 Eingebunden in `app/_layout.tsx` via `ToastProvider`.
 
@@ -522,7 +571,7 @@ Eingebunden in `app/_layout.tsx` via `ToastProvider`.
 
 Backup/Restore-Banner (unverändert).
 
-**Keine SiteReport-spezifischen Hooks** — State in Screen-Komponenten.
+**Keine SiteReport-spezifischen Hooks** — State in Screen-Komponenten, UI in `components/sitereport/`.
 
 ---
 
@@ -541,7 +590,7 @@ Backup/Restore-Banner (unverändert).
 
 ### 11.1 `database.ts`
 
-Unverändert: CRUD für protocols, templates, settings, exports, `softDeleteProtocol`, `todayDe()`.
+CRUD für protocols, templates, settings, exports, `softDeleteProtocol`, `todayDe()`.
 
 ### 11.2 `photoService.ts`
 
@@ -580,7 +629,7 @@ Unverändert: CRUD für protocols, templates, settings, exports, `softDeleteProt
 
 ## 12. Sicherheit
 
-Unverändert: Kamera- und Galerie-Berechtigungen, keine DB-Verschlüsselung, lokale Datenhaltung.
+Kamera- und Galerie-Berechtigungen, keine DB-Verschlüsselung, lokale Datenhaltung.
 
 ---
 
@@ -594,8 +643,9 @@ Unverändert: Kamera- und Galerie-Berechtigungen, keine DB-Verschlüsselung, lok
 | B4 | `entriesJson` bei jedem Feld-Update voll serialisiert | Niedrig |
 | B5 | Dark Mode Tokens vorhanden, nicht aktiv | Niedrig |
 | B6 | Keine Cloud-Sync | Info |
+| B7 | Suche/Sortierung nur als UI-Platzhalter | Niedrig |
 
-**Behoben seit vorheriger Doku:** Foto-Persistenz, Wizard, Bulk, Protokoll-Löschen, Stammdaten-Edit, Abschluss-Flow.
+**Behoben seit vorheriger Doku:** Foto-Persistenz, Wizard, Bulk, Protokoll-Löschen, Stammdaten-Edit, Abschluss-Flow, Premium Native UX, Haptik.
 
 ---
 
@@ -605,8 +655,8 @@ Unverändert: Kamera- und Galerie-Berechtigungen, keine DB-Verschlüsselung, lok
 
 | Schicht | Verantwortung |
 |---------|---------------|
-| Screens (`app/sitereport/`) | UI, lokaler State, Navigation |
-| `components/sitereport/` | Wiederverwendbare SiteReport-UI |
+| Screens (`app/sitereport/`) | Navigation, lokaler State, Orchestrierung |
+| `components/sitereport/` | Präsentations-Komponenten (UI only) |
 | `protocolService.ts` | Business-Logik Entry/Protocol |
 | `photoService.ts` | Foto-Pipeline |
 | `exportService.ts` | Export-Pipeline |
@@ -625,8 +675,10 @@ flowchart TB
   end
 
   subgraph Components [components/sitereport]
+    Hero[PrimaryActionCard / ProtocolHero]
     Cards[ProtocolCard / EntryCard / ExportCard]
-    WizardUI[WizardStep / PhotoCaptureStep]
+    WizardUI[WizardStep / WizardFooter / PhotoCaptureStep]
+    Chips[ActionChipRow / SectionHeader]
     Modals[ConfirmModal / BottomSheet]
   end
 
@@ -655,12 +707,14 @@ flowchart TB
 
 ## 15. Verbesserungspotential
 
+- **Echte Suche** in Protokoll-Liste (Platzhalter vorhanden)
+- **Sortierung** (neueste/älteste, Projektname)
+- **Swipe-to-Delete** auf Protokoll- und Export-Karten
 - **Schema-Migrationen** (`PRAGMA user_version`)
 - **Dark Mode** aktivieren
 - **Repository-Pattern** zwischen Screens und DB
 - **Spalten-ID statt Name** als Field-Key (Umbenennung-sicher)
 - **On-Device-Tests** der Export-Pipeline auf Release-APK
-- Optional: Haptic Feedback, Swipe-to-Delete
 
 ---
 
@@ -670,9 +724,9 @@ flowchart TB
 
 | Feature | Status |
 |---------|:------:|
-| Dashboard mit Statistiken | ✅ |
-| Geführter Protokoll-Start | ✅ |
-| Guided Entry Wizard | ✅ |
+| Dashboard mit Hero-CTA + Statistiken | ✅ |
+| Geführter Protokoll-Start (WizardFooter) | ✅ |
+| Guided Entry Wizard (Animation + Haptik) | ✅ |
 | Stammdaten bearbeiten | ✅ |
 | Protokoll abschließen | ✅ |
 | Entry löschen | ✅ |
@@ -681,11 +735,15 @@ flowchart TB
 | Export-Center | ✅ |
 | Foto-Kompression + Persistenz | ✅ |
 | Toast / Modals / Bottom Sheets | ✅ |
+| Haptisches Feedback | ✅ |
+| Premium Native UX | ✅ |
 | PDF/XLSX Export + Cache | ✅ |
 | Offline + Backup | ✅ |
 
 ### Was fehlt noch
 
+- Echte Suche und Sortierung
+- Swipe-Gesten
 - Dark Mode
 - Cloud-Sync
 - SQLite-Migrations-Framework
@@ -693,9 +751,10 @@ flowchart TB
 
 ### Nächste Schritte
 
-1. PR #25 mergen → APK-Build auf `main`
+1. PR #27 mergen → Premium UX auf `main`
 2. On-Device-Test: Wizard → Export → Abschluss
-3. Schema-Versionierung für zukünftige Updates
+3. Suche/Sortierung implementieren
+4. Schema-Versionierung für zukünftige Updates
 
 ---
 
@@ -741,6 +800,19 @@ flowchart TB
 | Protokolle | `sitereport/protocols/index.tsx` | `/sitereport/protocols` |
 | Exporte | `sitereport/exports/index.tsx` | `/sitereport/exports` |
 | Format-Builder | `sitereport/format-builder.tsx` | `/sitereport/format-builder` |
+
+## Anhang E: Komponenten-Übersicht (Premium UX)
+
+| Komponente | Datei | Verwendet in |
+|------------|-------|--------------|
+| `PrimaryActionCard` | `PrimaryActionCard.tsx` | Dashboard |
+| `ProtocolHero` | `ProtocolHero.tsx` | Protokoll-Detail |
+| `ActionChipRow` | `ActionChipRow.tsx` | Protokoll-Detail |
+| `WizardFooter` | `WizardFooter.tsx` | new-protocol, Entry Wizard |
+| `WizardStep` | `WizardStep.tsx` | new-protocol, Entry Wizard |
+| `SectionHeader` | `SectionHeader.tsx` | Dashboard, Detail, Exporte |
+| `SelectionCheckbox` | `SelectionCheckbox.tsx` | ProtocolCard, ExportCard |
+| `SearchFieldPlaceholder` | `SearchFieldPlaceholder.tsx` | Protokoll-Liste |
 
 ---
 
