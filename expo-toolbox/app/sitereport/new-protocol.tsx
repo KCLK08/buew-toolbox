@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 
-import { TablePreview, WizardStep } from '../../src/components/sitereport';
-import { ListItem, PrimaryButton, Screen, TextField } from '../../src/components/mobile';
+import { TablePreview, WizardFooter, WizardStep } from '../../src/components/sitereport';
+import { ListItem, Screen, TextField } from '../../src/components/mobile';
 import { useToast } from '../../src/contexts/ToastContext';
 import { colors, spacing, typography } from '../../src/constants/theme';
+import { hapticLight, hapticSuccess } from '../../src/lib/haptics';
 import {
   clearLogo,
   createProtocol,
@@ -69,6 +70,7 @@ export default function NewProtocolScreen() {
   const selectTemplate = async (templateId: string) => {
     const tpl = templates.find((row) => row.id === templateId);
     if (!tpl) return;
+    void hapticLight();
     setSelectedTemplateId(templateId);
     setColumns(tpl.columns);
     await saveSettings({ selectedTemplateId: templateId, columns: tpl.columns });
@@ -105,6 +107,16 @@ export default function NewProtocolScreen() {
     return true;
   };
 
+  const goNext = () => {
+    void hapticLight();
+    setStep((s) => s + 1);
+  };
+
+  const goBack = () => {
+    void hapticLight();
+    setStep((s) => s - 1);
+  };
+
   const create = async () => {
     if (!selectedTemplateId) {
       Alert.alert('Format', 'Bitte ein Tabellenformat auswählen.');
@@ -124,6 +136,7 @@ export default function NewProtocolScreen() {
         attendees: attendees.trim(),
         columns
       });
+      void hapticSuccess();
       showToast('Protokoll erstellt');
       router.replace(`/sitereport/protocol/${protocol.id}`);
     } catch (err) {
@@ -136,27 +149,16 @@ export default function NewProtocolScreen() {
   return (
     <Screen
       title="Neues Protokoll"
-      subtitle={STEPS[step - 1]}
       showBack
       footer={
-        <View style={styles.footer}>
-          {step > 1 ? (
-            <PrimaryButton label="Zurück" variant="secondary" onPress={() => setStep((s) => s - 1)} />
-          ) : null}
-          {step < 3 ? (
-            <PrimaryButton
-              label="Weiter"
-              disabled={!canNext()}
-              onPress={() => setStep((s) => s + 1)}
-            />
-          ) : (
-            <PrimaryButton
-              label={saving ? 'Erstellen…' : 'Protokoll erstellen'}
-              disabled={saving || !canNext()}
-              onPress={() => void create()}
-            />
-          )}
-        </View>
+        <WizardFooter
+          showBack={step > 1}
+          onBack={goBack}
+          primaryLabel={step < 3 ? 'Weiter' : saving ? 'Erstellen…' : 'Protokoll erstellen'}
+          onPrimary={step < 3 ? goNext : () => void create()}
+          primaryDisabled={step < 3 ? !canNext() : saving || !canNext()}
+          primaryLoading={saving}
+        />
       }
     >
       <WizardStep step={step} total={3} title={STEPS[step - 1]}>
@@ -167,11 +169,12 @@ export default function NewProtocolScreen() {
               value={protocolTitle}
               onChangeText={setProtocolTitle}
               placeholder="z. B. Tagesprotokoll"
+              autoFocus
             />
-            <TextField label="Projektname" value={projectName} onChangeText={setProjectName} />
-            <TextField label="Beschreibung" value={description} onChangeText={setDescription} multiline />
-            <TextField label="Teilnehmer" value={attendees} onChangeText={setAttendees} />
-            <View>
+            <TextField label="Projektname" value={projectName} onChangeText={setProjectName} placeholder="Baustelle Nord" />
+            <TextField label="Beschreibung" value={description} onChangeText={setDescription} multiline placeholder="Optional" />
+            <TextField label="Teilnehmer" value={attendees} onChangeText={setAttendees} placeholder="Optional" />
+            <View style={styles.dateCard}>
               <Text style={styles.label}>Datum</Text>
               <Text style={styles.dateValue}>{protocolDate}</Text>
             </View>
@@ -184,11 +187,22 @@ export default function NewProtocolScreen() {
             {logoDataUrl ? (
               <>
                 <Image source={{ uri: logoDataUrl }} style={styles.logo} resizeMode="contain" />
-                <PrimaryButton label="Logo ändern" variant="secondary" onPress={() => void pickLogo()} />
-                <PrimaryButton label="Logo entfernen" variant="ghost" onPress={() => void removeLogo()} />
+                <View style={styles.row}>
+                  <Text style={styles.logoAction} onPress={() => void pickLogo()}>
+                    Logo ändern
+                  </Text>
+                  <Text style={styles.logoRemove} onPress={() => void removeLogo()}>
+                    Entfernen
+                  </Text>
+                </View>
               </>
             ) : (
-              <PrimaryButton label="Logo auswählen" onPress={() => void pickLogo()} />
+              <View style={styles.logoPlaceholder}>
+                <Text style={styles.logoIcon}>🏢</Text>
+                <Text style={styles.logoHint} onPress={() => void pickLogo()}>
+                  Logo auswählen
+                </Text>
+              </View>
             )}
           </View>
         ) : null}
@@ -200,24 +214,23 @@ export default function NewProtocolScreen() {
                 key={tpl.id}
                 title={tpl.name}
                 subtitle={`${tpl.columns.length} Spalten`}
-                meta={selectedTemplateId === tpl.id ? 'Aktiv' : undefined}
+                meta={selectedTemplateId === tpl.id ? '✓ Ausgewählt' : undefined}
                 onPress={() => void selectTemplate(tpl.id)}
               />
             ))}
             <View style={styles.row}>
-              <PrimaryButton
-                label="Neues Format"
-                variant="secondary"
-                onPress={() => router.push('/sitereport/format-builder?mode=new')}
-              />
+              <Text style={styles.linkAction} onPress={() => router.push('/sitereport/format-builder?mode=new')}>
+                + Neues Format
+              </Text>
               {selectedTemplateId ? (
-                <PrimaryButton
-                  label="Bearbeiten"
-                  variant="ghost"
+                <Text
+                  style={styles.linkAction}
                   onPress={() =>
                     router.push(`/sitereport/format-builder?mode=edit&templateId=${selectedTemplateId}`)
                   }
-                />
+                >
+                  Bearbeiten
+                </Text>
               ) : null}
             </View>
             {columns.length > 0 ? <TablePreview columns={columns} /> : null}
@@ -229,11 +242,38 @@ export default function NewProtocolScreen() {
 }
 
 const styles = StyleSheet.create({
-  gap: { gap: spacing.sm },
-  footer: { gap: spacing.xs },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  gap: { gap: spacing.md },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   label: { ...typography.label, color: colors.muted, marginBottom: 4 },
+  dateCard: {
+    backgroundColor: colors.panelElevated,
+    borderRadius: spacing.inputRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md
+  },
   dateValue: { ...typography.bodyStrong, color: colors.ink },
   hint: { ...typography.body, color: colors.muted },
-  logo: { width: '100%', height: 120, borderRadius: spacing.inputRadius, backgroundColor: colors.panel }
+  logo: {
+    width: '100%',
+    height: 160,
+    borderRadius: spacing.cardRadius,
+    backgroundColor: colors.panel
+  },
+  logoPlaceholder: {
+    height: 160,
+    borderRadius: spacing.cardRadius,
+    backgroundColor: colors.panel,
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm
+  },
+  logoIcon: { fontSize: 40 },
+  logoHint: { ...typography.bodyStrong, color: colors.accent },
+  logoAction: { ...typography.bodyStrong, color: colors.accent },
+  logoRemove: { ...typography.bodyStrong, color: colors.danger },
+  linkAction: { ...typography.bodyStrong, color: colors.accent }
 });

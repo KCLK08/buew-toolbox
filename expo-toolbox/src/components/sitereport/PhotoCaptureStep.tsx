@@ -2,6 +2,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, spacing, typography } from '../../constants/theme';
 import { PrimaryButton } from '../mobile';
+import { hapticMedium } from '../../lib/haptics';
 
 type Props = {
   photoUri: string | null;
@@ -11,13 +12,20 @@ type Props = {
 };
 
 export function PhotoCaptureStep({ photoUri, onCapture, onRemove, busy }: Props) {
+  const handleCapture = () => {
+    void hapticMedium();
+    onCapture();
+  };
+
   return (
     <View style={styles.wrap}>
       {photoUri ? (
         <Image source={{ uri: photoUri }} style={styles.preview} resizeMode="cover" />
       ) : (
-        <Pressable style={styles.placeholder} onPress={onCapture} disabled={busy}>
-          <Text style={styles.cameraIcon}>📷</Text>
+        <Pressable style={styles.placeholder} onPress={handleCapture} disabled={busy}>
+          <View style={styles.cameraCircle}>
+            <Text style={styles.cameraIcon}>📷</Text>
+          </View>
           <Text style={styles.placeholderTitle}>Foto aufnehmen</Text>
           <Text style={styles.placeholderHint}>Tippe für die Kamera</Text>
         </Pressable>
@@ -25,7 +33,7 @@ export function PhotoCaptureStep({ photoUri, onCapture, onRemove, busy }: Props)
       <View style={styles.actions}>
         <PrimaryButton
           label={busy ? 'Kamera…' : photoUri ? 'Neues Foto' : 'Kamera öffnen'}
-          onPress={onCapture}
+          onPress={handleCapture}
           disabled={busy}
         />
         {photoUri ? <PrimaryButton label="Foto entfernen" variant="ghost" onPress={onRemove} /> : null}
@@ -36,16 +44,16 @@ export function PhotoCaptureStep({ photoUri, onCapture, onRemove, busy }: Props)
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: spacing.md
+    gap: spacing.lg
   },
   preview: {
     width: '100%',
-    height: 280,
+    height: 320,
     borderRadius: spacing.cardRadius,
     backgroundColor: colors.border
   },
   placeholder: {
-    height: 280,
+    minHeight: 320,
     borderRadius: spacing.cardRadius,
     backgroundColor: colors.panel,
     borderWidth: 2,
@@ -53,10 +61,19 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs
+    gap: spacing.sm,
+    padding: spacing.xl
+  },
+  cameraCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.badgeBg,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   cameraIcon: {
-    fontSize: 48
+    fontSize: 36
   },
   placeholderTitle: {
     ...typography.subtitle,

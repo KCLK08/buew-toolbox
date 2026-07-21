@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { BottomSheet, ProtocolCard } from '../../../src/components/sitereport';
+import { BottomSheet, ProtocolCard, SearchFieldPlaceholder } from '../../../src/components/sitereport';
 import { EmptyState, PrimaryButton, Screen } from '../../../src/components/mobile';
 import { useToast } from '../../../src/contexts/ToastContext';
 import { colors, spacing, typography } from '../../../src/constants/theme';
@@ -100,8 +100,24 @@ export default function ProtocolsListScreen() {
 
   return (
     <Screen title="Protokolle" subtitle={`${protocols.length} gespeichert`} showBack scroll refreshing={loading} onRefresh={load}>
+      {protocols.length > 0 ? (
+        <>
+          <SearchFieldPlaceholder placeholder="Protokolle durchsuchen… (bald verfügbar)" />
+          <Pressable style={styles.sortRow} onPress={() => showToast('Sortierung folgt in Kürze')}>
+            <Text style={styles.sortLabel}>Sortierung: Neueste zuerst</Text>
+            <Text style={styles.sortChevron}>▾</Text>
+          </Pressable>
+        </>
+      ) : null}
+
       {protocols.length === 0 ? (
-        <EmptyState title="Keine Protokolle" description="Starte ein neues Protokoll vom Dashboard." />
+        <EmptyState
+          icon="📋"
+          title="Keine Protokolle"
+          description="Starte ein neues Protokoll vom Dashboard."
+          actionLabel="Zum Dashboard"
+          onAction={() => router.push('/(tabs)/sitereport')}
+        />
       ) : (
         protocols.map((protocol) => {
           const stats = protocolStats(protocol);
@@ -110,7 +126,9 @@ export default function ProtocolsListScreen() {
               key={protocol.id}
               title={protocol.protocolTitle}
               subtitle={protocol.projectName}
-              meta={`${protocol.protocolDate} · ${stats.entryCount} Einträge · ${stats.photoCount} Fotos`}
+              date={protocol.protocolDate}
+              entryCount={stats.entryCount}
+              photoCount={stats.photoCount}
               selected={selected.has(protocol.id)}
               onSelectToggle={selectionMode ? () => toggleSelect(protocol.id) : undefined}
               onPress={
@@ -150,7 +168,7 @@ export default function ProtocolsListScreen() {
       {protocols.length > 0 ? (
         <View style={styles.toolbar}>
           <PrimaryButton
-            label={selectionMode ? 'Fertig' : 'Auswählen'}
+            label={selectionMode ? 'Fertig' : 'Auswahl'}
             variant="secondary"
             onPress={() => {
               setSelectionMode((prev) => !prev);
@@ -187,6 +205,22 @@ export default function ProtocolsListScreen() {
 }
 
 const styles = StyleSheet.create({
+  sortRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: spacing.touchMin,
+    paddingHorizontal: spacing.sm,
+    marginBottom: spacing.sm
+  },
+  sortLabel: {
+    ...typography.caption,
+    color: colors.muted
+  },
+  sortChevron: {
+    color: colors.muted,
+    fontSize: 14
+  },
   toolbar: {
     flexDirection: 'row',
     flexWrap: 'wrap',

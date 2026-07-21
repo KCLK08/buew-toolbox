@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Alert, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { FieldStep, PhotoCaptureStep, ProtocolSummary, StatusFieldStep, WizardStep } from '../../../../src/components/sitereport';
-import { PrimaryButton, Screen } from '../../../../src/components/mobile';
+import { FieldStep, PhotoCaptureStep, ProtocolSummary, StatusFieldStep, WizardFooter, WizardStep } from '../../../../src/components/sitereport';
+import { Screen } from '../../../../src/components/mobile';
 import { useToast } from '../../../../src/contexts/ToastContext';
-import { spacing } from '../../../../src/constants/theme';
+import { hapticLight, hapticSuccess } from '../../../../src/lib/haptics';
 import type { SiteReportColumn, SiteReportEntry, SiteReportProtocol } from '../../../../src/native/sitereport/db/database';
 import { captureProtocolPhoto, deleteEntryPhoto } from '../../../../src/native/sitereport/services/photoService';
 import {
@@ -59,7 +59,6 @@ export default function EntryWizardScreen() {
   }, [phase, stepIndex, steps]);
 
   const totalSteps = steps.length + 1;
-
   const displayStep = phase === 'summary' ? steps.length + 1 : stepIndex + 1;
 
   const capturePhoto = async () => {
@@ -90,6 +89,7 @@ export default function EntryWizardScreen() {
       Alert.alert('Foto', 'Bitte zuerst ein Foto aufnehmen.');
       return;
     }
+    void hapticLight();
     if (stepIndex < steps.length - 1) {
       setStepIndex((prev) => prev + 1);
       return;
@@ -98,6 +98,7 @@ export default function EntryWizardScreen() {
   };
 
   const goBack = () => {
+    void hapticLight();
     if (phase === 'summary') {
       setPhase('steps');
       setStepIndex(steps.length - 1);
@@ -121,6 +122,7 @@ export default function EntryWizardScreen() {
         photoPath
       };
       await upsertProtocolEntry(protocol, entry, editingEntryId);
+      void hapticSuccess();
       showToast(editingEntryId ? 'Eintrag aktualisiert' : 'Eintrag gespeichert');
       router.back();
     } catch (err) {
@@ -133,7 +135,7 @@ export default function EntryWizardScreen() {
   if (!protocol || !currentStep) {
     return (
       <Screen title="Eintrag" showBack>
-        <PrimaryButton label="Laden…" disabled onPress={() => {}} />
+        <View />
       </Screen>
     );
   }
@@ -148,29 +150,27 @@ export default function EntryWizardScreen() {
   const stepTitle =
     phase === 'summary'
       ? 'Zusammenfassung'
-      : currentStep === 'summary'
-        ? 'Zusammenfassung'
-        : (currentStep as SiteReportColumn).isPhoto
-          ? 'Foto aufnehmen'
+      : (currentStep as SiteReportColumn).isPhoto
+        ? 'Foto aufnehmen'
+        : (currentStep as SiteReportColumn).name.toLowerCase() === 'status'
+          ? 'Status'
           : (currentStep as SiteReportColumn).name;
+
+  const showBack = phase === 'summary' || stepIndex > 0;
 
   return (
     <Screen
       title={editingEntryId ? 'Eintrag bearbeiten' : 'Neuer Eintrag'}
       showBack
       footer={
-        <View style={styles.footer}>
-          {phase === 'steps' && stepIndex > 0 ? (
-            <PrimaryButton label="Zurück" variant="secondary" onPress={goBack} />
-          ) : phase === 'summary' ? (
-            <PrimaryButton label="Zurück" variant="secondary" onPress={goBack} />
-          ) : null}
-          {phase === 'summary' ? (
-            <PrimaryButton label={saving ? 'Speichern…' : 'Speichern'} disabled={saving} onPress={() => void save()} />
-          ) : (
-            <PrimaryButton label="Weiter" onPress={goNext} />
-          )}
-        </View>
+        <WizardFooter
+          showBack={showBack}
+          onBack={goBack}
+          primaryLabel={phase === 'summary' ? (saving ? 'Speichern…' : 'Speichern') : 'Weiter'}
+          onPrimary={phase === 'summary' ? () => void save() : goNext}
+          primaryDisabled={phase === 'summary' ? saving : false}
+          primaryLoading={saving}
+        />
       }
     >
       <WizardStep step={displayStep} total={totalSteps} title={stepTitle}>
@@ -207,7 +207,3 @@ export default function EntryWizardScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  footer: { gap: spacing.xs }
-});
