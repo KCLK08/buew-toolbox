@@ -70,6 +70,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="bautagebuch/run/[id]" />
+        <Stack.Screen name="bautagebuch/setup" />
           <Stack.Screen name="sitereport/protocol/[id]" />
           <Stack.Screen name="sitereport/format-builder" />
         </Stack>

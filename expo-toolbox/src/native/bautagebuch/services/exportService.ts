@@ -4,7 +4,7 @@ import * as Sharing from 'expo-sharing';
 import { base64ToUint8Array, bytesToArrayBuffer, uint8ToBase64 } from '../../../lib/binary';
 import { buildFinalPdfBytes } from '../lib/pdf-export.js';
 import { buildPhotoDocPdfBytes, mergeBtbWithPhotoDoc } from '../lib/photo-doc.js';
-import { getRun, getTemplate } from '../db/database';
+import { getRun, getSetupModel, getTemplate } from '../db/database';
 import { getActiveTemplateBundle } from './templateService';
 import { readPhotoBytes } from './photoDocService';
 
@@ -78,6 +78,44 @@ export async function exportRunPdf(runId: string, mode: BautagebuchExportMode = 
     await Sharing.shareAsync(outPath, {
       mimeType: 'application/pdf',
       dialogTitle: run.title
+    });
+  }
+
+  return outPath;
+}
+
+export async function exportSetupPreviewPdf(templateId: string): Promise<string> {
+  const [templateRecord, setupModel] = await Promise.all([getTemplate(templateId), getSetupModel(templateId)]);
+  if (!templateRecord?.pdfPath) {
+    throw new Error('PDF-Vorlage fehlt.');
+  }
+  if (!setupModel) {
+    throw new Error('Setup-Modell fehlt.');
+  }
+
+  const base64 = await FileSystem.readAsStringAsync(templateRecord.pdfPath, {
+    encoding: FileSystem.EncodingType.Base64
+  });
+  const pdfBytes = base64ToUint8Array(base64);
+  const outputBytes = await buildFinalPdfBytes({
+    templateBlob: {
+      arrayBuffer: async () => bytesToArrayBuffer(pdfBytes)
+    },
+    setupModel,
+    runValues: {}
+  });
+
+  const outDir = `${FileSystem.documentDirectory}bautagebuch/previews/`;
+  await FileSystem.makeDirectoryAsync(outDir, { intermediates: true });
+  const outPath = `${outDir}setup_preview_${templateId}.pdf`;
+  await FileSystem.writeAsStringAsync(outPath, uint8ToBase64(outputBytes), {
+    encoding: FileSystem.EncodingType.Base64
+  });
+
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(outPath, {
+      mimeType: 'application/pdf',
+      dialogTitle: 'Setup-Vorschau'
     });
   }
 

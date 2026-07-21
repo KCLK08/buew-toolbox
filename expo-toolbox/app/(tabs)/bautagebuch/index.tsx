@@ -98,6 +98,12 @@ export default function BautagebuchHomeScreen() {
           disabled={creating || !templateId}
           onPress={() => void startRun()}
         />
+        <PrimaryButton
+          label="Setup-Editor öffnen"
+          variant="secondary"
+          disabled={!templateId}
+          onPress={() => router.push('/bautagebuch/setup')}
+        />
       </View>
 
       {runs.length === 0 && !loading ? (
