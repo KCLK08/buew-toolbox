@@ -144,6 +144,13 @@ export async function initBautagebuchDatabase(): Promise<void> {
   await getDb();
 }
 
+export async function resetBautagebuchDatabaseConnection(): Promise<void> {
+  if (!dbPromise) return;
+  const db = await dbPromise;
+  await db.closeAsync();
+  dbPromise = null;
+}
+
 export async function listTemplates(): Promise<BautagebuchTemplate[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<Record<string, unknown>>(

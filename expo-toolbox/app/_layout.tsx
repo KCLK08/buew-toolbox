@@ -9,26 +9,36 @@ import {
 } from '@expo-google-fonts/space-grotesk';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { OfflineStatusBanner } from '../src/components/OfflineStatusBanner';
 import { colors } from '../src/constants/theme';
+import { useOfflineBootstrap } from '../src/hooks/useOfflineBootstrap';
 import { initBautagebuchDatabase } from '../src/native/bautagebuch/db/database';
 import { initSiteReportDatabase } from '../src/native/sitereport/db/database';
 
 export default function RootLayout() {
+  const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts({
     SpaceGrotesk_400Regular,
     SpaceGrotesk_600SemiBold,
     SpaceGrotesk_700Bold
   });
-  const [ready, setReady] = useState(false);
+  const [nativeReady, setNativeReady] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const { ready: offlineReady, report, error, restoreBusy, acceptRestore, rejectRestore } =
+    useOfflineBootstrap();
+  const showBanner = report?.pendingRestore || report?.restoredFromBackup || (!bannerDismissed && (error || (report && !report.ok)));
 
   useEffect(() => {
     Promise.all([initBautagebuchDatabase(), initSiteReportDatabase()])
-      .then(() => setReady(true))
-      .catch(() => setReady(true));
+      .then(() => setNativeReady(true))
+      .catch(() => setNativeReady(true));
   }, []);
 
-  if (!fontsLoaded || !ready) {
+  const appReady = fontsLoaded && nativeReady && offlineReady;
+
+  if (!appReady) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, gap: 12 }}>
         <ActivityIndicator color={colors.accent} size="large" />
@@ -40,12 +50,30 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="bautagebuch/run/[id]" />
-        <Stack.Screen name="sitereport/protocol/[id]" />
-        <Stack.Screen name="sitereport/format-builder" />
-      </Stack>
+      <View style={{ flex: 1, paddingTop: insets.top }}>
+        <View style={{ paddingHorizontal: 16 }}>
+          {showBanner ? (
+            <OfflineStatusBanner
+              report={report}
+              error={error}
+              restoreBusy={restoreBusy}
+              onAcceptRestore={() => {
+                void acceptRestore().then(() => {
+                  void Promise.all([initBautagebuchDatabase(), initSiteReportDatabase()]);
+                });
+              }}
+              onRejectRestore={rejectRestore}
+              onDismiss={() => setBannerDismissed(true)}
+            />
+          ) : null}
+        </View>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="bautagebuch/run/[id]" />
+          <Stack.Screen name="sitereport/protocol/[id]" />
+          <Stack.Screen name="sitereport/format-builder" />
+        </Stack>
+      </View>
     </GestureHandlerRootView>
   );
 }
