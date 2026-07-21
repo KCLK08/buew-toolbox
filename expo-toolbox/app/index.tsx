@@ -14,13 +14,11 @@ import { ToolCard } from '../src/components/ToolCard';
 import { ToolboxBackground } from '../src/components/ToolboxBackground';
 import { colors, spacing } from '../src/constants/theme';
 import { TOOLBOX_TOOLS } from '../src/constants/tools';
-import { useAuth } from '../src/providers/AuthProvider';
 
 export default function ToolboxHomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const { configured, user } = useAuth();
   const fadeIn = useRef(new Animated.Value(0)).current;
   const slideUp = useRef(new Animated.Value(18)).current;
 
@@ -69,15 +67,6 @@ export default function ToolboxHomeScreen() {
             <Text style={styles.sub}>
               Zentrale Übersicht für digitale Baustellen‑Workflows und Dokumentation.
             </Text>
-            {!configured ? (
-              <Text style={styles.hint}>
-                Supabase noch nicht verbunden — siehe `.env.example`.
-              </Text>
-            ) : user ? (
-              <Text style={styles.hint}>Angemeldet als {user.email}</Text>
-            ) : (
-              <Text style={styles.hint}>Supabase bereit — Auth kann angebunden werden.</Text>
-            )}
           </View>
         </Animated.View>
 
@@ -131,13 +120,6 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     fontFamily: 'SpaceGrotesk_400Regular',
     marginBottom: 12
-  },
-  hint: {
-    color: colors.accent2,
-    fontSize: 13,
-    lineHeight: 18,
-    fontFamily: 'SpaceGrotesk_400Regular',
-    opacity: 0.85
   },
   grid: {
     flexDirection: 'row',

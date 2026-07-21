@@ -36,7 +36,6 @@ module.exports = ({ config }) => ({
     'expo-router',
     'expo-font',
     'expo-web-browser',
-    'expo-secure-store',
     [
       'expo-system-ui',
       {
@@ -48,8 +47,6 @@ module.exports = ({ config }) => ({
     typedRoutes: true
   },
   extra: {
-    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? '',
-    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
     toolboxWebBaseUrl:
       process.env.EXPO_PUBLIC_TOOLBOX_WEB_BASE_URL ?? 'https://kclk08.github.io/buew-toolbox',
     eas: {
