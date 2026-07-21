@@ -1,11 +1,20 @@
 {
-  "name": "baustellen-tools",
-  "version": "0.1.0",
+  "name": "buew-toolbox",
+  "version": "0.2.0",
   "private": true,
+  "workspaces": [
+    "shared",
+    "web",
+    "mobile"
+  ],
   "scripts": {
+    "typecheck": "npm run typecheck -w @buew/shared && npm run typecheck -w @buew/web && npm run typecheck -w @buew/mobile",
+    "dev:web": "npm run dev -w @buew/web",
+    "dev:mobile": "npm run start -w @buew/mobile",
+    "build:web": "npm run build -w @buew/web",
     "build:SiteReport": "cd sitereport && npm run build",
     "build:Bautagebuch": "cd bautagebuch-v2 && npm run build",
-    "deploy": "npm run build:SiteReport && npm run build:Bautagebuch && node scripts/deploy-toolbox.mjs"
+    "deploy": "npm run build:SiteReport && npm run build:Bautagebuch && npm run build:web && node scripts/deploy-toolbox.mjs"
   },
   "devDependencies": {
     "gh-pages": "^6.2.0"
