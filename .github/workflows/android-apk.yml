@@ -62,11 +62,12 @@ jobs:
           CI: '1'
         run: npx expo prebuild --platform android --non-interactive
 
-      - name: Build debug APK
+      - name: Build standalone release APK
         working-directory: expo-toolbox/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          # Release embeds the JS bundle via `export:embed`; debug expects Metro on :8081.
+          ./gradlew assembleRelease --no-daemon
 
       - name: Prepare APK file
         id: apk
@@ -76,9 +77,9 @@ jobs:
           VERSION="$(node -p "require('./package.json').version")"
           SHORT_SHA="${GITHUB_SHA::7}"
           RUN_NUMBER="${GITHUB_RUN_NUMBER}"
-          SRC="$GITHUB_WORKSPACE/expo-toolbox/android/app/build/outputs/apk/debug/app-debug.apk"
+          SRC="$GITHUB_WORKSPACE/expo-toolbox/android/app/build/outputs/apk/release/app-release.apk"
           OUT_DIR="$GITHUB_WORKSPACE/expo-toolbox/dist-apk"
-          APK_NAME="buew-toolbox-${VERSION}-${SHORT_SHA}-debug.apk"
+          APK_NAME="buew-toolbox-${VERSION}-${SHORT_SHA}.apk"
           APK_ABS="${OUT_DIR}/${APK_NAME}"
           TAG="apk-v${VERSION}.${RUN_NUMBER}"
 
@@ -90,6 +91,13 @@ jobs:
           file "$APK_ABS"
           [[ "$APK_NAME" == *.apk ]]
           ls -lh "$APK_ABS"
+
+          # Standalone APK must ship an embedded JS bundle (not Metro dev client).
+          if ! unzip -l "$APK_ABS" | grep -qE 'assets/.*(index\.android\.bundle|\.hbc)'; then
+            echo "ERROR: No embedded JS bundle found in APK assets."
+            unzip -l "$APK_ABS" | grep -E 'assets/' || true
+            exit 1
+          fi
 
           {
             echo "version=${VERSION}"
@@ -125,7 +133,7 @@ jobs:
 
           NOTES="$(mktemp)"
           cat > "$NOTES" <<EOF
-          Automatisch erzeugte **Debug-APK** (direkt installierbar).
+          Automatisch erzeugte **Release-APK** mit eingebettetem JS-Bundle (ohne Metro, direkt installierbar).
 
           - Version: \`${VERSION}\`
           - Commit: \`${SHORT_SHA}\`
