@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { DashboardActionCard } from '../../../src/components/sitereport';
-import { Fab, ListItem, Screen, StatCard } from '../../../src/components/mobile';
+import { PrimaryActionCard, ProtocolCard, SectionHeader } from '../../../src/components/sitereport';
+import { EmptyState, Screen, StatCard } from '../../../src/components/mobile';
 import { colors, spacing, typography } from '../../../src/constants/theme';
 import {
   initSiteReportDatabase,
@@ -41,8 +41,8 @@ export default function SiteReportDashboardScreen() {
       photos += s.photoCount;
       entries += s.entryCount;
     }
-    return { protocols: protocols.length, photos, entries };
-  }, [protocols]);
+    return { protocols: protocols.length, photos, entries, exports: exportsList.length };
+  }, [exportsList.length, protocols]);
 
   const recentProtocols = protocols.slice(0, 3);
   const recentExports = exportsList.slice(0, 3);
@@ -55,69 +55,75 @@ export default function SiteReportDashboardScreen() {
       </View>
       <View style={styles.statsRow}>
         <StatCard title="Fotos" value={String(stats.photos)} icon="📷" />
-        <StatCard title="Exporte" value={String(exportsList.length)} icon="📤" tone="accent" onPress={() => router.push('/sitereport/exports')} />
+        <StatCard
+          title="Exporte"
+          value={String(stats.exports)}
+          icon="📤"
+          tone="accent"
+          onPress={() => router.push('/sitereport/exports')}
+        />
       </View>
 
-      <View style={styles.actionsRow}>
-        <DashboardActionCard
-          title="Neues Protokoll"
-          subtitle="Geführter Setup-Flow"
-          icon="➕"
-          accent
-          onPress={() => router.push('/sitereport/new-protocol')}
-        />
-        <DashboardActionCard
-          title="Protokolle"
-          subtitle={`${protocols.length} gespeichert`}
-          icon="📁"
-          onPress={() => router.push('/sitereport/protocols')}
-        />
-      </View>
+      <PrimaryActionCard
+        title="Neues Protokoll starten"
+        subtitle="Geführter Setup in 3 Schritten"
+        onPress={() => router.push('/sitereport/new-protocol')}
+      />
+
+      <Pressable style={styles.linkRow} onPress={() => router.push('/sitereport/protocols')}>
+        <Text style={styles.linkLabel}>Alle Protokolle anzeigen</Text>
+        <Text style={styles.linkChevron}>›</Text>
+      </Pressable>
 
       {recentProtocols.length > 0 ? (
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Aktive Protokolle</Text>
-            <Text style={styles.sectionLink} onPress={() => router.push('/sitereport/protocols')}>
-              Alle
-            </Text>
-          </View>
+          <SectionHeader
+            title="Zuletzt verwendet"
+            actionLabel="Alle"
+            onAction={() => router.push('/sitereport/protocols')}
+          />
           {recentProtocols.map((protocol) => {
             const s = protocolStats(protocol);
             return (
-              <ListItem
+              <ProtocolCard
                 key={protocol.id}
                 title={protocol.protocolTitle}
                 subtitle={protocol.projectName}
-                meta={`${protocol.protocolDate} · ${s.entryCount} Einträge · ${s.photoCount} Fotos`}
+                date={protocol.protocolDate}
+                entryCount={s.entryCount}
+                photoCount={s.photoCount}
                 onPress={() => router.push(`/sitereport/protocol/${protocol.id}`)}
               />
             );
           })}
         </View>
-      ) : null}
+      ) : (
+        <EmptyState
+          icon="📋"
+          title="Noch keine Protokolle"
+          description="Starte dein erstes Baustellen-Protokoll mit dem Button oben."
+        />
+      )}
 
       {recentExports.length > 0 ? (
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Letzte Exporte</Text>
-            <Text style={styles.sectionLink} onPress={() => router.push('/sitereport/exports')}>
-              Alle
-            </Text>
-          </View>
+          <SectionHeader
+            title="Letzte Exporte"
+            actionLabel="Alle"
+            onAction={() => router.push('/sitereport/exports')}
+          />
           {recentExports.map((item) => (
-            <ListItem
+            <ProtocolCard
               key={item.id}
               title={item.protocolTitle || item.projectName}
-              subtitle={`${item.projectName} · ${item.protocolDate}`}
+              subtitle={item.projectName}
+              date={item.protocolDate}
               meta={[item.pdfPath ? 'PDF' : null, item.xlsxPath ? 'Excel' : null].filter(Boolean).join(' · ')}
               onPress={() => router.push('/sitereport/exports')}
             />
           ))}
         </View>
       ) : null}
-
-      <Fab label="+" onPress={() => router.push('/sitereport/new-protocol')} accessibilityLabel="Neues Protokoll" />
     </Screen>
   );
 }
@@ -128,28 +134,23 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.sm
   },
-  actionsRow: {
+  linkRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginBottom: spacing.lg
-  },
-  section: {
-    gap: spacing.xs,
-    marginBottom: spacing.lg
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.xs
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md
   },
-  sectionTitle: {
-    ...typography.bodyStrong,
-    color: colors.ink
-  },
-  sectionLink: {
+  linkLabel: {
     ...typography.bodyStrong,
     color: colors.accent
+  },
+  linkChevron: {
+    fontSize: 22,
+    color: colors.accent
+  },
+  section: {
+    marginBottom: spacing.lg
   }
 });

@@ -2,10 +2,18 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { BottomSheet, ConfirmModal, EntryCard } from '../../../src/components/sitereport';
-import { PrimaryButton, Screen, StatCard } from '../../../src/components/mobile';
+import {
+  ActionChipRow,
+  BottomSheet,
+  ConfirmModal,
+  EntryCard,
+  ProtocolHero,
+  SectionHeader
+} from '../../../src/components/sitereport';
+import { EmptyState, PrimaryButton, Screen, StatCard } from '../../../src/components/mobile';
 import { useToast } from '../../../src/contexts/ToastContext';
-import { colors, spacing, typography } from '../../../src/constants/theme';
+import { spacing } from '../../../src/constants/theme';
+import { hapticSuccess } from '../../../src/lib/haptics';
 import { updateProtocol } from '../../../src/native/sitereport/db/database';
 import {
   closeProtocolWithExport,
@@ -54,7 +62,8 @@ export default function SiteReportProtocolScreen() {
       } else {
         await exportProtocolXlsx(protocol);
       }
-      showToast(`${format.toUpperCase()} exportiert`);
+      void hapticSuccess();
+      showToast(`${format === 'pdf' ? 'PDF' : 'Excel'} wurde erstellt`);
     } catch (err) {
       Alert.alert('Export', err instanceof Error ? err.message : 'Export fehlgeschlagen.');
     } finally {
@@ -71,7 +80,8 @@ export default function SiteReportProtocolScreen() {
       if (mode !== 'save') {
         await closeProtocolWithExport(protocol, mode);
       }
-      showToast(mode === 'save' ? 'Gespeichert' : 'Protokoll abgeschlossen');
+      void hapticSuccess();
+      showToast(mode === 'save' ? 'Protokoll gespeichert' : 'Protokoll abgeschlossen');
       router.replace('/sitereport/protocols');
     } catch (err) {
       Alert.alert('Abschluss', err instanceof Error ? err.message : 'Abschluss fehlgeschlagen.');
@@ -100,71 +110,93 @@ export default function SiteReportProtocolScreen() {
   if (!protocol || !stats) {
     return (
       <Screen title="Protokoll" showBack>
-        <Text style={styles.muted}>Protokoll wird geladen…</Text>
+        <EmptyState icon="⏳" title="Wird geladen…" description="Protokoll wird vorbereitet." />
       </Screen>
     );
   }
 
+  const statusLabel = stats.openCount > 0 ? `${stats.openCount} offen` : 'Alle erledigt';
+  const statusTone = stats.openCount > 0 ? 'warning' : 'success';
+
   return (
     <Screen
-      title={protocol.protocolTitle}
-      subtitle={protocol.projectName}
+      title="Protokoll"
       showBack
       scroll
       onRefresh={load}
       refreshing={exporting}
       footer={
-        <View style={styles.footer}>
-          <PrimaryButton
-            label="+ Neuer Eintrag"
-            onPress={() => router.push(`/sitereport/protocol/${protocol.id}/wizard`)}
-          />
-        </View>
+        <PrimaryButton
+          label="+ Neuer Eintrag"
+          onPress={() => router.push(`/sitereport/protocol/${protocol.id}/wizard`)}
+        />
       }
     >
+      <ProtocolHero
+        title={protocol.protocolTitle}
+        projectName={protocol.projectName}
+        date={protocol.protocolDate}
+        statusLabel={statusLabel}
+        statusTone={statusTone}
+      />
+
       <View style={styles.statsRow}>
-        <StatCard title="Datum" value={protocol.protocolDate} icon="📅" />
-        <StatCard title="Einträge" value={String(stats.entryCount)} icon="✏️" />
-      </View>
-      <View style={styles.statsRow}>
-        <StatCard title="Fotos" value={String(stats.photoCount)} icon="📷" />
-        <StatCard title="Offen" value={String(stats.openCount)} icon="🟠" tone="warning" />
+        <View style={styles.statItem}>
+          <StatCard title="Einträge" value={String(stats.entryCount)} icon="✏️" />
+        </View>
+        <View style={styles.statItem}>
+          <StatCard title="Fotos" value={String(stats.photoCount)} icon="📷" />
+        </View>
+        <View style={styles.statItem}>
+          <StatCard title="Offen" value={String(stats.openCount)} icon="🟠" tone="warning" />
+        </View>
       </View>
 
-      <View style={styles.actions}>
-        <PrimaryButton
-          label="Stammdaten bearbeiten"
-          variant="secondary"
-          onPress={() => router.push(`/sitereport/protocol/${protocol.id}/edit`)}
-        />
-        <PrimaryButton
-          label={exporting ? 'Export…' : 'Export'}
-          variant="secondary"
-          disabled={exporting}
-          onPress={() => setExportSheetVisible(true)}
-        />
-        <PrimaryButton
-          label="Protokoll abschließen"
-          variant="ghost"
-          disabled={exporting}
-          onPress={() => setCloseVisible(true)}
-        />
-      </View>
+      <ActionChipRow
+        actions={[
+          {
+            key: 'export',
+            label: exporting ? 'Export…' : 'Export',
+            icon: '📤',
+            disabled: exporting,
+            onPress: () => setExportSheetVisible(true)
+          },
+          {
+            key: 'edit',
+            label: 'Bearbeiten',
+            icon: '✎',
+            onPress: () => router.push(`/sitereport/protocol/${protocol.id}/edit`)
+          },
+          {
+            key: 'close',
+            label: 'Abschließen',
+            icon: '✓',
+            disabled: exporting,
+            onPress: () => setCloseVisible(true)
+          }
+        ]}
+      />
 
-      <Text style={styles.section}>Einträge ({protocol.entries.length})</Text>
-      {protocol.entries.length === 0 ? (
-        <Text style={styles.muted}>Noch keine Einträge. Tippe auf „+ Neuer Eintrag".</Text>
-      ) : (
-        protocol.entries.map((entry) => (
-          <EntryCard
-            key={entry.id}
-            entry={entry}
-            columns={protocol.columns}
-            onEdit={() => router.push(`/sitereport/protocol/${protocol.id}/wizard?entryId=${entry.id}`)}
-            onDelete={() => deleteEntry(entry.id)}
+      <View style={styles.entriesSection}>
+        <SectionHeader title={`Einträge (${protocol.entries.length})`} />
+        {protocol.entries.length === 0 ? (
+          <EmptyState
+            icon="📷"
+            title="Noch keine Einträge"
+            description='Tippe unten auf "+ Neuer Eintrag", um den geführten Wizard zu starten.'
           />
-        ))
-      )}
+        ) : (
+          protocol.entries.map((entry) => (
+            <EntryCard
+              key={entry.id}
+              entry={entry}
+              columns={protocol.columns}
+              onEdit={() => router.push(`/sitereport/protocol/${protocol.id}/wizard?entryId=${entry.id}`)}
+              onDelete={() => deleteEntry(entry.id)}
+            />
+          ))
+        )}
+      </View>
 
       <ConfirmModal
         visible={closeVisible}
@@ -194,9 +226,15 @@ export default function SiteReportProtocolScreen() {
 }
 
 const styles = StyleSheet.create({
-  muted: { ...typography.body, color: colors.muted },
-  section: { ...typography.bodyStrong, color: colors.ink, marginTop: spacing.sm, marginBottom: spacing.xs },
-  statsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
-  actions: { gap: spacing.xs, marginBottom: spacing.md },
-  footer: { gap: spacing.xs }
+  statsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md
+  },
+  statItem: {
+    flex: 1
+  },
+  entriesSection: {
+    marginTop: spacing.lg
+  }
 });

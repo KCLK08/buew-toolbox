@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
-import { ExportCard } from '../../../src/components/sitereport';
+import { ExportCard, SectionHeader } from '../../../src/components/sitereport';
 import { EmptyState, PrimaryButton, Screen } from '../../../src/components/mobile';
 import { useToast } from '../../../src/contexts/ToastContext';
 import { spacing } from '../../../src/constants/theme';
+import { hapticSuccess } from '../../../src/lib/haptics';
 import { initSiteReportDatabase, type SiteReportExport } from '../../../src/native/sitereport/db/database';
 import { deleteCachedExport, listExports, shareCachedExport } from '../../../src/native/sitereport/services/exportService';
 
@@ -40,6 +41,7 @@ export default function ExportsCenterScreen() {
     setSharing(`${exportId}:${format}`);
     try {
       await shareCachedExport(exportId, format);
+      void hapticSuccess();
       showToast('Export geteilt');
     } catch (err) {
       Alert.alert('Export', err instanceof Error ? err.message : 'Teilen fehlgeschlagen.');
@@ -85,8 +87,23 @@ export default function ExportsCenterScreen() {
 
   return (
     <Screen title="Exporte" subtitle="Export-Center" showBack scroll refreshing={loading} onRefresh={load}>
+      {exportsList.length > 0 ? (
+        <SectionHeader
+          title={`${exportsList.length} Export${exportsList.length === 1 ? '' : 'e'}`}
+          actionLabel={selectionMode ? 'Fertig' : 'Auswahl'}
+          onAction={() => {
+            setSelectionMode((prev) => !prev);
+            setSelected(new Set());
+          }}
+        />
+      ) : null}
+
       {exportsList.length === 0 ? (
-        <EmptyState title="Keine Exporte" description="Exporte erscheinen hier nach dem Abschluss eines Protokolls." />
+        <EmptyState
+          icon="📤"
+          title="Keine Exporte"
+          description="Exporte erscheinen hier nach dem Abschluss eines Protokolls."
+        />
       ) : (
         exportsList.map((item) => (
           <ExportCard
@@ -105,24 +122,14 @@ export default function ExportsCenterScreen() {
                 ? () => void share(item.id, 'xlsx')
                 : undefined
             }
-            onDelete={() => remove(item.id)}
+            onDelete={selectionMode ? undefined : () => remove(item.id)}
           />
         ))
       )}
 
-      {exportsList.length > 0 ? (
+      {selectionMode && selected.size > 0 ? (
         <View style={styles.toolbar}>
-          <PrimaryButton
-            label={selectionMode ? 'Fertig' : 'Auswählen'}
-            variant="secondary"
-            onPress={() => {
-              setSelectionMode((prev) => !prev);
-              setSelected(new Set());
-            }}
-          />
-          {selectionMode ? (
-            <PrimaryButton label="Löschen" variant="ghost" disabled={selected.size === 0} onPress={deleteSelected} />
-          ) : null}
+          <PrimaryButton label={`${selected.size} löschen`} variant="ghost" onPress={deleteSelected} />
         </View>
       ) : null}
     </Screen>
@@ -131,9 +138,6 @@ export default function ExportsCenterScreen() {
 
 const styles = StyleSheet.create({
   toolbar: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
     marginTop: spacing.md
   }
 });
