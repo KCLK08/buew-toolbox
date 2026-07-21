@@ -6,6 +6,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ListItem, PrimaryButton, Screen, TextField } from '../../../src/components/mobile';
 import { colors, typography } from '../../../src/constants/theme';
 import {
+  exportProtocolPdf,
+  exportProtocolXlsx
+} from '../../../src/native/sitereport/services/exportService';
+import {
   getProtocol,
   updateProtocol,
   type SiteReportEntry,
@@ -16,6 +20,7 @@ export default function SiteReportProtocolScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [protocol, setProtocol] = useState<SiteReportProtocol | null>(null);
+  const [exporting, setExporting] = useState<'pdf' | 'xlsx' | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -54,6 +59,23 @@ export default function SiteReportProtocolScreen() {
     await save({ ...protocol, entries: [entry, ...protocol.entries] });
   };
 
+  const runExport = async (format: 'pdf' | 'xlsx') => {
+    if (!protocol) return;
+    setExporting(format);
+    try {
+      if (format === 'pdf') {
+        await exportProtocolPdf(protocol);
+      } else {
+        await exportProtocolXlsx(protocol);
+      }
+      Alert.alert('Export', `${format.toUpperCase()} wurde erstellt und kann geteilt werden.`);
+    } catch (err) {
+      Alert.alert('Export', err instanceof Error ? err.message : 'Export fehlgeschlagen.');
+    } finally {
+      setExporting(null);
+    }
+  };
+
   if (!protocol) {
     return (
       <Screen title="SiteReport" showBack>
@@ -67,7 +89,21 @@ export default function SiteReportProtocolScreen() {
       title={protocol.protocolTitle}
       subtitle={protocol.projectName}
       showBack
-      footer={<PrimaryButton label="+ Eintrag mit Foto" onPress={() => void addEntry()} />}
+      footer={
+        <View style={styles.exportRow}>
+          <PrimaryButton
+            label={exporting === 'pdf' ? 'PDF…' : 'PDF exportieren'}
+            disabled={Boolean(exporting)}
+            onPress={() => void runExport('pdf')}
+          />
+          <PrimaryButton
+            label={exporting === 'xlsx' ? 'XLSX…' : 'XLSX exportieren'}
+            variant="secondary"
+            disabled={Boolean(exporting)}
+            onPress={() => void runExport('xlsx')}
+          />
+        </View>
+      }
     >
       <TextField
         label="Beschreibung"
@@ -80,6 +116,8 @@ export default function SiteReportProtocolScreen() {
         value={protocol.attendees}
         onChangeText={(attendees) => void save({ ...protocol, attendees })}
       />
+
+      <PrimaryButton label="+ Eintrag mit Foto" onPress={() => void addEntry()} />
 
       <Text style={styles.section}>Einträge ({protocol.entries.length})</Text>
       {protocol.entries.map((entry) => (
@@ -127,5 +165,6 @@ const styles = StyleSheet.create({
   muted: { ...typography.body, color: colors.muted },
   section: { ...typography.bodyStrong, color: colors.ink, marginTop: 8 },
   entryCard: { gap: 8, marginBottom: 12 },
-  photo: { width: '100%', height: 180, borderRadius: 12, backgroundColor: colors.border }
+  photo: { width: '100%', height: 180, borderRadius: 12, backgroundColor: colors.border },
+  exportRow: { flexDirection: 'row', gap: 8 }
 });

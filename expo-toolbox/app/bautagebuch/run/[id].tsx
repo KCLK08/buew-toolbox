@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 
 import { PrimaryButton, Screen } from '../../../src/components/mobile';
 import { colors, typography } from '../../../src/constants/theme';
 import { RunWizard } from '../../../src/native/bautagebuch/components/RunWizard';
 import { getRun, updateRun } from '../../../src/native/bautagebuch/db/database';
-import { exportRunPdf } from '../../../src/native/bautagebuch/services/exportService';
+import {
+  exportRunPdf,
+  type BautagebuchExportMode
+} from '../../../src/native/bautagebuch/services/exportService';
+import { capturePhotoDocEntry } from '../../../src/native/bautagebuch/services/photoDocService';
 import { getActiveTemplateBundle } from '../../../src/native/bautagebuch/services/templateService';
 import { syncWeatherValues } from '../../../src/native/bautagebuch/services/weatherService';
 import type { BautagebuchRun } from '../../../src/native/bautagebuch/types';
+import { nowIso } from '../../../src/lib/ids';
 
 export default function BautagebuchRunScreen() {
-  const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [run, setRun] = useState<BautagebuchRun | null>(null);
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
@@ -51,7 +55,11 @@ export default function BautagebuchRunScreen() {
     setWeatherBusy(true);
     try {
       const weather = await syncWeatherValues();
-      const sections = (setupModel.single_sections as Array<{ sectionId: string; fields: Array<{ fieldName: string; fieldId: string }> }>) || [];
+      const sections =
+        (setupModel.single_sections as Array<{
+          sectionId: string;
+          fields: Array<{ fieldName: string; fieldId: string }>;
+        }>) || [];
       const weatherSection = sections.find((section) => section.sectionId === 'weather');
       const nextValues = { ...run.values };
       const setByName = (name: string, value: string) => {
@@ -69,11 +77,11 @@ export default function BautagebuchRunScreen() {
     }
   };
 
-  const handleExport = async () => {
+  const runExport = async (mode: BautagebuchExportMode) => {
     if (!run) return;
     setExporting(true);
     try {
-      await exportRunPdf(run.runId);
+      await exportRunPdf(run.runId, mode);
       await persist({ status: 'completed', completedAt: new Date().toISOString() });
       Alert.alert('Export', 'PDF wurde erstellt und kann geteilt werden.');
     } catch (err) {
@@ -81,6 +89,54 @@ export default function BautagebuchRunScreen() {
     } finally {
       setExporting(false);
     }
+  };
+
+  const handleExport = () => {
+    Alert.alert('PDF exportieren', 'Welche Version soll erstellt werden?', [
+      { text: 'Abbrechen', style: 'cancel' },
+      { text: 'Nur BTB', onPress: () => void runExport('btb') },
+      { text: 'Nur Fotodoku', onPress: () => void runExport('photo') },
+      { text: 'Zusammengeführt', onPress: () => void runExport('merged') }
+    ]);
+  };
+
+  const handlePhotoDocChange = (enabled: boolean) => {
+    if (!run) return;
+    void persist({
+      photoDoc: {
+        ...run.photoDoc,
+        enabled,
+        updatedAt: nowIso()
+      }
+    });
+  };
+
+  const handleAddPhoto = async () => {
+    if (!run) return;
+    try {
+      const entry = await capturePhotoDocEntry(run.runId);
+      if (!entry) return;
+      await persist({
+        photoDoc: {
+          enabled: true,
+          entries: [entry, ...(run.photoDoc?.entries || [])],
+          updatedAt: nowIso()
+        }
+      });
+    } catch (err) {
+      Alert.alert('Foto', err instanceof Error ? err.message : 'Foto konnte nicht gespeichert werden.');
+    }
+  };
+
+  const handleRemovePhoto = (entryId: string) => {
+    if (!run) return;
+    void persist({
+      photoDoc: {
+        ...run.photoDoc,
+        entries: (run.photoDoc?.entries || []).filter((entry) => entry.id !== entryId),
+        updatedAt: nowIso()
+      }
+    });
   };
 
   if (!run || !setupModel) {
@@ -100,7 +156,7 @@ export default function BautagebuchRunScreen() {
         <PrimaryButton
           label={exporting ? 'PDF wird erstellt…' : 'PDF exportieren'}
           disabled={exporting}
-          onPress={() => void handleExport()}
+          onPress={handleExport}
         />
       }
     >
@@ -109,6 +165,10 @@ export default function BautagebuchRunScreen() {
         values={run.values}
         sectionIndex={run.sectionIndex}
         weatherBusy={weatherBusy}
+        photoDoc={run.photoDoc}
+        onPhotoDocChange={handlePhotoDocChange}
+        onAddPhoto={() => void handleAddPhoto()}
+        onRemovePhoto={handleRemovePhoto}
         onWeatherSync={handleWeatherSync}
         onSectionChange={(sectionIndex) => void persist({ sectionIndex })}
         onChange={(values) => void persist({ values })}

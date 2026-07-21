@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, PrimaryButton, TextField } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
@@ -17,6 +17,10 @@ type Props = {
   onSectionChange: (index: number) => void;
   onWeatherSync?: () => Promise<void>;
   weatherBusy?: boolean;
+  photoDoc?: { enabled: boolean | null; entries: Array<{ id: string; localPath?: string }> };
+  onPhotoDocChange?: (enabled: boolean) => void;
+  onAddPhoto?: () => void;
+  onRemovePhoto?: (entryId: string) => void;
 };
 
 const GEWERK_FIELDS = ['Text3', 'Text5', 'Text6', 'Text7', 'Text8'];
@@ -43,9 +47,16 @@ export function RunWizard({
   onChange,
   onSectionChange,
   onWeatherSync,
-  weatherBusy
+  weatherBusy,
+  photoDoc,
+  onPhotoDocChange,
+  onAddPhoto,
+  onRemovePhoto
 }: Props) {
-  const sections = useMemo(() => buildRunSections(setupModel), [setupModel]);
+  const sections = useMemo(() => {
+    const base = buildRunSections(setupModel);
+    return [...base, { sectionId: 'photo-doc', kind: 'photo-doc', label: 'Fotodokumentation' }];
+  }, [setupModel]);
   const section = sections[sectionIndex] || sections[0];
 
   const setFieldValue = (fieldId: string, value: unknown) => {
@@ -222,8 +233,44 @@ export function RunWizard({
     );
   };
 
+  const renderPhotoDocSection = () => (
+    <View style={styles.sectionBody}>
+      <Text style={styles.label}>Fotodokumentation anhängen?</Text>
+      <View style={styles.chipRow}>
+        <Pressable
+          style={[styles.chip, photoDoc?.enabled === true ? styles.chipActive : null]}
+          onPress={() => onPhotoDocChange?.(true)}
+        >
+          <Text style={styles.chipText}>Ja</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.chip, photoDoc?.enabled === false ? styles.chipActive : null]}
+          onPress={() => onPhotoDocChange?.(false)}
+        >
+          <Text style={styles.chipText}>Nein</Text>
+        </Pressable>
+      </View>
+      {photoDoc?.enabled ? (
+        <>
+          <PrimaryButton label="+ Foto aufnehmen" variant="secondary" onPress={() => onAddPhoto?.()} />
+          {(photoDoc.entries || []).map((entry) => (
+            <View key={entry.id} style={styles.photoRow}>
+              {entry.localPath ? <Image source={{ uri: entry.localPath }} style={styles.photoPreview} /> : null}
+              <PrimaryButton
+                label="Entfernen"
+                variant="ghost"
+                onPress={() => onRemovePhoto?.(entry.id)}
+              />
+            </View>
+          ))}
+        </>
+      ) : null}
+    </View>
+  );
+
   const renderSectionContent = () => {
     if (!section) return null;
+    if (section.kind === 'photo-doc' || section.sectionId === 'photo-doc') return renderPhotoDocSection();
     if (section.sectionId === 'single:header') return renderHeaderSection();
     if (section.sectionId === 'single:weather') return renderWeatherSection();
     if (section.kind === 'table') return renderTableSection();
@@ -321,5 +368,7 @@ const styles = StyleSheet.create({
   checkboxLabel: { ...typography.body, color: colors.ink },
   tableCard: { gap: spacing.sm },
   tableRowTitle: { ...typography.bodyStrong, color: colors.ink },
+  photoRow: { gap: spacing.xs },
+  photoPreview: { width: '100%', height: 160, borderRadius: 12, backgroundColor: colors.border },
   footerRow: { flexDirection: 'row', gap: spacing.sm }
 });
