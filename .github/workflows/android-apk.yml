@@ -142,8 +142,12 @@ jobs:
           **Download:** unten die Datei \`${APK_NAME}\` wählen (Endung \`.apk\`, nicht \`.zip\`).
           EOF
 
-          gh release create "$TAG" "$APK_ABS" \
-            --title "BÜW-Toolbox Android ${VERSION} (#${GITHUB_RUN_NUMBER})" \
-            --notes-file "$NOTES" \
-            --prerelease \
-            --latest
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists, uploading APK asset."
+            gh release upload "$TAG" "$APK_ABS" --clobber
+          else
+            gh release create "$TAG" "$APK_ABS" \
+              --title "BÜW-Toolbox Android ${VERSION} (#${GITHUB_RUN_NUMBER})" \
+              --notes-file "$NOTES" \
+              --prerelease
+          fi
