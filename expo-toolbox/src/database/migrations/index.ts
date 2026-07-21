@@ -85,5 +85,72 @@ export const migrations: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_photos_deleted ON photos(deleted_at);`,
       `CREATE INDEX IF NOT EXISTS idx_diary_runs_deleted ON diary_runs(deleted_at);`
     ]
+  },
+  {
+    version: 2,
+    name: 'domain_parity_v2',
+    up: [
+      // Projects — Paritätsfelder
+      `ALTER TABLE projects ADD COLUMN description TEXT NOT NULL DEFAULT '';`,
+      `ALTER TABLE projects ADD COLUMN location TEXT NOT NULL DEFAULT '';`,
+      `ALTER TABLE projects ADD COLUMN date TEXT;`,
+      `ALTER TABLE projects ADD COLUMN status TEXT NOT NULL DEFAULT 'active';`,
+
+      // Diary — entry_date (Wetter/Personal/… bleiben in payload_json)
+      `ALTER TABLE diary_runs ADD COLUMN entry_date TEXT;`,
+
+      // Defects — description + priority (notes → description kopieren)
+      `ALTER TABLE defects ADD COLUMN description TEXT NOT NULL DEFAULT '';`,
+      `ALTER TABLE defects ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal';`,
+      `ALTER TABLE defects ADD COLUMN diary_entry_id TEXT;`,
+      `UPDATE defects SET description = notes WHERE description = '' AND notes IS NOT NULL AND notes != '';`,
+      `UPDATE defects SET diary_entry_id = diary_run_id WHERE diary_entry_id IS NULL;`,
+
+      // Notes — diary_entry_id Alias
+      `ALTER TABLE notes ADD COLUMN diary_entry_id TEXT;`,
+      `UPDATE notes SET diary_entry_id = diary_run_id WHERE diary_entry_id IS NULL;`,
+
+      // Photos — einheitliche Parent-/Datei-Felder
+      `ALTER TABLE photos ADD COLUMN parent_id TEXT;`,
+      `ALTER TABLE photos ADD COLUMN parent_type TEXT;`,
+      `ALTER TABLE photos ADD COLUMN filename TEXT NOT NULL DEFAULT '';`,
+      `ALTER TABLE photos ADD COLUMN local_path TEXT NOT NULL DEFAULT '';`,
+      `ALTER TABLE photos ADD COLUMN file_size INTEGER NOT NULL DEFAULT 0;`,
+      `ALTER TABLE photos ADD COLUMN diary_entry_id TEXT;`,
+      `UPDATE photos SET local_path = file_path WHERE (local_path IS NULL OR local_path = '') AND file_path IS NOT NULL;`,
+      `UPDATE photos SET file_size = byte_size WHERE file_size = 0;`,
+      `UPDATE photos SET diary_entry_id = diary_run_id WHERE diary_entry_id IS NULL;`,
+      `UPDATE photos SET parent_id = COALESCE(defect_id, diary_run_id, project_id) WHERE parent_id IS NULL;`,
+      `UPDATE photos SET parent_type = CASE
+          WHEN defect_id IS NOT NULL THEN 'defect'
+          WHEN diary_run_id IS NOT NULL THEN 'diary_entry'
+          WHEN project_id IS NOT NULL THEN 'project'
+          ELSE parent_type
+        END
+        WHERE parent_type IS NULL;`,
+      `UPDATE photos SET filename = CASE
+          WHEN filename != '' THEN filename
+          WHEN instr(file_path, '/') > 0 THEN substr(file_path, instr(file_path, '/') + 1)
+          ELSE COALESCE(file_path, id)
+        END;`,
+
+      // Documents
+      `CREATE TABLE IF NOT EXISTS documents (
+        id TEXT PRIMARY KEY NOT NULL,
+        parent_id TEXT,
+        parent_type TEXT,
+        filename TEXT NOT NULL,
+        local_path TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        file_size INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'ready',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+      );`,
+      `CREATE INDEX IF NOT EXISTS idx_photos_parent ON photos(parent_type, parent_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_documents_parent ON documents(parent_type, parent_id);`,
+      `CREATE INDEX IF NOT EXISTS idx_documents_deleted ON documents(deleted_at);`
+    ]
   }
 ];
