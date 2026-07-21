@@ -22,6 +22,7 @@ module.exports = ({ config }) => ({
     }
   },
   android: {
+    icon: './assets/icon.png',
     adaptiveIcon: {
       backgroundColor: '#F2F0EB',
       foregroundImage: './assets/android-icon-foreground.png',

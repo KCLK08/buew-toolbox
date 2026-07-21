@@ -27,9 +27,6 @@ jobs:
     name: Expo Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    defaults:
-      run:
-        working-directory: expo-toolbox
 
     steps:
       - name: Checkout
@@ -52,66 +49,101 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install npm dependencies
+        working-directory: expo-toolbox
         run: npm ci
 
       - name: Typecheck
+        working-directory: expo-toolbox
         run: npm run typecheck
 
       - name: Generate native Android project
+        working-directory: expo-toolbox
         env:
           CI: '1'
         run: npx expo prebuild --platform android --non-interactive
 
-      - name: Build debug APK
+      - name: Build standalone release APK
         working-directory: expo-toolbox/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          # Release embeds the JS bundle via `export:embed`; debug expects Metro on :8081.
+          ./gradlew assembleRelease --no-daemon
 
-      - name: Prepare APK
+      - name: Prepare APK file
         id: apk
+        working-directory: expo-toolbox
         run: |
-          mkdir -p dist-apk
+          set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
           SHORT_SHA="${GITHUB_SHA::7}"
           RUN_NUMBER="${GITHUB_RUN_NUMBER}"
-          SRC="android/app/build/outputs/apk/debug/app-debug.apk"
-          DEST="dist-apk/buew-toolbox-${VERSION}-${SHORT_SHA}-debug.apk"
-          cp "$SRC" "$DEST"
-          ls -lh dist-apk
+          SRC="$GITHUB_WORKSPACE/expo-toolbox/android/app/build/outputs/apk/release/app-release.apk"
+          OUT_DIR="$GITHUB_WORKSPACE/expo-toolbox/dist-apk"
+          APK_NAME="buew-toolbox-${VERSION}-${SHORT_SHA}.apk"
+          APK_ABS="${OUT_DIR}/${APK_NAME}"
+          TAG="apk-v${VERSION}.${RUN_NUMBER}"
+
+          test -f "$SRC"
+          mkdir -p "$OUT_DIR"
+          cp "$SRC" "$APK_ABS"
+
+          # Ensure we publish a real .apk (not a renamed zip wrapper)
+          file "$APK_ABS"
+          [[ "$APK_NAME" == *.apk ]]
+          ls -lh "$APK_ABS"
+
+          # Standalone APK must ship an embedded JS bundle (not Metro dev client).
+          if ! unzip -l "$APK_ABS" | grep -qE 'assets/.*(index\.android\.bundle|\.hbc)'; then
+            echo "ERROR: No embedded JS bundle found in APK assets."
+            unzip -l "$APK_ABS" | grep -E 'assets/' || true
+            exit 1
+          fi
+
           {
             echo "version=${VERSION}"
             echo "short_sha=${SHORT_SHA}"
-            echo "apk_path=${DEST}"
-            echo "apk_name=$(basename "$DEST")"
-            echo "tag=apk-v${VERSION}.${RUN_NUMBER}"
+            echo "apk_name=${APK_NAME}"
+            echo "apk_abs=${APK_ABS}"
+            echo "tag=${TAG}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Upload APK artifact
+      - name: Upload workflow artifact (GitHub wraps downloads as .zip)
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: buew-toolbox-android-apk
-          path: expo-toolbox/dist-apk/*.apk
+          path: ${{ steps.apk.outputs.apk_abs }}
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
+          compression-level: 0
 
-      - name: Publish GitHub Release
+      - name: Publish APK to GitHub Releases
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.apk.outputs.tag }}
-          name: BÜW-Toolbox Android ${{ steps.apk.outputs.version }} (#${{ github.run_number }})
-          body: |
-            Automatisch erzeugte Debug-APK.
-
-            - Version: `${{ steps.apk.outputs.version }}`
-            - Commit: `${{ steps.apk.outputs.short_sha }}`
-            - Workflow-Lauf: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-            Datei: `${{ steps.apk.outputs.apk_name }}`
-          files: expo-toolbox/dist-apk/*.apk
-          draft: false
-          prerelease: true
-          make_latest: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.apk.outputs.tag }}
+          VERSION: ${{ steps.apk.outputs.version }}
+          SHORT_SHA: ${{ steps.apk.outputs.short_sha }}
+          APK_ABS: ${{ steps.apk.outputs.apk_abs }}
+          APK_NAME: ${{ steps.apk.outputs.apk_name }}
+        run: |
+          set -euo pipefail
+          test -f "$APK_ABS"
+          test "${APK_ABS##*.}" = "apk"
+
+          NOTES="$(mktemp)"
+          cat > "$NOTES" <<EOF
+          Automatisch erzeugte **Release-APK** mit eingebettetem JS-Bundle (ohne Metro, direkt installierbar).
+
+          - Version: \`${VERSION}\`
+          - Commit: \`${SHORT_SHA}\`
+          - Workflow: [#${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})
+
+          **Download:** unten die Datei \`${APK_NAME}\` wählen (Endung \`.apk\`, nicht \`.zip\`).
+          EOF
+
+          gh release create "$TAG" "$APK_ABS" \
+            --title "BÜW-Toolbox Android ${VERSION} (#${GITHUB_RUN_NUMBER})" \
+            --notes-file "$NOTES" \
+            --prerelease \
+            --latest

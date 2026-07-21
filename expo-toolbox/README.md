@@ -19,12 +19,11 @@ Siehe [`EXPO_UI_REDESIGN.md`](../EXPO_UI_REDESIGN.md).
 
 ## Android APK (GitHub Actions)
 
-Bei Änderungen an `expo-toolbox/` oder `shared/` (Push auf `main`) baut GitHub automatisch eine **Debug-APK** und stellt sie unter **Releases** bereit.
+Bei Änderungen an `expo-toolbox/` oder `shared/` (Push auf `main`) erscheint eine **`.apk`** unter **Releases**.
 
+- **Releases** → Datei `*.apk` herunterladen (installierbar)
+- Actions-Artifacts sind bei GitHub immer ein **ZIP-Container** (nur für PRs)
 - Workflow: `.github/workflows/android-apk.yml`
-- Releases: Tag `apk-v…` mit APK-Asset (Pre-Release / Latest)
-- Artifact zusätzlich: `buew-toolbox-android-apk` (ca. 30 Tage)
-- Manuell: Actions → **Build Android APK** → Run workflow
 - Details: [`ANDROID_APK.md`](../ANDROID_APK.md)
 
 Optional lokal/EAS: `eas.json` (Profile `preview` = APK).
