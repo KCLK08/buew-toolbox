@@ -1,8 +1,10 @@
 import { TABLES } from '../database/schema/constants';
 import { getDatabase, runMigrations, tableExists } from '../database/sqlite';
-import { restoreDatabaseFromLatestBackup } from '../storage/backupService';
+import { getLatestBackupInfo, restoreDatabaseFromBackup } from '../storage/backupService';
 import { ensureStorageLayout, fileExists, resolveDocumentUri } from '../storage/fileService';
-import type { IntegrityIssue, IntegrityReport } from '../types/offline';
+import { findOrphanFiles } from './orphanCleanupService';
+import { prepareSoftDeletePurgePlan } from './softDeletePurgeService';
+import type { IntegrityIssue, IntegrityReport, PendingRestoreOffer } from '../types/offline';
 
 let cachedReport: IntegrityReport | null = null;
 let inFlight: Promise<IntegrityReport> | null = null;
@@ -37,7 +39,7 @@ async function collectIssues(): Promise<IntegrityIssue[]> {
   } catch (error) {
     issues.push({
       code: 'db_query_failed',
-      message: error instanceof Error ? error.message : 'Tesabfrage fehlgeschlagen',
+      message: error instanceof Error ? error.message : 'Testabfrage fehlgeschlagen',
       severity: 'error'
     });
   }
@@ -80,47 +82,64 @@ export async function runStartupIntegrityCheck(): Promise<IntegrityReport> {
 
   inFlight = (async () => {
     await ensureStorageLayout();
-    let restoredFromBackup = false;
+    let migrationFailed = false;
+    let migrationErrorMessage = '';
 
     try {
       await runMigrations();
     } catch (error) {
-      const restored = await restoreDatabaseFromLatestBackup();
-      restoredFromBackup = restored;
-      if (!restored) {
-        const report: IntegrityReport = {
-          ok: false,
-          restoredFromBackup: false,
-          issues: [
-            {
-              code: 'migration_failed',
-              message: error instanceof Error ? error.message : 'Migration fehlgeschlagen',
-              severity: 'error'
-            }
-          ]
-        };
-        cachedReport = report;
-        return report;
-      }
-      await runMigrations();
+      migrationFailed = true;
+      migrationErrorMessage = error instanceof Error ? error.message : 'Migration fehlgeschlagen';
     }
 
-    let issues = await collectIssues();
-    const hasFatal = issues.some((issue) => issue.severity === 'error');
+    let issues = migrationFailed
+      ? [
+          {
+            code: 'migration_failed',
+            message: migrationErrorMessage,
+            severity: 'error' as const
+          }
+        ]
+      : await collectIssues();
 
-    if (hasFatal && !restoredFromBackup) {
-      const restored = await restoreDatabaseFromLatestBackup();
-      if (restored) {
-        restoredFromBackup = true;
-        await runMigrations();
-        issues = await collectIssues();
+    const hasFatal = issues.some((issue) => issue.severity === 'error');
+    let pendingRestore: PendingRestoreOffer | null = null;
+
+    if (hasFatal) {
+      const latest = await getLatestBackupInfo();
+      if (latest) {
+        pendingRestore = {
+          backupUri: latest.uri,
+          backupDate: latest.createdAtIso,
+          backupName: latest.name
+        };
+        issues.push({
+          code: 'restore_available',
+          message: `Backup vom ${new Date(latest.createdAtIso).toLocaleString('de-DE')} zur Wiederherstellung verfügbar.`,
+          severity: 'info'
+        });
       }
+    }
+
+    const orphans = migrationFailed ? [] : await findOrphanFiles().catch(() => []);
+    if (orphans.length > 0) {
+      issues.push({
+        code: 'orphan_files',
+        message: `${orphans.length} Datei(en) ohne aktiven Datenbankeintrag gefunden (nur Meldung).`,
+        severity: 'warning'
+      });
+    }
+
+    if (!migrationFailed) {
+      await prepareSoftDeletePurgePlan().catch(() => null);
     }
 
     const report: IntegrityReport = {
-      ok: !issues.some((issue) => issue.severity === 'error'),
-      restoredFromBackup,
-      issues
+      ok: !hasFatal,
+      restoredFromBackup: false,
+      pendingRestore,
+      issues,
+      orphanFiles: orphans.map((item) => item.uri)
     };
     cachedReport = report;
     return report;
@@ -129,4 +148,29 @@ export async function runStartupIntegrityCheck(): Promise<IntegrityReport> {
   });
 
   return inFlight;
+}
+
+export async function confirmPendingRestore(backupUri: string): Promise<IntegrityReport> {
+  await restoreDatabaseFromBackup(backupUri);
+  cachedReport = null;
+  await runMigrations();
+  const issues = await collectIssues();
+  const orphans = await findOrphanFiles().catch(() => []);
+  const report: IntegrityReport = {
+    ok: !issues.some((issue) => issue.severity === 'error'),
+    restoredFromBackup: true,
+    pendingRestore: null,
+    issues,
+    orphanFiles: orphans.map((item) => item.uri)
+  };
+  cachedReport = report;
+  return report;
+}
+
+export function declinePendingRestore(): void {
+  if (!cachedReport) return;
+  cachedReport = {
+    ...cachedReport,
+    pendingRestore: null
+  };
 }

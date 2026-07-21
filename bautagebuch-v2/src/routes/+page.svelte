@@ -2,10 +2,13 @@
   import { onDestroy, onMount, tick } from 'svelte';
   import {
     addExportRecord,
+    confirmPendingRestore,
     createRun,
     createTemplate,
+    declinePendingRestore,
     deleteRunCascade,
     getDetectedFields,
+    getPendingRestoreOffer,
     getRun,
     getSetupModel,
     getTemplate,
@@ -14,6 +17,7 @@
     listTemplates,
     markTemplateReady,
     putTemplate,
+    requestOfflineBackup,
     saveDetectedFields,
     saveSetupModel,
     updateRun
@@ -108,6 +112,8 @@
   let homeRunDeleteBusy = false;
   let homeError = '';
   let homeInfo = '';
+  let pendingRestoreOffer = null;
+  let restoreBusy = false;
   let uploadBusy = false;
   let builtinTemplateId = '';
 
@@ -294,15 +300,62 @@
     void persistRunAutosave();
   }
 
+  function requestBackgroundBackup() {
+    void requestOfflineBackup('app_background');
+  }
+
   function handleRunAutosaveVisibilityChange() {
     if (typeof document === 'undefined' || document.visibilityState !== 'hidden') return;
     flushRunAutosaveOnPageExit();
+    requestBackgroundBackup();
+  }
+
+  function handlePageHideBackup() {
+    flushRunAutosaveOnPageExit();
+    requestBackgroundBackup();
+  }
+
+  function formatBackupDate(iso) {
+    try {
+      return new Date(iso).toLocaleString('de-DE');
+    } catch {
+      return String(iso || '');
+    }
+  }
+
+  async function acceptPendingRestore() {
+    if (!pendingRestoreOffer || restoreBusy) return;
+    const dateLabel = formatBackupDate(pendingRestoreOffer.createdAt);
+    const confirmed = window.confirm(
+      `Wiederherstellung bestätigen?\n\nBackup vom ${dateLabel} wird eingespielt und überschreibt die aktuelle lokale Datenbank.`
+    );
+    if (!confirmed) return;
+    restoreBusy = true;
+    try {
+      await confirmPendingRestore();
+      pendingRestoreOffer = null;
+      homeInfo = `Datenbank aus Backup vom ${dateLabel} wiederhergestellt.`;
+      window.location.reload();
+    } catch (error) {
+      homeError = error?.message || 'Wiederherstellung fehlgeschlagen.';
+    } finally {
+      restoreBusy = false;
+    }
+  }
+
+  function rejectPendingRestore() {
+    declinePendingRestore();
+    pendingRestoreOffer = null;
+    homeInfo = 'Wiederherstellung abgebrochen. Aktuelle Daten bleiben unverändert.';
   }
 
   onMount(() => {
-    initializeBuiltinTemplate();
+    void (async () => {
+      await initializeBuiltinTemplate();
+      pendingRestoreOffer = getPendingRestoreOffer();
+    })();
     if (typeof window !== 'undefined') {
-      window.addEventListener('pagehide', flushRunAutosaveOnPageExit);
+      window.addEventListener('pagehide', handlePageHideBackup);
       window.addEventListener('beforeunload', flushRunAutosaveOnPageExit);
       document.addEventListener('visibilitychange', handleRunAutosaveVisibilityChange);
     }
@@ -310,7 +363,7 @@
 
   onDestroy(() => {
     if (typeof window !== 'undefined') {
-      window.removeEventListener('pagehide', flushRunAutosaveOnPageExit);
+      window.removeEventListener('pagehide', handlePageHideBackup);
       window.removeEventListener('beforeunload', flushRunAutosaveOnPageExit);
       document.removeEventListener('visibilitychange', handleRunAutosaveVisibilityChange);
     }
@@ -3161,6 +3214,22 @@
   </header>
 
   {#if view === 'home'}
+    {#if pendingRestoreOffer}
+      <div class="notice error">
+        <p>
+          Datenproblem erkannt. Backup vom {formatBackupDate(pendingRestoreOffer.createdAt)} ist verfügbar.
+          Die Wiederherstellung überschreibt die aktuelle lokale Datenbank nicht automatisch.
+        </p>
+        <div class="restore-actions">
+          <button type="button" class="primary" disabled={restoreBusy} on:click={acceptPendingRestore}>
+            {restoreBusy ? 'Stelle wieder her…' : 'Wiederherstellen'}
+          </button>
+          <button type="button" disabled={restoreBusy} on:click={rejectPendingRestore}>
+            Abbrechen
+          </button>
+        </div>
+      </div>
+    {/if}
     {#if homeInfo}
       <div class="notice ok">{homeInfo}</div>
     {/if}
@@ -4378,6 +4447,13 @@
     background: #fff3f2;
     border-color: #f3c6c1;
     color: #8d1d17;
+  }
+
+  .restore-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
   }
 
   .notice.warn {

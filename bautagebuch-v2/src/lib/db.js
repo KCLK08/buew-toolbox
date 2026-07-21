@@ -1,9 +1,11 @@
 import Dexie from 'dexie';
 
-import { createIndexedDbBackup, restoreLatestIndexedDbBackup } from './offline-backup.js';
+import { createIndexedDbBackup, listIndexedDbBackups, restoreIndexedDbBackup } from './offline-backup.js';
 import { runBautagebuchIntegrityCheck } from './offline-integrity.js';
 import { DOMAIN_SCHEMA_VERSION, DOMAIN_STORES_V4 } from './domain-schema.js';
+import { findOrphanPhotoAssets } from './orphan-cleanup.js';
 import { hydratePhotoDoc, preparePhotoDocForStorage } from './photo-storage.js';
+import { planSoftDeletePurge } from './soft-delete-purge.js';
 
 const DB_NAME = 'BautagebuchV2';
 
@@ -49,6 +51,7 @@ function isActiveRecord(record) {
 }
 
 let dbReadyPromise = null;
+let pendingRestoreOffer = null;
 
 function getDb() {
   if (dbInstance) {
@@ -88,16 +91,28 @@ async function ensureDbReady() {
         value: String(DOMAIN_SCHEMA_VERSION),
         updated_at: nowIso()
       });
-      let integrity = await runBautagebuchIntegrityCheck(db);
+      const integrity = await runBautagebuchIntegrityCheck(db);
       if (!integrity.ok) {
-        const restored = await restoreLatestIndexedDbBackup(db).catch(() => false);
-        if (restored) {
-          integrity = await runBautagebuchIntegrityCheck(db);
-        }
-        if (!integrity.ok) {
-          console.warn('[Bautagebuch] Offline-Integritätsprobleme:', integrity.issues);
+        const backups = await listIndexedDbBackups(db);
+        if (backups.length > 0) {
+          pendingRestoreOffer = {
+            backupId: backups[0].id,
+            createdAt: backups[0].createdAt,
+            label: backups[0].label,
+            issues: integrity.issues
+          };
+        } else {
+          console.warn('[Bautagebuch] Offline-Integritätsprobleme (kein Backup):', integrity.issues);
         }
       }
+
+      // Report-only maintenance hooks (no automatic deletion).
+      await findOrphanPhotoAssets(db).catch((error) => {
+        console.warn('[Bautagebuch] Orphan-Scan fehlgeschlagen:', error?.message || error);
+      });
+      await planSoftDeletePurge(db).catch((error) => {
+        console.warn('[Bautagebuch] Soft-Delete-Purge-Plan fehlgeschlagen:', error?.message || error);
+      });
     })().catch((error) => {
       dbReadyPromise = null;
       throw error;
@@ -106,12 +121,36 @@ async function ensureDbReady() {
   await dbReadyPromise;
 }
 
-async function maybeBackup(label = 'auto') {
+async function maybeBackup(label = 'manual') {
   try {
-    await createIndexedDbBackup(getDb(), { label });
+    return await createIndexedDbBackup(getDb(), { label });
   } catch (error) {
     console.warn('[Bautagebuch] Backup fehlgeschlagen:', error?.message || error);
+    return null;
   }
+}
+
+export async function requestOfflineBackup(reason = 'manual') {
+  await ensureDbReady();
+  return maybeBackup(reason);
+}
+
+export function getPendingRestoreOffer() {
+  return pendingRestoreOffer;
+}
+
+export async function confirmPendingRestore() {
+  await ensureDbReady();
+  if (!pendingRestoreOffer?.backupId) {
+    return { restored: false };
+  }
+  const result = await restoreIndexedDbBackup(getDb(), pendingRestoreOffer.backupId);
+  pendingRestoreOffer = null;
+  return result;
+}
+
+export function declinePendingRestore() {
+  pendingRestoreOffer = null;
 }
 
 export async function listTemplates() {
@@ -151,7 +190,6 @@ export async function createTemplate({
     deleted_at: null
   };
   await getDb().templates.put(record);
-  await maybeBackup('template_create');
   return record;
 }
 
@@ -175,7 +213,6 @@ export async function putTemplate(template) {
     record.templateId = createId('tplv2');
   }
   await getDb().templates.put(record);
-  await maybeBackup('template_put');
   return record;
 }
 
@@ -255,6 +292,8 @@ export async function getSetupModel(templateId) {
 export async function markTemplateReady(templateId) {
   await ensureDbReady();
   const db = getDb();
+  const existing = await db.templates.get(templateId);
+  const statusChanged = String(existing?.status || '') !== 'ready';
   await db.transaction('rw', db.templates, db.setup_models, async () => {
     const record = await db.setup_models.get(templateId);
     if (record) {
@@ -269,6 +308,9 @@ export async function markTemplateReady(templateId) {
       updatedAt: nowIso()
     });
   });
+  if (statusChanged) {
+    await maybeBackup('status_change');
+  }
 }
 
 export async function createRun({ templateId, title, setupVersion = 1 }) {
@@ -287,7 +329,6 @@ export async function createRun({ templateId, title, setupVersion = 1 }) {
     deleted_at: null
   };
   await getDb().runs.put(record);
-  await maybeBackup('run_create');
   return record;
 }
 
@@ -335,6 +376,7 @@ export async function updateRun(runId, patch = {}) {
 
   const nextPatch = { ...patch };
   if (Object.prototype.hasOwnProperty.call(patch, 'photoDoc')) {
+    const previousEntryCount = Array.isArray(existing.photoDoc?.entries) ? existing.photoDoc.entries.length : 0;
     const { photoDocForRun, assets, activeEntryIds } = await preparePhotoDocForStorage(normalizedRunId, patch.photoDoc);
     const db = getDb();
     await db.transaction('rw', db.runs, db.photo_assets, async () => {
@@ -360,9 +402,18 @@ export async function updateRun(runId, patch = {}) {
         deleted_at: null
       });
     });
-    await maybeBackup('run_photo_update');
+    const nextEntryCount = Array.isArray(photoDocForRun?.entries) ? photoDocForRun.entries.length : 0;
+    if (nextEntryCount > previousEntryCount) {
+      await maybeBackup('photo_added');
+    } else if (nextEntryCount < previousEntryCount) {
+      await maybeBackup('record_deleted');
+    }
     return getRun(normalizedRunId);
   }
+
+  const statusChanged =
+    Object.prototype.hasOwnProperty.call(nextPatch, 'status') &&
+    String(nextPatch.status || '') !== String(existing.status || '');
 
   const record = {
     ...existing,
@@ -371,7 +422,9 @@ export async function updateRun(runId, patch = {}) {
     deleted_at: null
   };
   await getDb().runs.put(record);
-  await maybeBackup('run_update');
+  if (statusChanged) {
+    await maybeBackup('status_change');
+  }
   return getRun(normalizedRunId);
 }
 
@@ -416,7 +469,7 @@ export async function deleteRunCascade(runId) {
       deletedExports: exportsList.length
     };
   });
-  await maybeBackup('run_soft_delete');
+  await maybeBackup('record_deleted');
   return result;
 }
 

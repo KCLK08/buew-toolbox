@@ -19,14 +19,14 @@ Siehe [`EXPO_UI_REDESIGN.md`](../EXPO_UI_REDESIGN.md).
 
 ## Offline-Architektur
 
-Siehe `/OFFLINE.md`, `/OFFLINE_DATA_MODEL.md` und `/DATA_MODEL_PARITY_REPORT.md`.
+Siehe `/OFFLINE.md` (inkl. Phase-2 Backup-Härtung), `/OFFLINE_DATA_MODEL.md` und `/DATA_MODEL_PARITY_REPORT.md`.
 
 Wichtige Module:
 
 - `../shared/types/` – gemeinsame Domain-Typen (`DOMAIN_SCHEMA_VERSION = 2`)
-- `src/database/` – SQLite, Migrationen (v2 Parität)
-- `src/storage/` – Dateien (`documentDirectory`) + DB-Backups (max. 3)
+- `src/database/` – SQLite (WAL, `synchronous=NORMAL`), Migrationen, Write-Guards
+- `src/storage/` – Dateien (`documentDirectory`) + sichere DB-Backups (max. 3, max. 1/min)
 - `src/repositories/` – Shared API (projects, diary, defects, photos, documents)
-- `src/services/` – Integritätsprüfung, Foto-Speicherung
-- `src/hooks/useAutosave.ts` – debounced Autosave
-- `src/hooks/useOfflineBootstrap.ts` – Startcheck
+- `src/services/` – Integrität, Orphan-Cleanup (nur melden), Soft-Delete-Purge (Dry-Run)
+- `src/hooks/useAutosave.ts` – debounced Autosave (ohne Backup pro Save)
+- `src/hooks/useOfflineBootstrap.ts` – Startcheck, Restore-Bestätigung, Background-Backup

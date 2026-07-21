@@ -58,7 +58,7 @@ export type PendingRestoreOffer = {
 export type IntegrityReport = {
   ok: boolean;
   restoredFromBackup: boolean;
+  pendingRestore: PendingRestoreOffer | null;
   issues: IntegrityIssue[];
-  orphanFiles?: string[];
-  pendingRestore?: PendingRestoreOffer | null;
+  orphanFiles: string[];
 };
