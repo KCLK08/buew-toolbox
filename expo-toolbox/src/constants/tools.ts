@@ -7,6 +7,7 @@ export type ToolboxTool = {
   title: string;
   description: string;
   href: `/${ToolId}`;
+  tabHref: '/(tabs)/sitereport' | '/(tabs)/bautagebuch';
   webPath: string;
   icon: ImageSourcePropType;
   iconAlt: string;
@@ -18,6 +19,7 @@ export const TOOLBOX_TOOLS: ToolboxTool[] = [
     title: 'SiteReport',
     description: 'Foto‑basierte Protokolle mit XLSX‑Export.',
     href: '/sitereport',
+    tabHref: '/(tabs)/sitereport',
     webPath: '/sitereport/',
     icon: require('../../assets/icons/sitereport.png'),
     iconAlt: 'SiteReport Icon'
@@ -27,6 +29,7 @@ export const TOOLBOX_TOOLS: ToolboxTool[] = [
     title: 'Bautagebuch',
     description: 'AcroForm-Tool mit Auto-Erkennung, Guided Flow und sauberem PDF-Export.',
     href: '/bautagebuch',
+    tabHref: '/(tabs)/bautagebuch',
     webPath: '/bautagebuch/',
     icon: require('../../assets/icons/bautagebuch.png'),
     iconAlt: 'Bautagebuch Icon'
