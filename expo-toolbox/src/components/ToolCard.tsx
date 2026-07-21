@@ -78,8 +78,7 @@ export function ToolCard({ tool, onPress }: ToolCardProps) {
 
 const styles = StyleSheet.create({
   pressable: {
-    flexGrow: 1,
-    minWidth: 260,
+    width: '100%',
     maxWidth: 520
   },
   pressableActive: {

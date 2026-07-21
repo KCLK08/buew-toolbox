@@ -1,5 +1,6 @@
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { WebView, type WebViewNavigation } from 'react-native-webview';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,42 +10,80 @@ import { toolWebUrl } from '../lib/config';
 type ToolWebScreenProps = {
   title: string;
   webPath: string;
+  mode?: 'tab' | 'stack';
 };
 
-export function ToolWebScreen({ title, webPath }: ToolWebScreenProps) {
+export function ToolWebScreen({ title, webPath, mode = 'stack' }: ToolWebScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const webRef = useRef<WebView>(null);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [loading, setLoading] = useState(true);
   const uri = toolWebUrl(webPath);
+  const showBack = mode === 'stack';
+
+  const onNavigationStateChange = useCallback((state: WebViewNavigation) => {
+    setCanGoBack(state.canGoBack);
+  }, []);
+
+  const handleBack = () => {
+    if (mode === 'stack') {
+      router.back();
+      return;
+    }
+    if (canGoBack) {
+      webRef.current?.goBack();
+    }
+  };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.toolbar}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Zurück"
-          onPress={() => router.back()}
-          style={styles.backButton}
-          hitSlop={8}
-        >
-          <Text style={styles.backLabel}>‹ Zurück</Text>
-        </Pressable>
+        {showBack || canGoBack ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Zurück"
+            onPress={handleBack}
+            style={styles.backButton}
+            hitSlop={8}
+          >
+            <Text style={styles.backLabel}>‹ Zurück</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.backPlaceholder} />
+        )}
         <Text style={styles.title} numberOfLines={1}>
           {title}
         </Text>
-        <View style={styles.spacer} />
+        <View style={styles.backPlaceholder} />
       </View>
       <WebView
+        ref={webRef}
         source={{ uri }}
         style={styles.webview}
         startInLoadingState
-        renderLoading={() => (
-          <View style={styles.loading}>
-            <ActivityIndicator color={colors.accent} size="large" />
-          </View>
-        )}
+        onLoadStart={() => setLoading(true)}
+        onLoadEnd={() => setLoading(false)}
+        onNavigationStateChange={onNavigationStateChange}
+        javaScriptEnabled
+        domStorageEnabled
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
         allowsBackForwardNavigationGestures
         setSupportMultipleWindows={false}
+        originWhitelist={['*']}
+        mixedContentMode="compatibility"
+        sharedCookiesEnabled
+        thirdPartyCookiesEnabled
+        cacheEnabled
+        pullToRefreshEnabled
       />
+      {loading ? (
+        <View style={styles.loading} pointerEvents="none">
+          <ActivityIndicator color={colors.accent} size="large" />
+          <Text style={styles.loadingLabel}>Werkzeug wird geladen…</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -55,7 +94,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg
   },
   toolbar: {
-    minHeight: spacing.touchMin + 8,
+    minHeight: spacing.touchMin,
     paddingHorizontal: spacing.pageX,
     flexDirection: 'row',
     alignItems: 'center',
@@ -66,7 +105,11 @@ const styles = StyleSheet.create({
   backButton: {
     minHeight: spacing.touchMin,
     justifyContent: 'center',
-    paddingRight: spacing.sm
+    paddingRight: spacing.sm,
+    minWidth: 72
+  },
+  backPlaceholder: {
+    minWidth: 72
   },
   backLabel: {
     ...typography.bodyStrong,
@@ -78,9 +121,6 @@ const styles = StyleSheet.create({
     ...typography.subtitle,
     color: colors.ink
   },
-  spacer: {
-    width: 72
-  },
   webview: {
     flex: 1,
     backgroundColor: colors.bg
@@ -89,6 +129,11 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.bg
+    backgroundColor: colors.bg,
+    gap: spacing.sm
+  },
+  loadingLabel: {
+    ...typography.caption,
+    color: colors.muted
   }
 });

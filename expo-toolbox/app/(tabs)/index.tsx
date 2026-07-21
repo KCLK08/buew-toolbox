@@ -1,133 +1,153 @@
-import { useCallback, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { OfflineStatusBanner } from '../../src/components/OfflineStatusBanner';
-import { Screen, Section, StatCard } from '../../src/components/mobile';
+import { ToolCard } from '../../src/components/ToolCard';
+import { ToolboxBackground } from '../../src/components/ToolboxBackground';
 import { colors, spacing, typography } from '../../src/constants/theme';
-import { useOfflineBootstrap } from '../../src/hooks/useOfflineBootstrap';
-import { formatRelativeDate } from '../../src/lib/format';
-import {
-  defectRepository,
-  diaryRepository,
-  projectRepository
-} from '../../src/repositories';
+import { TOOLBOX_TOOLS } from '../../src/constants/tools';
 
-export default function DashboardScreen() {
+export default function ToolboxHomeScreen() {
   const router = useRouter();
-  const offline = useOfflineBootstrap();
-  const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [projectCount, setProjectCount] = useState(0);
-  const [openDefects, setOpenDefects] = useState(0);
-  const [todayDiary, setTodayDiary] = useState('—');
+  const insets = useSafeAreaInsets();
+  const fadeIn = useRef(new Animated.Value(0)).current;
+  const slideUp = useRef(new Animated.Value(18)).current;
+  const [hint, setHint] = useState('');
 
-  const load = useCallback(async () => {
-    const [projects, defects, diaries] = await Promise.all([
-      projectRepository.getProjects(),
-      defectRepository.getDefects(),
-      diaryRepository.getDiaryEntries()
-    ]);
-    setProjectCount(projects.filter((p) => p.status === 'active' || p.status === 'draft').length);
-    setOpenDefects(defects.filter((d) => d.status !== 'completed' && d.status !== 'archived').length);
-
-    const today = new Date().toISOString().slice(0, 10);
-    const todays = diaries.find(
-      (entry) => entry.entry_date === today || entry.created_at.startsWith(today)
-    );
-    setTodayDiary(todays ? todays.title : 'Kein Eintrag');
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load])
-  );
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    void load().finally(() => setRefreshing(false));
-  };
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeIn, {
+        toValue: 1,
+        duration: 420,
+        useNativeDriver: true
+      }),
+      Animated.timing(slideUp, {
+        toValue: 0,
+        duration: 420,
+        useNativeDriver: true
+      })
+    ]).start();
+  }, [fadeIn, slideUp]);
 
   return (
-    <Screen
-      title="BÜW-Toolbox"
-      subtitle="Offline · lokal auf diesem Gerät"
-      contentStyle={styles.content}
-      refreshing={refreshing}
-      onRefresh={onRefresh}
-    >
-      {!bannerDismissed || offline.report?.pendingRestore ? (
-        <OfflineStatusBanner
-          report={offline.report}
-          error={offline.error}
-          restoreBusy={offline.restoreBusy}
-          onAcceptRestore={() => void offline.acceptRestore()}
-          onRejectRestore={offline.rejectRestore}
-          onDismiss={() => setBannerDismissed(true)}
-        />
-      ) : null}
+    <ToolboxBackground>
+      <ScrollView
+        contentContainerStyle={[
+          styles.page,
+          {
+            paddingTop: Math.max(spacing.pageTop, insets.top + 16),
+            paddingBottom: Math.max(spacing.pageBottom, insets.bottom + 24)
+          }
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Animated.View
+          style={[
+            styles.hero,
+            {
+              opacity: fadeIn,
+              transform: [{ translateY: slideUp }]
+            }
+          ]}
+        >
+          <Text style={styles.title}>BÜW-Toolbox</Text>
+          <Text style={styles.sub}>
+            Digitale Baustellen-Workflows als App — dieselben Werkzeuge wie in der PWA, mit
+            nativer Navigation.
+          </Text>
+          <Text style={styles.offlineHint}>Offline-fähig · Daten bleiben lokal auf diesem Gerät</Text>
+        </Animated.View>
 
-      <View>
-        <Text style={styles.greeting}>Baustellen-Übersicht</Text>
-        <Text style={styles.hint}>Stand: {formatRelativeDate(new Date().toISOString())}</Text>
-      </View>
+        <Animated.View
+          style={[
+            styles.grid,
+            {
+              opacity: fadeIn,
+              transform: [{ translateY: slideUp }]
+            }
+          ]}
+        >
+          {TOOLBOX_TOOLS.map((tool) => (
+            <ToolCard
+              key={tool.id}
+              tool={tool}
+              onPress={() => {
+                setHint(`Öffne ${tool.title} …`);
+                router.push(tool.tabHref);
+              }}
+            />
+          ))}
+        </Animated.View>
 
-      <Section title="Heute">
-        <View style={styles.stats}>
-          <StatCard
-            title="Projekte"
-            value={String(projectCount)}
-            icon="▤"
-            tone="accent"
-            onPress={() => router.push('/(tabs)/projects')}
-          />
-          <StatCard
-            title="Offene Mängel"
-            value={String(openDefects)}
-            icon="!"
-            tone={openDefects > 0 ? 'warning' : 'default'}
-            onPress={() => router.push('/(tabs)/defects')}
-          />
-        </View>
-        <View style={styles.statsSingle}>
-          <StatCard
-            title="Heute Bautag"
-            value={todayDiary}
-            icon="✎"
-            onPress={() => router.push('/(tabs)/diary')}
-          />
-        </View>
-      </Section>
+        {hint ? <Text style={styles.hint}>{hint}</Text> : null}
 
-      <Section title="Schnellzugriff">
-        <View style={styles.stats}>
-          <StatCard title="Neues Projekt" value="+" onPress={() => router.push('/project/new')} />
-          <StatCard title="Neuer Eintrag" value="+" onPress={() => router.push('/diary/new')} />
+        <View style={styles.noteCard}>
+          <Text style={styles.noteTitle}>Hinweis</Text>
+          <Text style={styles.noteCopy}>
+            SiteReport und Bautagebuch laufen als eingebettete PWA. Alle Funktionen (PDF-Export,
+            Protokolle, Vorlagen, Fotos) sind in den Tabs verfügbar.
+          </Text>
         </View>
-      </Section>
-    </Screen>
+      </ScrollView>
+    </ToolboxBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  content: {
+  page: {
+    width: '100%',
+    maxWidth: 1100,
+    alignSelf: 'center',
+    paddingHorizontal: spacing.pageX,
     gap: spacing.md
   },
-  greeting: {
-    ...typography.title,
-    color: colors.ink
+  hero: {
+    marginBottom: spacing.sm
+  },
+  title: {
+    color: colors.ink,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 34,
+    letterSpacing: -0.6,
+    marginBottom: 10
+  },
+  sub: {
+    color: colors.muted,
+    fontSize: 16,
+    lineHeight: 24,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    marginBottom: 8
+  },
+  offlineHint: {
+    color: colors.accent2,
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    opacity: 0.9
+  },
+  grid: {
+    gap: spacing.cardGap
   },
   hint: {
     ...typography.caption,
     color: colors.muted,
-    marginBottom: spacing.xs
+    textAlign: 'center'
   },
-  stats: {
-    flexDirection: 'row',
-    gap: spacing.sm
+  noteCard: {
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: spacing.cardRadius,
+    padding: spacing.cardPadding,
+    gap: 6
   },
-  statsSingle: {
-    marginTop: spacing.sm
+  noteTitle: {
+    ...typography.bodyStrong,
+    color: colors.ink
+  },
+  noteCopy: {
+    ...typography.caption,
+    color: colors.muted,
+    lineHeight: 20
   }
 });

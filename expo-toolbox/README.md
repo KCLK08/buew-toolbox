@@ -1,6 +1,6 @@
 # BÜW-Toolbox (Expo)
 
-Native Offline-App der Toolbox mit Bottom-Tabs. SiteReport und Bautagebuch bleiben als eingebettete Web-Tools unter **Mehr** verfügbar. Persistenz: **SQLite + documentDirectory**.
+Native App-Hülle für die BÜW-Toolbox-PWAs: **SiteReport** und **Bautagebuch** laufen als eingebettete Web-Apps mit nativer Tab-Navigation.
 
 ```bash
 cd expo-toolbox
@@ -9,13 +9,17 @@ npm install
 npm start
 ```
 
-## UI
+## App-Struktur
 
-Siehe [`EXPO_UI_REDESIGN.md`](../EXPO_UI_REDESIGN.md).
+- **Home** — Toolbox-Übersicht (wie `index.html`)
+- **SiteReport** — PWA `/sitereport/` im WebView
+- **Bautagebuch** — PWA `/bautagebuch/` im WebView
 
-- Bottom Tabs: Home · Projekte · Tagebuch · Mängel · Mehr
-- Mobile Design-System unter `src/components/mobile/`
-- Fotoaufnahme über Kamera (`expo-image-picker`) → Offline-Speicherung
+Die PWAs behalten alle Funktionen (PDF-Export, Protokolle, Vorlagen, Fotos, Offline). Die App liefert native Navigation, Safe Area und Touch-optimierte Shell.
+
+## Konfiguration
+
+`EXPO_PUBLIC_TOOLBOX_WEB_BASE_URL` (Standard: `https://kclk08.github.io/buew-toolbox`)
 
 ## Android APK (GitHub Actions)
 
@@ -30,16 +34,6 @@ Optional lokal/EAS: `eas.json` (Profile `preview` = APK).
 
 PRs prüfen nur TypeScript; der APK-Build läuft einmal nach Merge auf `main`.
 
-## Offline-Architektur
+## Hinweis
 
-Siehe `/OFFLINE.md` (inkl. Phase-2 Backup-Härtung), `/OFFLINE_DATA_MODEL.md` und `/DATA_MODEL_PARITY_REPORT.md`.
-
-Wichtige Module:
-
-- `../shared/types/` – gemeinsame Domain-Typen (`DOMAIN_SCHEMA_VERSION = 2`)
-- `src/database/` – SQLite (WAL, `synchronous=NORMAL`), Migrationen, Write-Guards
-- `src/storage/` – Dateien (`documentDirectory`) + sichere DB-Backups (max. 3, max. 1/min)
-- `src/repositories/` – Shared API (projects, diary, defects, photos, documents)
-- `src/services/` – Integrität, Orphan-Cleanup (nur melden), Soft-Delete-Purge (Dry-Run)
-- `src/hooks/useAutosave.ts` – debounced Autosave (ohne Backup pro Save)
-- `src/hooks/useOfflineBootstrap.ts` – Startcheck, Restore-Bestätigung, Background-Backup
+Die Expo-App ist eine **PWA-Shell** — keine separate native CRUD-Oberfläche. Datenhaltung erfolgt in den eingebetteten PWAs (IndexedDB im WebView).

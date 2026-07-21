@@ -10,7 +10,6 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { colors } from '../src/constants/theme';
-import { useOfflineBootstrap } from '../src/hooks/useOfflineBootstrap';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -18,9 +17,8 @@ export default function RootLayout() {
     SpaceGrotesk_600SemiBold,
     SpaceGrotesk_700Bold
   });
-  const offline = useOfflineBootstrap();
 
-  if (!fontsLoaded || !offline.ready) {
+  if (!fontsLoaded) {
     return (
       <View
         style={{
@@ -33,7 +31,7 @@ export default function RootLayout() {
       >
         <ActivityIndicator color={colors.accent} size="large" />
         <Text style={{ color: colors.muted, fontFamily: 'SpaceGrotesk_400Regular' }}>
-          Offline-Daten werden geprüft…
+          App wird geladen…
         </Text>
       </View>
     );
@@ -50,14 +48,6 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="project/new" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="project/[id]" />
-        <Stack.Screen name="diary/new" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="diary/[id]" />
-        <Stack.Screen name="defect/new" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="defect/[id]" />
-        <Stack.Screen name="sitereport" />
-        <Stack.Screen name="bautagebuch" />
       </Stack>
     </GestureHandlerRootView>
   );
