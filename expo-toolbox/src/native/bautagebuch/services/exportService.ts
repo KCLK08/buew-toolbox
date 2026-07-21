@@ -128,6 +128,11 @@ export async function previewRunPdf(runId: string): Promise<string> {
   return outPath;
 }
 
+/** Generates a BTB preview PDF on disk without opening the share sheet. */
+export async function generateRunPreviewPdfPath(runId: string): Promise<string> {
+  return writeRunExport(runId, 'btb');
+}
+
 export async function exportSetupPreviewPdf(templateId: string): Promise<string> {
   const [templateRecord, setupModel] = await Promise.all([getTemplate(templateId), getSetupModel(templateId)]);
   if (!templateRecord?.pdfPath) {
