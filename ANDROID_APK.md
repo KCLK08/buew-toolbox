@@ -7,7 +7,7 @@ Bei relevanten Änderungen erzeugt GitHub automatisch eine **standalone Release-
 | Quelle | Dateityp | Hinweis |
 |--------|----------|---------|
 | **Releases** | `.apk` | Richtiger Download für die Installation |
-| **Actions → Artifacts** | immer `.zip` | GitHub packt Artifacts immer als ZIP (darin liegt die APK) |
+| **PR-Checks** | — | Nur Typecheck, keine APK |
 
 Für die Installation immer unter **Releases** die `.apk` herunterladen.
 
@@ -19,9 +19,9 @@ Die CI baut deshalb `assembleRelease`. Dabei wird das JS-Bundle per `export:embe
 
 ## Trigger
 
-- Push auf `main` mit Änderungen in `expo-toolbox/**` oder `shared/**`
-- Pull Requests gegen `main` (nur Artifact-ZIP, kein Release)
-- Manuell: **Actions → Build Android APK → Run workflow** (Release nur auf `main`)
+- **Push auf `main`** mit Änderungen in `expo-toolbox/**` oder `shared/**` → voller APK-Build + Release
+- **Pull Request** gegen `main` → nur Typecheck (kein Gradle/Android-Build, spart ~20 Min. pro PR)
+- Manuell: **Actions → Build Android APK → Run workflow** (voller Build + Release auf `main`)
 
 ## Ergebnis auf `main`
 

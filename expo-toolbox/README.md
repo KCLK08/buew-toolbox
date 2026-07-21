@@ -28,6 +28,8 @@ Bei Änderungen an `expo-toolbox/` oder `shared/` (Push auf `main`) erscheint ei
 
 Optional lokal/EAS: `eas.json` (Profile `preview` = APK).
 
+PRs prüfen nur TypeScript; der APK-Build läuft einmal nach Merge auf `main`.
+
 ## Offline-Architektur
 
 Siehe `/OFFLINE.md` (inkl. Phase-2 Backup-Härtung), `/OFFLINE_DATA_MODEL.md` und `/DATA_MODEL_PARITY_REPORT.md`.
