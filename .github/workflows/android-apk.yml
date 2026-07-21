@@ -19,6 +19,9 @@ concurrency:
   group: android-apk-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   build-apk:
     name: Expo Android APK
@@ -65,17 +68,24 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
-      - name: Prepare artifact
+      - name: Prepare APK
+        id: apk
         run: |
           mkdir -p dist-apk
           VERSION="$(node -p "require('./package.json').version")"
           SHORT_SHA="${GITHUB_SHA::7}"
+          RUN_NUMBER="${GITHUB_RUN_NUMBER}"
           SRC="android/app/build/outputs/apk/debug/app-debug.apk"
           DEST="dist-apk/buew-toolbox-${VERSION}-${SHORT_SHA}-debug.apk"
           cp "$SRC" "$DEST"
           ls -lh dist-apk
-          echo "APK_PATH=$DEST" >> "$GITHUB_ENV"
-          echo "APK_NAME=$(basename "$DEST")" >> "$GITHUB_ENV"
+          {
+            echo "version=${VERSION}"
+            echo "short_sha=${SHORT_SHA}"
+            echo "apk_path=${DEST}"
+            echo "apk_name=$(basename "$DEST")"
+            echo "tag=apk-v${VERSION}.${RUN_NUMBER}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -84,3 +94,24 @@ jobs:
           path: expo-toolbox/dist-apk/*.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish GitHub Release
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.apk.outputs.tag }}
+          name: BÜW-Toolbox Android ${{ steps.apk.outputs.version }} (#${{ github.run_number }})
+          body: |
+            Automatisch erzeugte Debug-APK.
+
+            - Version: `${{ steps.apk.outputs.version }}`
+            - Commit: `${{ steps.apk.outputs.short_sha }}`
+            - Workflow-Lauf: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            Datei: `${{ steps.apk.outputs.apk_name }}`
+          files: expo-toolbox/dist-apk/*.apk
+          draft: false
+          prerelease: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
