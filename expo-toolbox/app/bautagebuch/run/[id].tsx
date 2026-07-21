@@ -1,30 +1,49 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 
 import { PrimaryButton, Screen } from '../../../src/components/mobile';
 import { colors, typography } from '../../../src/constants/theme';
+import { useToast } from '../../../src/contexts/ToastContext';
+import { PdfPreviewPanel } from '../../../src/native/bautagebuch/components/PdfPreviewPanel';
 import { RunWizard } from '../../../src/native/bautagebuch/components/RunWizard';
 import { getRun, updateRun } from '../../../src/native/bautagebuch/db/database';
+import { useRunAutosave } from '../../../src/native/bautagebuch/hooks/useRunAutosave';
+import {
+  computeTotalMissingRequired,
+  exportBlockedMessage
+} from '../../../src/native/bautagebuch/lib/run-validation';
 import {
   exportRunPdf,
-  previewRunPdf,
+  generateRunPreviewPdfPath,
   type BautagebuchExportMode
 } from '../../../src/native/bautagebuch/services/exportService';
-import { capturePhotoDocEntry } from '../../../src/native/bautagebuch/services/photoDocService';
+import {
+  capturePhotoDocEntry,
+  pickPhotoDocEntry,
+  removePhotoDocEntry
+} from '../../../src/native/bautagebuch/services/photoDocService';
 import { getActiveTemplateBundle } from '../../../src/native/bautagebuch/services/templateService';
 import { syncWeatherValues } from '../../../src/native/bautagebuch/services/weatherService';
 import type { BautagebuchRun } from '../../../src/native/bautagebuch/types';
 import { nowIso } from '../../../src/lib/ids';
 
+const PREVIEW_DEBOUNCE_MS = 900;
+
 export default function BautagebuchRunScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { showToast } = useToast();
   const [run, setRun] = useState<BautagebuchRun | null>(null);
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
   const [weatherBusy, setWeatherBusy] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
+  const [previewPath, setPreviewPath] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { schedule, flush } = useRunAutosave(id);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -46,23 +65,56 @@ export default function BautagebuchRunScreen() {
     void load();
   }, [load]);
 
-  const persist = async (patch: Partial<BautagebuchRun>) => {
+  const totalMissingRequired = useMemo(() => {
+    if (!setupModel || !run) return 0;
+    return computeTotalMissingRequired(setupModel, run.values, run.photoDoc?.enabled ?? null);
+  }, [run, setupModel]);
+
+  const refreshPreview = useCallback(async () => {
+    if (!run || !showPreview) return;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      await flush();
+      const path = await generateRunPreviewPdfPath(run.runId);
+      setPreviewPath(path);
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'Vorschau fehlgeschlagen.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [flush, run, showPreview]);
+
+  useEffect(() => {
+    if (!run || !showPreview) return undefined;
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    previewTimerRef.current = setTimeout(() => {
+      void refreshPreview();
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => {
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    };
+  }, [run?.values, run?.photoDoc, showPreview, refreshPreview]);
+
+  const persist = (patch: Partial<BautagebuchRun>) => {
     if (!run) return;
-    const next = await updateRun(run.runId, patch);
-    if (next) setRun(next);
+    const next = { ...run, ...patch };
+    setRun(next);
+    schedule(patch);
   };
 
   const handleWeatherSync = async () => {
     if (!run || !setupModel) return;
     setWeatherBusy(true);
     try {
-      const weather = await syncWeatherValues();
       const sections =
         (setupModel.single_sections as Array<{
           sectionId: string;
-          fields: Array<{ fieldName: string; fieldId: string }>;
+          fields: Array<{ fieldName: string; fieldId: string; options?: string[] }>;
         }>) || [];
       const weatherSection = sections.find((section) => section.sectionId === 'weather');
+      const dropdownField = weatherSection?.fields.find((field) => field.fieldName === 'Dropdown6');
+      const weather = await syncWeatherValues(dropdownField?.options || []);
       const nextValues = { ...run.values };
       const setByName = (name: string, value: string) => {
         const field = weatherSection?.fields.find((entry) => entry.fieldName === name);
@@ -71,7 +123,8 @@ export default function BautagebuchRunScreen() {
       setByName('Dropdown6', weather.weather);
       setByName('Text11', weather.tempMin);
       setByName('Text12', weather.tempMax);
-      await persist({ values: nextValues });
+      persist({ values: nextValues });
+      showToast('Wetter aktualisiert');
     } catch (err) {
       Alert.alert('Wetter', err instanceof Error ? err.message : 'Wetter konnte nicht geladen werden.');
     } finally {
@@ -81,11 +134,20 @@ export default function BautagebuchRunScreen() {
 
   const runExport = async (mode: BautagebuchExportMode) => {
     if (!run) return;
+    if (totalMissingRequired > 0) {
+      Alert.alert('Export blockiert', exportBlockedMessage(totalMissingRequired));
+      return;
+    }
     setExporting(true);
     try {
+      await flush();
       await exportRunPdf(run.runId, mode);
-      await persist({ status: 'completed', completedAt: new Date().toISOString() });
-      Alert.alert('Export', 'PDF wurde erstellt und kann geteilt werden.');
+      const completed = await updateRun(run.runId, {
+        status: 'completed',
+        completedAt: nowIso()
+      });
+      if (completed) setRun(completed);
+      showToast('PDF exportiert');
     } catch (err) {
       Alert.alert('Export', err instanceof Error ? err.message : 'PDF-Export fehlgeschlagen.');
     } finally {
@@ -93,20 +155,11 @@ export default function BautagebuchRunScreen() {
     }
   };
 
-  const runPreview = async () => {
-    if (!run) return;
-    setPreviewing(true);
-    try {
-      await previewRunPdf(run.runId);
-      Alert.alert('Vorschau', 'PDF-Vorschau wurde erstellt und kann geteilt werden.');
-    } catch (err) {
-      Alert.alert('Vorschau', err instanceof Error ? err.message : 'Vorschau fehlgeschlagen.');
-    } finally {
-      setPreviewing(false);
-    }
-  };
-
   const handleExport = () => {
+    if (totalMissingRequired > 0) {
+      Alert.alert('Export blockiert', exportBlockedMessage(totalMissingRequired));
+      return;
+    }
     Alert.alert('PDF exportieren', 'Welche Version soll erstellt werden?', [
       { text: 'Abbrechen', style: 'cancel' },
       { text: 'Nur BTB', onPress: () => void runExport('btb') },
@@ -117,7 +170,7 @@ export default function BautagebuchRunScreen() {
 
   const handlePhotoDocChange = (enabled: boolean) => {
     if (!run) return;
-    void persist({
+    persist({
       photoDoc: {
         ...run.photoDoc,
         enabled,
@@ -131,13 +184,32 @@ export default function BautagebuchRunScreen() {
     try {
       const entry = await capturePhotoDocEntry(run.runId);
       if (!entry) return;
-      await persist({
+      persist({
         photoDoc: {
           enabled: true,
           entries: [entry, ...(run.photoDoc?.entries || [])],
           updatedAt: nowIso()
         }
       });
+      showToast('Foto gespeichert');
+    } catch (err) {
+      Alert.alert('Foto', err instanceof Error ? err.message : 'Foto konnte nicht gespeichert werden.');
+    }
+  };
+
+  const handlePickPhoto = async () => {
+    if (!run) return;
+    try {
+      const entry = await pickPhotoDocEntry(run.runId);
+      if (!entry) return;
+      persist({
+        photoDoc: {
+          enabled: true,
+          entries: [entry, ...(run.photoDoc?.entries || [])],
+          updatedAt: nowIso()
+        }
+      });
+      showToast('Foto hinzugefügt');
     } catch (err) {
       Alert.alert('Foto', err instanceof Error ? err.message : 'Foto konnte nicht gespeichert werden.');
     }
@@ -145,13 +217,26 @@ export default function BautagebuchRunScreen() {
 
   const handleRemovePhoto = (entryId: string) => {
     if (!run) return;
-    void persist({
-      photoDoc: {
-        ...run.photoDoc,
-        entries: (run.photoDoc?.entries || []).filter((entry) => entry.id !== entryId),
-        updatedAt: nowIso()
+    const entry = (run.photoDoc?.entries || []).find((item) => item.id === entryId);
+    Alert.alert('Foto entfernen', 'Dieses Foto wirklich löschen?', [
+      { text: 'Abbrechen', style: 'cancel' },
+      {
+        text: 'Löschen',
+        style: 'destructive',
+        onPress: () => {
+          void removePhotoDocEntry(run.runId, entryId, entry?.localPath).then(() => {
+            persist({
+              photoDoc: {
+                ...run.photoDoc,
+                entries: (run.photoDoc?.entries || []).filter((item) => item.id !== entryId),
+                updatedAt: nowIso()
+              }
+            });
+            showToast('Foto entfernt');
+          });
+        }
       }
-    });
+    ]);
   };
 
   if (!run || !setupModel) {
@@ -168,18 +253,19 @@ export default function BautagebuchRunScreen() {
       subtitle="Guided Flow · PDF-Export"
       showBack
       footer={
-        <View style={styles.footerRow}>
-          <PrimaryButton
-            label={previewing ? 'Vorschau…' : 'PDF-Vorschau'}
-            variant="secondary"
-            disabled={previewing || exporting}
-            onPress={() => void runPreview()}
-          />
-          <PrimaryButton
-            label={exporting ? 'PDF…' : 'PDF exportieren'}
-            disabled={exporting || previewing}
-            onPress={handleExport}
-          />
+        <View style={styles.footerCol}>
+          <Pressable onPress={() => setShowPreview((value) => !value)}>
+            <Text style={styles.previewToggle}>
+              {showPreview ? 'Vorschau ausblenden' : 'Live-PDF-Vorschau anzeigen'}
+            </Text>
+          </Pressable>
+          <View style={styles.footerRow}>
+            <PrimaryButton
+              label={exporting ? 'PDF…' : 'PDF exportieren'}
+              disabled={exporting || totalMissingRequired > 0}
+              onPress={handleExport}
+            />
+          </View>
         </View>
       }
     >
@@ -189,12 +275,19 @@ export default function BautagebuchRunScreen() {
         sectionIndex={run.sectionIndex}
         weatherBusy={weatherBusy}
         photoDoc={run.photoDoc}
+        totalMissingRequired={totalMissingRequired}
+        showPreview={showPreview}
+        previewPanel={
+          <PdfPreviewPanel pdfPath={previewPath} loading={previewLoading} error={previewError} />
+        }
         onPhotoDocChange={handlePhotoDocChange}
         onAddPhoto={() => void handleAddPhoto()}
+        onPickPhoto={() => void handlePickPhoto()}
         onRemovePhoto={handleRemovePhoto}
         onWeatherSync={handleWeatherSync}
-        onSectionChange={(sectionIndex) => void persist({ sectionIndex })}
-        onChange={(values) => void persist({ values })}
+        onSectionChange={(sectionIndex) => persist({ sectionIndex })}
+        onChange={(values) => persist({ values })}
+        onRequestExport={handleExport}
       />
     </Screen>
   );
@@ -202,5 +295,7 @@ export default function BautagebuchRunScreen() {
 
 const styles = StyleSheet.create({
   error: { ...typography.body, color: colors.danger },
-  footerRow: { flexDirection: 'row', gap: 8 }
+  footerCol: { gap: 8 },
+  footerRow: { flexDirection: 'row', gap: 8 },
+  previewToggle: { ...typography.caption, color: colors.accent, textAlign: 'center' }
 });

@@ -356,12 +356,53 @@ export async function createRun(input: {
   return run;
 }
 
+async function softDeletePhotoAsset(runId: string, entryId: string): Promise<void> {
+  const db = await getDb();
+  const timestamp = nowIso();
+  const id = `${runId}::${entryId}`;
+  await db.runAsync(
+    `UPDATE photo_assets SET status = 'deleted', deleted_at = ?, updatedAt = ? WHERE id = ?`,
+    timestamp,
+    timestamp,
+    id
+  );
+}
+
+async function syncPhotoDocAssets(
+  runId: string,
+  previousEntries: Array<{ id: string }>,
+  nextEntries: Array<{ id: string }>
+): Promise<void> {
+  const nextIds = new Set(nextEntries.map((entry) => entry.id));
+  for (const entry of previousEntries) {
+    if (!nextIds.has(entry.id)) {
+      await softDeletePhotoAsset(runId, entry.id);
+    }
+  }
+}
+
+export async function deletePhotoAsset(runId: string, entryId: string, localPath?: string): Promise<void> {
+  await softDeletePhotoAsset(runId, entryId);
+  if (localPath) {
+    await FileSystem.deleteAsync(localPath, { idempotent: true });
+  }
+}
+
 export async function updateRun(
   runId: string,
   patch: Partial<Pick<BautagebuchRun, 'title' | 'values' | 'sectionIndex' | 'status' | 'photoDoc' | 'completedAt'>>
 ): Promise<BautagebuchRun | null> {
   const existing = await getRun(runId);
   if (!existing) return null;
+
+  if (patch.photoDoc) {
+    await syncPhotoDocAssets(
+      runId,
+      existing.photoDoc?.entries || [],
+      patch.photoDoc.entries || []
+    );
+  }
+
   const next: BautagebuchRun = {
     ...existing,
     ...patch,
@@ -395,6 +436,35 @@ export async function softDeleteRun(runId: string): Promise<void> {
     'deleted',
     runId
   );
+}
+
+export async function deleteRunCascade(runId: string): Promise<void> {
+  const run = await getRun(runId);
+  if (!run) return;
+
+  const db = await getDb();
+  const timestamp = nowIso();
+
+  for (const entry of run.photoDoc?.entries || []) {
+    if (entry.localPath) {
+      await FileSystem.deleteAsync(entry.localPath, { idempotent: true });
+    }
+    if (entry.id) {
+      await softDeletePhotoAsset(runId, entry.id);
+    }
+  }
+
+  await db.runAsync('UPDATE exports SET deleted_at = ? WHERE runId = ?', timestamp, runId);
+  await softDeleteRun(runId);
+
+  const photoDir = `${FileSystem.documentDirectory}bautagebuch/photos/${runId}/`;
+  await FileSystem.deleteAsync(photoDir, { idempotent: true });
+}
+
+export async function renameRun(runId: string, title: string): Promise<BautagebuchRun | null> {
+  const trimmed = String(title || '').trim();
+  if (!trimmed) return null;
+  return updateRun(runId, { title: trimmed });
 }
 
 export async function savePhotoAsset(input: {

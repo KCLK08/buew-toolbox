@@ -5,7 +5,13 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, PrimaryButton, TextField } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
 import { normalizeClockTime } from '../lib/time-format.js';
-import { buildRunSections, sectionProgressState } from '../lib/setup-model.js';
+import { buildRunSections, inputKeyForField, requiredMissingCount, sectionProgressState } from '../lib/setup-model.js';
+import {
+  buildRunSectionsWithPhotoDoc,
+  isPhotoDocRequiredMissing,
+  sectionRunOptions,
+  visibleRowCountForSection
+} from '../lib/run-validation';
 import { RunValuesPreview } from './RunValuesPreview';
 
 type RunSection = ReturnType<typeof buildRunSections>[number];
@@ -21,11 +27,18 @@ type Props = {
   photoDoc?: { enabled: boolean | null; entries: Array<{ id: string; localPath?: string }> };
   onPhotoDocChange?: (enabled: boolean) => void;
   onAddPhoto?: () => void;
+  onPickPhoto?: () => void;
   onRemovePhoto?: (entryId: string) => void;
+  totalMissingRequired?: number;
+  onRequestExport?: () => void;
+  showPreview?: boolean;
+  previewPanel?: React.ReactNode;
 };
 
 const GEWERK_FIELDS = ['Text3', 'Text5', 'Text6', 'Text7', 'Text8'];
 const SHIFT_FIELDS = ['Check Box1', 'Check Box2', 'Check Box3'];
+const LEISTUNGSBLOCK_TABLE_ID = 'table_detail_blocks';
+const MAIN_PERSONAL_TABLE_ID = 'table_main_personal';
 
 function fieldKey(fieldId: string) {
   return `field:${fieldId}`;
@@ -41,6 +54,29 @@ function findFieldIdByName(section: RunSection, fieldName: string): string {
   return String(field?.fieldId || '');
 }
 
+function isFieldMissing(section: RunSection, field: { fieldId: string; type?: string; required?: boolean }, values: Record<string, unknown>) {
+  if (!field.required) return false;
+  const key = fieldKey(field.fieldId);
+  const value = values[key];
+  if (field.type === 'checkbox') return value !== true;
+  return String(value ?? '').trim().length === 0;
+}
+
+function isLeistungsblockTable(section: RunSection) {
+  if (section.kind !== 'table') return false;
+  const tableId = String(section.tableId || '').trim();
+  if (tableId === LEISTUNGSBLOCK_TABLE_ID) return true;
+  return String(section.label || '').toLowerCase().includes('leistungsblock');
+}
+
+function isMainPersonalTable(section: RunSection) {
+  if (section.kind !== 'table') return false;
+  const tableId = String(section.tableId || '').trim();
+  if (tableId === MAIN_PERSONAL_TABLE_ID) return true;
+  const label = String(section.label || '').toLowerCase();
+  return label.includes('firmen') || label.includes('personal') || label.includes('besetzung');
+}
+
 export function RunWizard({
   setupModel,
   values,
@@ -52,12 +88,14 @@ export function RunWizard({
   photoDoc,
   onPhotoDocChange,
   onAddPhoto,
-  onRemovePhoto
+  onPickPhoto,
+  onRemovePhoto,
+  totalMissingRequired = 0,
+  onRequestExport,
+  showPreview = false,
+  previewPanel = null
 }: Props) {
-  const sections = useMemo(() => {
-    const base = buildRunSections(setupModel);
-    return [...base, { sectionId: 'photo-doc', kind: 'photo-doc', label: 'Fotodokumentation' }];
-  }, [setupModel]);
+  const sections = useMemo(() => buildRunSectionsWithPhotoDoc(setupModel), [setupModel]);
   const section = sections[sectionIndex] || sections[0];
 
   const setFieldValue = (fieldId: string, value: unknown) => {
@@ -71,13 +109,14 @@ export function RunWizard({
   const renderSingleField = (field: RunSection['fields'][number]) => {
     const current = values[fieldKey(field.fieldId)];
     const label = field.label || field.fieldName;
+    const missing = isFieldMissing(section, field, values);
 
     if (field.type === 'checkbox') {
       const checked = current === true;
       return (
         <Pressable
           key={field.fieldId}
-          style={styles.checkboxRow}
+          style={[styles.checkboxRow, missing ? styles.missingField : null]}
           onPress={() => setFieldValue(field.fieldId, !checked)}
         >
           <View style={[styles.checkbox, checked ? styles.checkboxOn : null]} />
@@ -88,8 +127,11 @@ export function RunWizard({
 
     if (field.type === 'dropdown' && field.options.length > 0) {
       return (
-        <View key={field.fieldId} style={styles.choiceBlock}>
-          <Text style={styles.label}>{label}</Text>
+        <View key={field.fieldId} style={[styles.choiceBlock, missing ? styles.missingField : null]}>
+          <Text style={styles.label}>
+            {label}
+            {field.required ? ' *' : ''}
+          </Text>
           <View style={styles.chipRow}>
             {field.options.map((option) => (
               <Pressable
@@ -108,19 +150,20 @@ export function RunWizard({
     }
 
     return (
-      <TextField
-        key={field.fieldId}
-        label={label}
-        value={String(current ?? '')}
-        onChangeText={(text) => {
-          const normalized =
-            label.toLowerCase().includes('beginn') || label.toLowerCase().includes('ende')
-              ? normalizeClockTime(text)
-              : text;
-          setFieldValue(field.fieldId, normalized);
-        }}
-        multiline={label.length > 30}
-      />
+      <View key={field.fieldId} style={missing ? styles.missingField : null}>
+        <TextField
+          label={`${label}${field.required ? ' *' : ''}`}
+          value={String(current ?? '')}
+          onChangeText={(text) => {
+            const normalized =
+              label.toLowerCase().includes('beginn') || label.toLowerCase().includes('ende')
+                ? normalizeClockTime(text)
+                : text;
+            setFieldValue(field.fieldId, normalized);
+          }}
+          multiline={label.length > 30}
+        />
+      </View>
     );
   };
 
@@ -131,13 +174,14 @@ export function RunWizard({
     const otherFields = section.fields.filter(
       (field) => !gewerkFieldIds.includes(field.fieldId) && !shiftFieldIds.includes(field.fieldId)
     );
+    const gewerkMissing = requiredMissingCount(section, values, sectionRunOptions(section, values)) > 0;
 
     return (
       <View style={styles.sectionBody}>
         {otherFields.map(renderSingleField)}
         {gewerkFieldIds.length > 0 ? (
-          <View style={styles.choiceBlock}>
-            <Text style={styles.label}>Gewerk</Text>
+          <View style={[styles.choiceBlock, gewerkMissing ? styles.missingField : null]}>
+            <Text style={styles.label}>Gewerk *</Text>
             <View style={styles.chipRow}>
               {section.fields
                 .filter((field) => gewerkFieldIds.includes(field.fieldId))
@@ -166,10 +210,28 @@ export function RunWizard({
         ) : null}
         {shiftFieldIds.length > 0 ? (
           <View style={styles.choiceBlock}>
-            <Text style={styles.label}>Schicht</Text>
+            <Text style={styles.label}>Schicht *</Text>
             {section.fields
               .filter((field) => shiftFieldIds.includes(field.fieldId))
-              .map((field) => renderSingleField(field))}
+              .map((field) => {
+                const checked = values[fieldKey(field.fieldId)] === true;
+                return (
+                  <Pressable
+                    key={field.fieldId}
+                    style={[styles.checkboxRow, !checked && gewerkMissing ? null : null]}
+                    onPress={() => {
+                      const next = { ...values };
+                      for (const id of shiftFieldIds) {
+                        next[fieldKey(id)] = id === field.fieldId ? !checked : false;
+                      }
+                      onChange(next);
+                    }}
+                  >
+                    <View style={[styles.checkbox, checked ? styles.checkboxOn : null]} />
+                    <Text style={styles.checkboxLabel}>{field.label}</Text>
+                  </Pressable>
+                );
+              })}
           </View>
         ) : null}
       </View>
@@ -196,78 +258,99 @@ export function RunWizard({
   const renderTableSection = () => {
     if (section.kind !== 'table') return null;
     const tableId = String(section.tableId || '');
-    const rowCountKey = `__tableRows:${tableId}`;
-    const visibleCount = Number(values[rowCountKey] ?? 1);
+    const visibleCount = visibleRowCountForSection(section, values);
     const rows = section.rows.slice(0, Math.max(1, visibleCount));
+    const leistung = isLeistungsblockTable(section);
+    const personal = isMainPersonalTable(section);
 
     return (
       <View style={styles.sectionBody}>
         {rows.map((row) => (
           <Card key={row.rowId} style={styles.tableCard}>
             <Text style={styles.tableRowTitle}>Zeile {row.rowId.replace('r', '')}</Text>
-            {row.cells.map((cell) => (
-              <TextField
-                key={cell.cellId}
-                label={cell.label}
-                value={String(values[cellKey(cell.cellId)] ?? '')}
-                onChangeText={(text) => {
-                  const normalized =
-                    cell.label.toLowerCase().includes('beginn') ||
-                    cell.label.toLowerCase().includes('ende')
-                      ? normalizeClockTime(text)
-                      : text;
-                  setCellValue(cell.cellId, normalized);
-                }}
-                multiline={cell.label.length > 24}
-              />
-            ))}
+            {row.cells.map((cell) => {
+              const label = cell.label;
+              const labelLower = label.toLowerCase();
+              const isTime = personal && (labelLower.includes('beginn') || labelLower.includes('ende'));
+              const multiline = leistung
+                ? String(cell.columnId || '').match(/^c[45]$/)
+                : label.length > 24;
+              const missing =
+                cell.required &&
+                String(values[cellKey(cell.cellId)] ?? '').trim().length === 0 &&
+                row.rowId === rows[0]?.rowId;
+
+              return (
+                <View key={cell.cellId} style={missing ? styles.missingField : null}>
+                  <TextField
+                    label={`${label}${cell.required ? ' *' : ''}`}
+                    value={String(values[cellKey(cell.cellId)] ?? '')}
+                    onChangeText={(text) => {
+                      const normalized = isTime ? normalizeClockTime(text) : text;
+                      setCellValue(cell.cellId, normalized);
+                    }}
+                    multiline={multiline}
+                  />
+                </View>
+              );
+            })}
           </Card>
         ))}
         {visibleCount < section.rows.length ? (
           <PrimaryButton
             label="Weitere Zeile hinzufügen"
             variant="secondary"
-            onPress={() => onChange({ ...values, [rowCountKey]: visibleCount + 1 })}
+            onPress={() =>
+              onChange({ ...values, [`__tableRows:${tableId}`]: visibleCount + 1 })
+            }
           />
         ) : null}
       </View>
     );
   };
 
-  const renderPhotoDocSection = () => (
-    <View style={styles.sectionBody}>
-      <Text style={styles.label}>Fotodokumentation anhängen?</Text>
-      <View style={styles.chipRow}>
-        <Pressable
-          style={[styles.chip, photoDoc?.enabled === true ? styles.chipActive : null]}
-          onPress={() => onPhotoDocChange?.(true)}
-        >
-          <Text style={styles.chipText}>Ja</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.chip, photoDoc?.enabled === false ? styles.chipActive : null]}
-          onPress={() => onPhotoDocChange?.(false)}
-        >
-          <Text style={styles.chipText}>Nein</Text>
-        </Pressable>
-      </View>
-      {photoDoc?.enabled ? (
-        <>
-          <PrimaryButton label="+ Foto aufnehmen" variant="secondary" onPress={() => onAddPhoto?.()} />
-          {(photoDoc.entries || []).map((entry) => (
-            <View key={entry.id} style={styles.photoRow}>
-              {entry.localPath ? <Image source={{ uri: entry.localPath }} style={styles.photoPreview} /> : null}
-              <PrimaryButton
-                label="Entfernen"
-                variant="ghost"
-                onPress={() => onRemovePhoto?.(entry.id)}
-              />
+  const renderPhotoDocSection = () => {
+    const choiceMissing = isPhotoDocRequiredMissing(photoDoc?.enabled ?? null);
+    return (
+      <View style={styles.sectionBody}>
+        <View style={choiceMissing ? styles.missingField : null}>
+          <Text style={styles.label}>Fotodokumentation anhängen? *</Text>
+          <View style={styles.chipRow}>
+            <Pressable
+              style={[styles.chip, photoDoc?.enabled === true ? styles.chipActive : null]}
+              onPress={() => onPhotoDocChange?.(true)}
+            >
+              <Text style={styles.chipText}>Ja</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.chip, photoDoc?.enabled === false ? styles.chipActive : null]}
+              onPress={() => onPhotoDocChange?.(false)}
+            >
+              <Text style={styles.chipText}>Nein</Text>
+            </Pressable>
+          </View>
+        </View>
+        {photoDoc?.enabled ? (
+          <>
+            <View style={styles.photoActions}>
+              <PrimaryButton label="Kamera" variant="secondary" onPress={() => onAddPhoto?.()} />
+              <PrimaryButton label="Galerie" variant="secondary" onPress={() => onPickPhoto?.()} />
             </View>
-          ))}
-        </>
-      ) : null}
-    </View>
-  );
+            {(photoDoc.entries || []).map((entry) => (
+              <View key={entry.id} style={styles.photoRow}>
+                {entry.localPath ? <Image source={{ uri: entry.localPath }} style={styles.photoPreview} /> : null}
+                <PrimaryButton
+                  label="Entfernen"
+                  variant="ghost"
+                  onPress={() => onRemovePhoto?.(entry.id)}
+                />
+              </View>
+            ))}
+          </>
+        ) : null}
+      </View>
+    );
+  };
 
   const renderSectionContent = () => {
     if (!section) return null;
@@ -281,20 +364,46 @@ export function RunWizard({
     return null;
   };
 
+  const isLastSection = sectionIndex >= sections.length - 1;
+  const exportBlocked = totalMissingRequired > 0;
+
   return (
     <View style={styles.root}>
+      <View style={styles.progressBar}>
+        <Text style={styles.progressText}>
+          Schritt {sectionIndex + 1} von {sections.length}
+        </Text>
+        {exportBlocked ? (
+          <Text style={styles.missingSummary}>
+            {totalMissingRequired} Pflichtfeld{totalMissingRequired === 1 ? '' : 'er'} offen
+          </Text>
+        ) : (
+          <Text style={styles.readySummary}>Bereit zum Export</Text>
+        )}
+      </View>
+
       <View style={styles.navRow}>
         {sections.map((entry, index) => {
-          const progress = sectionProgressState(entry, values, {
-            visibleRowCount: Number(values[`__tableRows:${entry.tableId || ''}`] ?? 1)
-          });
+          const options =
+            entry.kind === 'photo-doc'
+              ? {}
+              : sectionRunOptions(entry, values);
+          const progress =
+            entry.kind === 'photo-doc'
+              ? isPhotoDocRequiredMissing(photoDoc?.enabled ?? null)
+                ? 'todo'
+                : photoDoc?.enabled === true && (photoDoc.entries || []).length === 0
+                  ? 'progress'
+                  : 'done'
+              : sectionProgressState(entry, values, options);
           return (
             <Pressable key={entry.sectionId} style={styles.navDotWrap} onPress={() => onSectionChange(index)}>
               <View
                 style={[
                   styles.navDot,
                   index === sectionIndex ? styles.navDotActive : null,
-                  progress === 'done' ? styles.navDotDone : null
+                  progress === 'done' ? styles.navDotDone : null,
+                  progress === 'progress' ? styles.navDotProgress : null
                 ]}
               />
               <Text style={styles.navLabel} numberOfLines={1}>
@@ -310,7 +419,8 @@ export function RunWizard({
         {renderSectionContent()}
       </Card>
 
-      <RunValuesPreview setupModel={setupModel} values={values} sectionIndex={sectionIndex} />
+      {!showPreview ? <RunValuesPreview setupModel={setupModel} values={values} sectionIndex={sectionIndex} /> : null}
+      {showPreview ? previewPanel : null}
 
       <View style={styles.footerRow}>
         <PrimaryButton
@@ -320,8 +430,15 @@ export function RunWizard({
           onPress={() => onSectionChange(Math.max(0, sectionIndex - 1))}
         />
         <PrimaryButton
-          label={sectionIndex >= sections.length - 1 ? 'Fertig' : 'Weiter'}
-          onPress={() => onSectionChange(Math.min(sections.length - 1, sectionIndex + 1))}
+          label={isLastSection ? 'Abschließen' : 'Weiter'}
+          disabled={isLastSection && exportBlocked}
+          onPress={() => {
+            if (isLastSection) {
+              onRequestExport?.();
+              return;
+            }
+            onSectionChange(Math.min(sections.length - 1, sectionIndex + 1));
+          }}
         />
       </View>
     </View>
@@ -330,6 +447,13 @@ export function RunWizard({
 
 const styles = StyleSheet.create({
   root: { gap: spacing.md },
+  progressBar: {
+    gap: 4,
+    paddingHorizontal: 2
+  },
+  progressText: { ...typography.label, color: colors.muted },
+  missingSummary: { ...typography.caption, color: colors.danger },
+  readySummary: { ...typography.caption, color: colors.success },
   navRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   navDotWrap: { alignItems: 'center', width: 72 },
   navDot: {
@@ -339,8 +463,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     marginBottom: 4
   },
-  navDotActive: { backgroundColor: colors.accent },
-  navDotDone: { backgroundColor: colors.accent2 },
+  navDotActive: { backgroundColor: colors.accent, transform: [{ scale: 1.15 }] },
+  navDotDone: { backgroundColor: colors.success },
+  navDotProgress: { backgroundColor: colors.warning },
   navLabel: { ...typography.caption, color: colors.muted, textAlign: 'center' },
   sectionTitle: { ...typography.subtitle, color: colors.ink, marginBottom: spacing.sm },
   sectionBody: { gap: spacing.sm },
@@ -352,16 +477,18 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 999,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    minHeight: 44,
+    justifyContent: 'center',
     backgroundColor: colors.panel
   },
   chipActive: { borderColor: colors.accent, backgroundColor: colors.badgeBg },
   chipText: { ...typography.caption, color: colors.ink },
   chipTextActive: { color: colors.accent, fontFamily: 'SpaceGrotesk_600SemiBold' },
-  checkboxRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44 },
+  checkboxRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 48 },
   checkbox: {
-    width: 22,
-    height: 22,
+    width: 24,
+    height: 24,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: colors.border,
@@ -371,7 +498,15 @@ const styles = StyleSheet.create({
   checkboxLabel: { ...typography.body, color: colors.ink },
   tableCard: { gap: spacing.sm },
   tableRowTitle: { ...typography.bodyStrong, color: colors.ink },
+  photoActions: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
   photoRow: { gap: spacing.xs },
-  photoPreview: { width: '100%', height: 160, borderRadius: 12, backgroundColor: colors.border },
+  photoPreview: { width: '100%', height: 180, borderRadius: 12, backgroundColor: colors.border },
+  missingField: {
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: 12,
+    padding: 6,
+    backgroundColor: 'rgba(161, 44, 36, 0.05)'
+  },
   footerRow: { flexDirection: 'row', gap: spacing.sm }
 });
