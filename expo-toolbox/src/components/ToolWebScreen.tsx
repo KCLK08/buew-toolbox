@@ -3,7 +3,7 @@ import { WebView } from 'react-native-webview';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors } from '../constants/theme';
+import { colors, spacing, typography } from '../constants/theme';
 import { toolWebUrl } from '../lib/config';
 
 type ToolWebScreenProps = {
@@ -21,11 +21,12 @@ export function ToolWebScreen({ title, webPath }: ToolWebScreenProps) {
       <View style={styles.toolbar}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Zurück zur Toolbox"
+          accessibilityLabel="Zurück"
           onPress={() => router.back()}
           style={styles.backButton}
+          hitSlop={8}
         >
-          <Text style={styles.backLabel}>← Toolbox</Text>
+          <Text style={styles.backLabel}>‹ Zurück</Text>
         </Pressable>
         <Text style={styles.title} numberOfLines={1}>
           {title}
@@ -54,8 +55,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg
   },
   toolbar: {
-    minHeight: 52,
-    paddingHorizontal: 12,
+    minHeight: spacing.touchMin + 8,
+    paddingHorizontal: spacing.pageX,
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: 1,
@@ -63,23 +64,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panel
   },
   backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 8
+    minHeight: spacing.touchMin,
+    justifyContent: 'center',
+    paddingRight: spacing.sm
   },
   backLabel: {
-    color: colors.accent,
-    fontFamily: 'SpaceGrotesk_600SemiBold',
-    fontSize: 15
+    ...typography.bodyStrong,
+    color: colors.accent
   },
   title: {
     flex: 1,
     textAlign: 'center',
-    color: colors.ink,
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 16
+    ...typography.subtitle,
+    color: colors.ink
   },
   spacer: {
-    width: 88
+    width: 72
   },
   webview: {
     flex: 1,
