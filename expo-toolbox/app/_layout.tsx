@@ -6,10 +6,11 @@ import {
   SpaceGrotesk_600SemiBold,
   SpaceGrotesk_700Bold
 } from '@expo-google-fonts/space-grotesk';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { colors } from '../src/constants/theme';
+import { useOfflineBootstrap } from '../src/hooks/useOfflineBootstrap';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -17,11 +18,15 @@ export default function RootLayout() {
     SpaceGrotesk_600SemiBold,
     SpaceGrotesk_700Bold
   });
+  const offline = useOfflineBootstrap();
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded || !offline.ready) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, gap: 12 }}>
         <ActivityIndicator color={colors.accent} size="large" />
+        <Text style={{ color: colors.muted, fontFamily: 'SpaceGrotesk_400Regular' }}>
+          Offline-Daten werden geprüft…
+        </Text>
       </View>
     );
   }

@@ -1,6 +1,6 @@
 # BÜW-Toolbox (Expo)
 
-Offline-fähige Expo-Kopie der BÜW-Toolbox-Startseite. Enthält SiteReport und Bautagebuch als eingebettete Web-Tools. Kein Login, kein Backend.
+Offline Expo-Shell der Toolbox. SiteReport und Bautagebuch bleiben als eingebettete Web-Tools verfügbar. Persistenz der Shell: **SQLite + documentDirectory**.
 
 ```bash
 cd expo-toolbox
@@ -9,11 +9,15 @@ npm install
 npm start
 ```
 
-## Tools
+## Offline-Architektur
 
-| Tool | Route | Inhalt |
-|------|-------|--------|
-| SiteReport | `/sitereport` | WebView auf die bestehende Web-App |
-| Bautagebuch | `/bautagebuch` | WebView auf die bestehende Web-App |
+Siehe `/OFFLINE.md`.
 
-Die Web-Basis-URL steuert `EXPO_PUBLIC_TOOLBOX_WEB_BASE_URL` (Standard: `https://kclk08.github.io/buew-toolbox`).
+Wichtige Module:
+
+- `src/database/` – SQLite, Migrationen, Transaktionen
+- `src/storage/` – Dateien (`documentDirectory`) + DB-Backups (max. 3)
+- `src/repositories/` – Projekte, Bautagebuch-Läufe, Mängel, Notizen, Fotos
+- `src/services/` – Integritätsprüfung, Foto-Speicherung
+- `src/hooks/useAutosave.ts` – debounced Autosave
+- `src/hooks/useOfflineBootstrap.ts` – Startcheck

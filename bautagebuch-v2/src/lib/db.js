@@ -1,5 +1,7 @@
 import Dexie from 'dexie';
 
+import { createIndexedDbBackup, restoreLatestIndexedDbBackup } from './offline-backup.js';
+import { runBautagebuchIntegrityCheck } from './offline-integrity.js';
 import { hydratePhotoDoc, preparePhotoDocForStorage } from './photo-storage.js';
 
 const DB_NAME = 'BautagebuchV2';
@@ -17,6 +19,11 @@ const storesV2 = {
   photo_assets: '&id, runId, entryId, updatedAt'
 };
 
+const storesV3 = {
+  ...storesV2,
+  db_backups: '&id, createdAt'
+};
+
 let dbInstance = null;
 
 function createId(prefix = 'id') {
@@ -31,6 +38,10 @@ function normalizeTemplateName(value) {
   return String(value || '').trim() || 'Bautagebuch Vorlage';
 }
 
+function isActiveRecord(record) {
+  return !String(record?.deleted_at || '').trim();
+}
+
 let dbReadyPromise = null;
 
 function getDb() {
@@ -43,6 +54,7 @@ function getDb() {
   const db = new Dexie(DB_NAME);
   db.version(1).stores(storesV1);
   db.version(2).stores(storesV2);
+  db.version(3).stores(storesV3);
   dbInstance = db;
   return dbInstance;
 }
@@ -50,7 +62,19 @@ function getDb() {
 async function ensureDbReady() {
   const db = getDb();
   if (!dbReadyPromise) {
-    dbReadyPromise = db.open().catch((error) => {
+    dbReadyPromise = (async () => {
+      await db.open();
+      let integrity = await runBautagebuchIntegrityCheck(db);
+      if (!integrity.ok) {
+        const restored = await restoreLatestIndexedDbBackup(db).catch(() => false);
+        if (restored) {
+          integrity = await runBautagebuchIntegrityCheck(db);
+        }
+        if (!integrity.ok) {
+          console.warn('[Bautagebuch] Offline-Integritätsprobleme:', integrity.issues);
+        }
+      }
+    })().catch((error) => {
       dbReadyPromise = null;
       throw error;
     });
@@ -58,14 +82,24 @@ async function ensureDbReady() {
   await dbReadyPromise;
 }
 
+async function maybeBackup(label = 'auto') {
+  try {
+    await createIndexedDbBackup(getDb(), { label });
+  } catch (error) {
+    console.warn('[Bautagebuch] Backup fehlgeschlagen:', error?.message || error);
+  }
+}
+
 export async function listTemplates() {
   await ensureDbReady();
-  return getDb().templates.orderBy('updatedAt').reverse().toArray();
+  const rows = await getDb().templates.orderBy('updatedAt').reverse().toArray();
+  return rows.filter(isActiveRecord);
 }
 
 export async function getTemplate(templateId) {
   await ensureDbReady();
-  return getDb().templates.get(templateId);
+  const record = await getDb().templates.get(templateId);
+  return isActiveRecord(record) ? record : null;
 }
 
 export async function createTemplate({
@@ -89,9 +123,11 @@ export async function createTemplate({
     pdfBlob,
     status: 'draft',
     createdAt: nowIso(),
-    updatedAt: nowIso()
+    updatedAt: nowIso(),
+    deleted_at: null
   };
   await getDb().templates.put(record);
+  await maybeBackup('template_create');
   return record;
 }
 
@@ -108,12 +144,14 @@ export async function putTemplate(template) {
     pageCount: Number(template?.pageCount || 1),
     status: String(template?.status || 'draft'),
     createdAt: String(template?.createdAt || timestamp),
-    updatedAt: timestamp
+    updatedAt: timestamp,
+    deleted_at: template?.deleted_at ?? null
   };
   if (!String(record.templateId || '').trim()) {
     record.templateId = createId('tplv2');
   }
   await getDb().templates.put(record);
+  await maybeBackup('template_put');
   return record;
 }
 
@@ -221,9 +259,11 @@ export async function createRun({ templateId, title, setupVersion = 1 }) {
     status: 'draft',
     createdAt: nowIso(),
     updatedAt: nowIso(),
-    completedAt: ''
+    completedAt: '',
+    deleted_at: null
   };
   await getDb().runs.put(record);
+  await maybeBackup('run_create');
   return record;
 }
 
@@ -234,7 +274,7 @@ export async function getRun(runId) {
     return null;
   }
   const run = await getDb().runs.get(normalizedRunId);
-  if (!run) {
+  if (!run || !isActiveRecord(run)) {
     return null;
   }
   if (run.photoDoc) {
@@ -247,11 +287,15 @@ export async function getRun(runId) {
 export async function listRuns(templateId = '') {
   await ensureDbReady();
   const normalizedTemplateId = String(templateId || '').trim();
+  let runs;
   if (normalizedTemplateId) {
-    const runs = await getDb().runs.where('templateId').equals(normalizedTemplateId).toArray();
-    return runs.sort((left, right) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')));
+    runs = await getDb().runs.where('templateId').equals(normalizedTemplateId).toArray();
+  } else {
+    runs = await getDb().runs.orderBy('updatedAt').reverse().toArray();
   }
-  return getDb().runs.orderBy('updatedAt').reverse().toArray();
+  return runs
+    .filter(isActiveRecord)
+    .sort((left, right) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')));
 }
 
 export async function updateRun(runId, patch = {}) {
@@ -261,7 +305,7 @@ export async function updateRun(runId, patch = {}) {
     return null;
   }
   const existing = await getDb().runs.get(normalizedRunId);
-  if (!existing) {
+  if (!existing || !isActiveRecord(existing)) {
     return null;
   }
 
@@ -273,7 +317,12 @@ export async function updateRun(runId, patch = {}) {
       const existingAssets = await db.photo_assets.where('runId').equals(normalizedRunId).toArray();
       for (const asset of existingAssets) {
         if (!activeEntryIds.has(String(asset.entryId || '').trim())) {
-          await db.photo_assets.delete(asset.id);
+          await db.photo_assets.put({
+            ...asset,
+            status: 'deleted',
+            deleted_at: nowIso(),
+            updatedAt: nowIso()
+          });
         }
       }
       if (assets.length > 0) {
@@ -283,21 +332,26 @@ export async function updateRun(runId, patch = {}) {
         ...existing,
         ...nextPatch,
         photoDoc: photoDocForRun,
-        updatedAt: nowIso()
+        updatedAt: nowIso(),
+        deleted_at: null
       });
     });
+    await maybeBackup('run_photo_update');
     return getRun(normalizedRunId);
   }
 
   const record = {
     ...existing,
     ...nextPatch,
-    updatedAt: nowIso()
+    updatedAt: nowIso(),
+    deleted_at: null
   };
   await getDb().runs.put(record);
+  await maybeBackup('run_update');
   return getRun(normalizedRunId);
 }
 
+/** Soft-delete run and related records (keeps data recoverable). */
 export async function deleteRunCascade(runId) {
   await ensureDbReady();
   const normalizedRunId = String(runId || '').trim();
@@ -305,24 +359,41 @@ export async function deleteRunCascade(runId) {
     return { deletedRun: false, deletedExports: 0 };
   }
   const db = getDb();
-  return db.transaction('rw', db.runs, db.exports, db.photo_assets, async () => {
+  const result = await db.transaction('rw', db.runs, db.exports, db.photo_assets, async () => {
     const run = await db.runs.get(normalizedRunId);
     const exportsList = await db.exports.where('runId').equals(normalizedRunId).toArray();
     const photoAssets = await db.photo_assets.where('runId').equals(normalizedRunId).toArray();
+    const timestamp = nowIso();
+
     for (const entry of exportsList) {
-      await db.exports.delete(entry.exportId);
+      await db.exports.put({
+        ...entry,
+        deleted_at: timestamp
+      });
     }
     for (const asset of photoAssets) {
-      await db.photo_assets.delete(asset.id);
+      await db.photo_assets.put({
+        ...asset,
+        status: 'deleted',
+        deleted_at: timestamp,
+        updatedAt: timestamp
+      });
     }
     if (run) {
-      await db.runs.delete(normalizedRunId);
+      await db.runs.put({
+        ...run,
+        status: 'deleted',
+        deleted_at: timestamp,
+        updatedAt: timestamp
+      });
     }
     return {
       deletedRun: Boolean(run),
       deletedExports: exportsList.length
     };
   });
+  await maybeBackup('run_soft_delete');
+  return result;
 }
 
 export async function addExportRecord({ runId, fileName }) {
@@ -331,7 +402,8 @@ export async function addExportRecord({ runId, fileName }) {
     exportId: createId('expv2'),
     runId,
     fileName: String(fileName || '').trim() || 'bautagebuch.pdf',
-    exportedAt: nowIso()
+    exportedAt: nowIso(),
+    deleted_at: null
   };
   await getDb().exports.put(record);
   return record;
@@ -340,5 +412,7 @@ export async function addExportRecord({ runId, fileName }) {
 export async function listExports(runId) {
   await ensureDbReady();
   const exportsList = await getDb().exports.where('runId').equals(runId).toArray();
-  return exportsList.sort((left, right) => String(right.exportedAt || '').localeCompare(String(left.exportedAt || '')));
+  return exportsList
+    .filter(isActiveRecord)
+    .sort((left, right) => String(right.exportedAt || '').localeCompare(String(left.exportedAt || '')));
 }
