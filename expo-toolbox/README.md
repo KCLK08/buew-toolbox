@@ -1,6 +1,6 @@
 # BÜW-Toolbox (Expo)
 
-Native Offline-App der Toolbox mit Bottom-Tabs. SiteReport und Bautagebuch bleiben als eingebettete Web-Tools unter **Mehr** verfügbar. Persistenz: **SQLite + documentDirectory**.
+**Eigenständige native App** — dieselben Werkzeuge wie die PWA, ohne WebView.
 
 ```bash
 cd expo-toolbox
@@ -9,37 +9,23 @@ npm install
 npm start
 ```
 
-## UI
+## Werkzeuge
 
-Siehe [`EXPO_UI_REDESIGN.md`](../EXPO_UI_REDESIGN.md).
+| Tab | Beschreibung |
+|-----|--------------|
+| **Home** | Toolbox-Übersicht |
+| **SiteReport** | Foto-Protokolle (nativ) |
+| **Bautagebuch** | eBTB Guided Flow + PDF-Export (nativ) |
 
-- Bottom Tabs: Home · Projekte · Tagebuch · Mängel · Mehr
-- Mobile Design-System unter `src/components/mobile/`
-- Fotoaufnahme über Kamera (`expo-image-picker`) → Offline-Speicherung
+## Technik
 
-## Android APK (GitHub Actions)
+- React Native / Expo Router
+- SQLite (`bautagebuch_v2_native.db`, `sitereport_native.db`)
+- PWA-Logik portiert nach `src/native/bautagebuch/lib/` (setup-model, etb-template, pdf-export)
+- PDF: `pdf-lib` · Kamera: `expo-image-picker` · Wetter: `expo-location` + Open-Meteo
 
-Bei Änderungen an `expo-toolbox/` oder `shared/` (Push auf `main`) erscheint eine **`.apk`** unter **Releases**.
+Details: [`NATIVE_APP.md`](../NATIVE_APP.md)
 
-- **Releases** → Datei `*.apk` herunterladen (installierbar)
-- Actions-Artifacts sind bei GitHub immer ein **ZIP-Container** (nur für PRs)
-- Workflow: `.github/workflows/android-apk.yml`
-- Details: [`ANDROID_APK.md`](../ANDROID_APK.md)
+## Android APK
 
-Optional lokal/EAS: `eas.json` (Profile `preview` = APK).
-
-PRs prüfen nur TypeScript; der APK-Build läuft einmal nach Merge auf `main`.
-
-## Offline-Architektur
-
-Siehe `/OFFLINE.md` (inkl. Phase-2 Backup-Härtung), `/OFFLINE_DATA_MODEL.md` und `/DATA_MODEL_PARITY_REPORT.md`.
-
-Wichtige Module:
-
-- `../shared/types/` – gemeinsame Domain-Typen (`DOMAIN_SCHEMA_VERSION = 2`)
-- `src/database/` – SQLite (WAL, `synchronous=NORMAL`), Migrationen, Write-Guards
-- `src/storage/` – Dateien (`documentDirectory`) + sichere DB-Backups (max. 3, max. 1/min)
-- `src/repositories/` – Shared API (projects, diary, defects, photos, documents)
-- `src/services/` – Integrität, Orphan-Cleanup (nur melden), Soft-Delete-Purge (Dry-Run)
-- `src/hooks/useAutosave.ts` – debounced Autosave (ohne Backup pro Save)
-- `src/hooks/useOfflineBootstrap.ts` – Startcheck, Restore-Bestätigung, Background-Backup
+Siehe [`ANDROID_APK.md`](../ANDROID_APK.md).

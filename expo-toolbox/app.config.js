@@ -18,7 +18,9 @@ module.exports = ({ config }) => ({
     supportsTablet: true,
     bundleIdentifier: 'de.buew.toolbox',
     infoPlist: {
-      NSCameraUsageDescription: 'Kamera wird für die Fotodokumentation auf der Baustelle benötigt.'
+      NSCameraUsageDescription: 'Kamera wird für die Fotodokumentation auf der Baustelle benötigt.',
+      NSLocationWhenInUseUsageDescription:
+        'Standort wird für die automatische Wettererfassung im Bautagebuch benötigt.'
     }
   },
   android: {
@@ -31,7 +33,7 @@ module.exports = ({ config }) => ({
     },
     package: 'de.buew.toolbox',
     predictiveBackGestureEnabled: false,
-    permissions: ['CAMERA']
+    permissions: ['CAMERA', 'ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION']
   },
   web: {
     favicon: './assets/favicon.png',

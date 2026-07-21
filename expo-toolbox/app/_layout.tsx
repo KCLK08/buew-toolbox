@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -10,7 +11,8 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { colors } from '../src/constants/theme';
-import { useOfflineBootstrap } from '../src/hooks/useOfflineBootstrap';
+import { initBautagebuchDatabase } from '../src/native/bautagebuch/db/database';
+import { initSiteReportDatabase } from '../src/native/sitereport/db/database';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -18,23 +20,19 @@ export default function RootLayout() {
     SpaceGrotesk_600SemiBold,
     SpaceGrotesk_700Bold
   });
-  const offline = useOfflineBootstrap();
+  const [ready, setReady] = useState(false);
 
-  if (!fontsLoaded || !offline.ready) {
+  useEffect(() => {
+    Promise.all([initBautagebuchDatabase(), initSiteReportDatabase()])
+      .then(() => setReady(true))
+      .catch(() => setReady(true));
+  }, []);
+
+  if (!fontsLoaded || !ready) {
     return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: colors.bg,
-          gap: 12
-        }}
-      >
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, gap: 12 }}>
         <ActivityIndicator color={colors.accent} size="large" />
-        <Text style={{ color: colors.muted, fontFamily: 'SpaceGrotesk_400Regular' }}>
-          Offline-Daten werden geprüft…
-        </Text>
+        <Text style={{ color: colors.muted, fontFamily: 'SpaceGrotesk_400Regular' }}>App wird geladen…</Text>
       </View>
     );
   }
@@ -42,22 +40,10 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style="dark" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.bg },
-          animation: 'slide_from_right'
-        }}
-      >
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="project/new" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="project/[id]" />
-        <Stack.Screen name="diary/new" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="diary/[id]" />
-        <Stack.Screen name="defect/new" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="defect/[id]" />
-        <Stack.Screen name="sitereport" />
-        <Stack.Screen name="bautagebuch" />
+        <Stack.Screen name="bautagebuch/run/[id]" />
+        <Stack.Screen name="sitereport/protocol/[id]" />
       </Stack>
     </GestureHandlerRootView>
   );
