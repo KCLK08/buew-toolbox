@@ -24,10 +24,18 @@ Die Expo-App ist eine **eigenständige native Anwendung**, die dieselben Werkzeu
 | XLSX-Export | ✅ |
 | Format-Builder / Templates | ✅ |
 | Firmenlogo im Export | ✅ |
-| Export-Cache / Liste | 🔜 |
+| Export-Cache / Liste | ✅ |
+
+## Backup / Restore
+
+| Funktion | Status |
+|----------|--------|
+| Domain-DB Backup (app_background) | ✅ |
+| SiteReport + Bautagebuch DB Backup | ✅ |
+| Restore-Banner bei DB-Fehler | ✅ |
 
 ## Nächste Schritte
 
-1. SiteReport: Export-Cache / Liste
-2. Bautagebuch: Setup-Editor, Live-PDF-Vorschau
-3. Backup/Restore analog PWA
+1. Bautagebuch: Setup-Editor, Live-PDF-Vorschau
+2. On-Device-Tests: Export-Cache, Backup/Restore
+3. APK-Release nach Merge

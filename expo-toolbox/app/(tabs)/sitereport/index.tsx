@@ -10,6 +10,7 @@ import {
   createProtocol,
   getActiveColumns,
   initSiteReportDatabase,
+  listExports,
   listProtocols,
   listTemplates,
   loadLogo,
@@ -18,8 +19,10 @@ import {
   saveSettings,
   todayDe,
   type SiteReportColumn,
+  type SiteReportExport,
   type SiteReportTemplate
 } from '../../../src/native/sitereport/db/database';
+import { deleteCachedExport, shareCachedExport } from '../../../src/native/sitereport/services/exportService';
 
 export default function SiteReportHomeScreen() {
   const router = useRouter();
@@ -31,18 +34,22 @@ export default function SiteReportHomeScreen() {
   const [logoDataUrl, setLogoDataUrl] = useState('');
   const [title, setTitle] = useState('');
   const [project, setProject] = useState('');
+  const [exportsList, setExportsList] = useState<SiteReportExport[]>([]);
+  const [sharingExport, setSharingExport] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     await initSiteReportDatabase();
-    const [nextProtocols, nextTemplates, settings, logo] = await Promise.all([
+    const [nextProtocols, nextTemplates, settings, logo, nextExports] = await Promise.all([
       listProtocols(),
       listTemplates(),
       loadSettings(),
-      loadLogo()
+      loadLogo(),
+      listExports()
     ]);
     setProtocols(nextProtocols);
     setTemplates(nextTemplates);
+    setExportsList(nextExports);
     setLogoDataUrl(logo);
     const templateId = settings?.selectedTemplateId || nextTemplates[0]?.id || '';
     setSelectedTemplateId(templateId);
@@ -108,6 +115,30 @@ export default function SiteReportHomeScreen() {
     router.push(`/sitereport/protocol/${protocol.id}`);
   };
 
+  const shareExport = async (exportId: string, format: 'pdf' | 'xlsx') => {
+    setSharingExport(`${exportId}:${format}`);
+    try {
+      await shareCachedExport(exportId, format);
+    } catch (err) {
+      Alert.alert('Export', err instanceof Error ? err.message : 'Teilen fehlgeschlagen.');
+    } finally {
+      setSharingExport(null);
+    }
+  };
+
+  const removeExport = (exportId: string) => {
+    Alert.alert('Export löschen', 'Gespeicherten Export wirklich entfernen?', [
+      { text: 'Abbrechen', style: 'cancel' },
+      {
+        text: 'Löschen',
+        style: 'destructive',
+        onPress: () => {
+          void deleteCachedExport(exportId).then(load);
+        }
+      }
+    ]);
+  };
+
   return (
     <Screen title="SiteReport" subtitle="Foto-Protokolle mit Export" scroll refreshing={loading} onRefresh={load}>
       <View style={styles.card}>
@@ -163,6 +194,40 @@ export default function SiteReportHomeScreen() {
         <PrimaryButton label="Protokoll starten" disabled={!selectedTemplateId} onPress={() => void startProtocol()} />
       </View>
 
+      {exportsList.length > 0 ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Exporte ({exportsList.length})</Text>
+          {exportsList.map((item) => (
+            <View key={item.id} style={styles.exportCard}>
+              <Text style={styles.exportTitle}>{item.protocolTitle || item.projectName}</Text>
+              <Text style={styles.muted}>
+                {item.projectName} · {item.protocolDate}
+              </Text>
+              <View style={styles.row}>
+                {item.pdfPath || item.pdfFilename ? (
+                  <PrimaryButton
+                    label={sharingExport === `${item.id}:pdf` ? 'PDF…' : 'PDF teilen'}
+                    variant="secondary"
+                    disabled={Boolean(sharingExport)}
+                    onPress={() => void shareExport(item.id, 'pdf')}
+                  />
+                ) : null}
+                {item.xlsxPath || item.xlsxFilename ? (
+                  <PrimaryButton
+                    label={sharingExport === `${item.id}:xlsx` ? 'XLSX…' : 'XLSX teilen'}
+                    variant="secondary"
+                    disabled={Boolean(sharingExport)}
+                    onPress={() => void shareExport(item.id, 'xlsx')}
+                  />
+                ) : null}
+                <PrimaryButton label="Löschen" variant="ghost" onPress={() => removeExport(item.id)} />
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      <Text style={styles.section}>Protokolle</Text>
       {protocols.length === 0 ? (
         <EmptyState title="Keine Protokolle" description="Erstelle ein neues Foto-Protokoll für die Baustelle." />
       ) : (
@@ -185,6 +250,9 @@ export default function SiteReportHomeScreen() {
 const styles = StyleSheet.create({
   card: { gap: 12, marginBottom: 16 },
   cardTitle: { ...typography.bodyStrong, color: colors.ink },
+  section: { ...typography.bodyStrong, color: colors.ink, marginBottom: 8 },
+  exportCard: { gap: 8, padding: 12, borderRadius: 12, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border },
+  exportTitle: { ...typography.bodyStrong, color: colors.ink },
   muted: { ...typography.body, color: colors.muted },
   logo: { width: '100%', height: 96, borderRadius: 12, backgroundColor: colors.panel },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }

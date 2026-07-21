@@ -57,6 +57,20 @@ export type SiteReportSettings = {
   columns: SiteReportColumn[];
 };
 
+export type SiteReportExport = {
+  id: string;
+  protocolId: string;
+  protocolTitle: string;
+  projectName: string;
+  protocolDate: string;
+  createdAt: string;
+  updatedAt: string;
+  pdfPath: string | null;
+  pdfFilename: string | null;
+  xlsxPath: string | null;
+  xlsxFilename: string | null;
+};
+
 function cloneColumns(columns: SiteReportColumn[]): SiteReportColumn[] {
   return columns.map((col) => ({ ...col }));
 }
@@ -88,6 +102,21 @@ async function getDb() {
           name TEXT NOT NULL,
           columnsJson TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS exports (
+          id TEXT PRIMARY KEY NOT NULL,
+          protocolId TEXT NOT NULL,
+          protocolTitle TEXT NOT NULL,
+          projectName TEXT NOT NULL,
+          protocolDate TEXT NOT NULL,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          pdfPath TEXT,
+          pdfFilename TEXT,
+          xlsxPath TEXT,
+          xlsxFilename TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_exports_protocol ON exports(protocolId);
+        CREATE INDEX IF NOT EXISTS idx_exports_updated ON exports(updatedAt);
       `);
       await seedDefaultTemplate(db);
       return db;
@@ -146,6 +175,13 @@ function rowToTemplate(row: Record<string, unknown>): SiteReportTemplate {
 
 export async function initSiteReportDatabase() {
   await getDb();
+}
+
+export async function resetSiteReportDatabaseConnection(): Promise<void> {
+  if (!dbPromise) return;
+  const db = await dbPromise;
+  await db.closeAsync();
+  dbPromise = null;
 }
 
 export async function loadSettings(): Promise<SiteReportSettings | null> {
@@ -307,4 +343,92 @@ export function todayDe(): string {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const year = now.getFullYear();
   return `${day}-${month}-${year}`;
+}
+
+function rowToExport(row: Record<string, unknown>): SiteReportExport {
+  return {
+    id: String(row.id),
+    protocolId: String(row.protocolId),
+    protocolTitle: String(row.protocolTitle || ''),
+    projectName: String(row.projectName),
+    protocolDate: String(row.protocolDate),
+    createdAt: String(row.createdAt),
+    updatedAt: String(row.updatedAt),
+    pdfPath: row.pdfPath ? String(row.pdfPath) : null,
+    pdfFilename: row.pdfFilename ? String(row.pdfFilename) : null,
+    xlsxPath: row.xlsxPath ? String(row.xlsxPath) : null,
+    xlsxFilename: row.xlsxFilename ? String(row.xlsxFilename) : null
+  };
+}
+
+export async function listExports(): Promise<SiteReportExport[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    'SELECT * FROM exports ORDER BY updatedAt DESC'
+  );
+  return rows.map(rowToExport);
+}
+
+export async function getExport(id: string): Promise<SiteReportExport | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<Record<string, unknown>>('SELECT * FROM exports WHERE id = ?', id);
+  return row ? rowToExport(row) : null;
+}
+
+export async function getExportByProtocol(protocolId: string): Promise<SiteReportExport | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<Record<string, unknown>>(
+    'SELECT * FROM exports WHERE protocolId = ? ORDER BY updatedAt DESC LIMIT 1',
+    protocolId
+  );
+  return row ? rowToExport(row) : null;
+}
+
+export async function upsertExportByProtocol(
+  patch: Partial<SiteReportExport> & { protocolId: string }
+): Promise<SiteReportExport> {
+  const db = await getDb();
+  const existing = await getExportByProtocol(patch.protocolId);
+  const timestamp = nowIso();
+  const record: SiteReportExport = {
+    id: existing?.id ?? `export_${patch.protocolId}`,
+    protocolId: patch.protocolId,
+    protocolTitle: patch.protocolTitle ?? existing?.protocolTitle ?? '',
+    projectName: patch.projectName ?? existing?.projectName ?? '',
+    protocolDate: patch.protocolDate ?? existing?.protocolDate ?? '',
+    createdAt: existing?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+    pdfPath: patch.pdfPath !== undefined ? patch.pdfPath : (existing?.pdfPath ?? null),
+    pdfFilename: patch.pdfFilename !== undefined ? patch.pdfFilename : (existing?.pdfFilename ?? null),
+    xlsxPath: patch.xlsxPath !== undefined ? patch.xlsxPath : (existing?.xlsxPath ?? null),
+    xlsxFilename: patch.xlsxFilename !== undefined ? patch.xlsxFilename : (existing?.xlsxFilename ?? null)
+  };
+  await db.runAsync(
+    `INSERT OR REPLACE INTO exports (
+      id, protocolId, protocolTitle, projectName, protocolDate,
+      createdAt, updatedAt, pdfPath, pdfFilename, xlsxPath, xlsxFilename
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    record.id,
+    record.protocolId,
+    record.protocolTitle,
+    record.projectName,
+    record.protocolDate,
+    record.createdAt,
+    record.updatedAt,
+    record.pdfPath,
+    record.pdfFilename,
+    record.xlsxPath,
+    record.xlsxFilename
+  );
+  return record;
+}
+
+export async function deleteExport(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM exports WHERE id = ?', id);
+}
+
+export async function deleteExportsByProtocol(protocolId: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM exports WHERE protocolId = ?', protocolId);
 }
