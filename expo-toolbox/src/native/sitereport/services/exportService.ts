@@ -8,6 +8,7 @@ import {
   getExport,
   getExportByProtocol,
   getProtocol,
+  listExports,
   loadLogo,
   upsertExportByProtocol
 } from '../db/database';
@@ -16,6 +17,10 @@ import { exportToPdfData } from '../lib/pdf.js';
 import { exportToXlsxData } from '../lib/xlsx-export.js';
 
 const EXPORT_DIR = `${FileSystem.documentDirectory}sitereport/exports/`;
+
+export type ExportOptions = {
+  share?: boolean;
+};
 
 async function prepareEntries(protocol: SiteReportProtocol) {
   return Promise.all(
@@ -77,7 +82,10 @@ async function shareFile(path: string, mimeType: string, title: string) {
   return path;
 }
 
-export async function exportProtocolPdf(protocol: SiteReportProtocol): Promise<string> {
+export async function exportProtocolPdf(
+  protocol: SiteReportProtocol,
+  options: ExportOptions = { share: true }
+): Promise<string> {
   await ensureExportDir();
   const entries = await prepareEntries(protocol);
   const result = await exportToPdfData(await exportPayload(protocol, entries));
@@ -88,10 +96,16 @@ export async function exportProtocolPdf(protocol: SiteReportProtocol): Promise<s
     pdfPath: outPath,
     pdfFilename: result.filename
   });
-  return shareFile(outPath, 'application/pdf', protocol.protocolTitle);
+  if (options.share) {
+    return shareFile(outPath, 'application/pdf', protocol.protocolTitle);
+  }
+  return outPath;
 }
 
-export async function exportProtocolXlsx(protocol: SiteReportProtocol): Promise<string> {
+export async function exportProtocolXlsx(
+  protocol: SiteReportProtocol,
+  options: ExportOptions = { share: true }
+): Promise<string> {
   await ensureExportDir();
   const entries = await prepareEntries(protocol);
   const result = await exportToXlsxData(await exportPayload(protocol, entries));
@@ -103,11 +117,29 @@ export async function exportProtocolXlsx(protocol: SiteReportProtocol): Promise<
     xlsxPath: outPath,
     xlsxFilename: result.filename
   });
-  return shareFile(
-    outPath,
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    protocol.protocolTitle
-  );
+  if (options.share) {
+    return shareFile(
+      outPath,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      protocol.protocolTitle
+    );
+  }
+  return outPath;
+}
+
+export type CloseExportMode = 'save' | 'pdf' | 'xlsx' | 'both';
+
+export async function closeProtocolWithExport(
+  protocol: SiteReportProtocol,
+  mode: CloseExportMode
+): Promise<void> {
+  const noShare = { share: false };
+  if (mode === 'pdf' || mode === 'both') {
+    await exportProtocolPdf(protocol, noShare);
+  }
+  if (mode === 'xlsx' || mode === 'both') {
+    await exportProtocolXlsx(protocol, noShare);
+  }
 }
 
 async function ensurePdfExport(protocol: SiteReportProtocol): Promise<SiteReportExport> {
@@ -116,7 +148,7 @@ async function ensurePdfExport(protocol: SiteReportProtocol): Promise<SiteReport
     const info = await FileSystem.getInfoAsync(existing.pdfPath);
     if (info.exists) return existing;
   }
-  await exportProtocolPdf(protocol);
+  await exportProtocolPdf(protocol, { share: false });
   const record = await getExportByProtocol(protocol.id);
   if (!record?.pdfPath) throw new Error('PDF-Export konnte nicht erstellt werden.');
   return record;
@@ -128,7 +160,7 @@ async function ensureXlsxExport(protocol: SiteReportProtocol): Promise<SiteRepor
     const info = await FileSystem.getInfoAsync(existing.xlsxPath);
     if (info.exists) return existing;
   }
-  await exportProtocolXlsx(protocol);
+  await exportProtocolXlsx(protocol, { share: false });
   const record = await getExportByProtocol(protocol.id);
   if (!record?.xlsxPath) throw new Error('XLSX-Export konnte nicht erstellt werden.');
   return record;
@@ -176,3 +208,5 @@ export async function deleteCachedExport(exportId: string): Promise<void> {
   }
   await deleteExport(exportId);
 }
+
+export { listExports };

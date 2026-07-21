@@ -1,93 +1,105 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Image, StyleSheet, Text, View } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { ListItem, PrimaryButton, Screen, TextField } from '../../../src/components/mobile';
-import { colors, typography } from '../../../src/constants/theme';
+import { BottomSheet, ConfirmModal, EntryCard } from '../../../src/components/sitereport';
+import { PrimaryButton, Screen, StatCard } from '../../../src/components/mobile';
+import { useToast } from '../../../src/contexts/ToastContext';
+import { colors, spacing, typography } from '../../../src/constants/theme';
+import { updateProtocol } from '../../../src/native/sitereport/db/database';
 import {
+  closeProtocolWithExport,
   exportProtocolPdf,
-  exportProtocolXlsx
+  exportProtocolXlsx,
+  type CloseExportMode
 } from '../../../src/native/sitereport/services/exportService';
 import {
-  getProtocol,
-  updateProtocol,
-  type SiteReportColumn,
-  type SiteReportEntry,
-  type SiteReportProtocol
-} from '../../../src/native/sitereport/db/database';
-
-function emptyFieldsFromColumns(columns: SiteReportColumn[]): Record<string, string | number> {
-  const fields: Record<string, string | number> = {};
-  for (const col of columns) {
-    if (!col.isPhoto) {
-      fields[col.name] = col.name.toLowerCase() === 'status' ? 'offen' : '';
-    }
-  }
-  return fields;
-}
+  getProtocolOrThrow,
+  protocolStats,
+  removeProtocolEntry
+} from '../../../src/native/sitereport/services/protocolService';
 
 export default function SiteReportProtocolScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [protocol, setProtocol] = useState<SiteReportProtocol | null>(null);
-  const [exporting, setExporting] = useState<'pdf' | 'xlsx' | null>(null);
+  const { showToast } = useToast();
+  const [protocol, setProtocol] = useState<Awaited<ReturnType<typeof getProtocolOrThrow>> | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [closeVisible, setCloseVisible] = useState(false);
+  const [exportSheetVisible, setExportSheetVisible] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
-    setProtocol(await getProtocol(id));
-  }, [id]);
+    try {
+      setProtocol(await getProtocolOrThrow(id));
+    } catch {
+      Alert.alert('Fehler', 'Protokoll nicht gefunden.');
+      router.back();
+    }
+  }, [id, router]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const save = async (next: SiteReportProtocol) => {
-    await updateProtocol(next);
-    setProtocol(next);
-  };
-
-  const addEntry = async () => {
-    if (!protocol) return;
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Kamera', 'Kamerazugriff ist erforderlich.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.75 });
-    if (result.canceled || !result.assets[0]?.uri) return;
-
-    const entry: SiteReportEntry = {
-      id: `entry_${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      fields: emptyFieldsFromColumns(protocol.columns),
-      photoPath: result.assets[0].uri
-    };
-    await save({ ...protocol, entries: [entry, ...protocol.entries] });
-  };
+  const stats = protocol ? protocolStats(protocol) : null;
 
   const runExport = async (format: 'pdf' | 'xlsx') => {
     if (!protocol) return;
-    setExporting(format);
+    setExporting(true);
+    setExportSheetVisible(false);
     try {
       if (format === 'pdf') {
         await exportProtocolPdf(protocol);
       } else {
         await exportProtocolXlsx(protocol);
       }
-      Alert.alert('Export', `${format.toUpperCase()} wurde erstellt und kann geteilt werden.`);
+      showToast(`${format.toUpperCase()} exportiert`);
     } catch (err) {
       Alert.alert('Export', err instanceof Error ? err.message : 'Export fehlgeschlagen.');
     } finally {
-      setExporting(null);
+      setExporting(false);
     }
   };
 
-  const dataColumns = protocol?.columns.filter((col) => !col.isPhoto) ?? [];
+  const handleClose = async (mode: CloseExportMode) => {
+    if (!protocol) return;
+    setCloseVisible(false);
+    setExporting(true);
+    try {
+      await updateProtocol(protocol);
+      if (mode !== 'save') {
+        await closeProtocolWithExport(protocol, mode);
+      }
+      showToast(mode === 'save' ? 'Gespeichert' : 'Protokoll abgeschlossen');
+      router.replace('/sitereport/protocols');
+    } catch (err) {
+      Alert.alert('Abschluss', err instanceof Error ? err.message : 'Abschluss fehlgeschlagen.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
-  if (!protocol) {
+  const deleteEntry = (entryId: string) => {
+    if (!protocol) return;
+    Alert.alert('Eintrag löschen', 'Diesen Eintrag wirklich entfernen?', [
+      { text: 'Abbrechen', style: 'cancel' },
+      {
+        text: 'Löschen',
+        style: 'destructive',
+        onPress: () => {
+          void removeProtocolEntry(protocol, entryId).then((next) => {
+            setProtocol(next);
+            showToast('Eintrag gelöscht');
+          });
+        }
+      }
+    ]);
+  };
+
+  if (!protocol || !stats) {
     return (
-      <Screen title="SiteReport" showBack>
+      <Screen title="Protokoll" showBack>
         <Text style={styles.muted}>Protokoll wird geladen…</Text>
       </Screen>
     );
@@ -98,86 +110,93 @@ export default function SiteReportProtocolScreen() {
       title={protocol.protocolTitle}
       subtitle={protocol.projectName}
       showBack
+      scroll
+      onRefresh={load}
+      refreshing={exporting}
       footer={
-        <View style={styles.exportRow}>
+        <View style={styles.footer}>
           <PrimaryButton
-            label={exporting === 'pdf' ? 'PDF…' : 'PDF exportieren'}
-            disabled={Boolean(exporting)}
-            onPress={() => void runExport('pdf')}
-          />
-          <PrimaryButton
-            label={exporting === 'xlsx' ? 'XLSX…' : 'XLSX exportieren'}
-            variant="secondary"
-            disabled={Boolean(exporting)}
-            onPress={() => void runExport('xlsx')}
+            label="+ Neuer Eintrag"
+            onPress={() => router.push(`/sitereport/protocol/${protocol.id}/wizard`)}
           />
         </View>
       }
     >
-      <TextField
-        label="Beschreibung"
-        value={protocol.protocolDescription}
-        onChangeText={(protocolDescription) => void save({ ...protocol, protocolDescription })}
-        multiline
-      />
-      <TextField
-        label="Teilnehmer"
-        value={protocol.attendees}
-        onChangeText={(attendees) => void save({ ...protocol, attendees })}
-      />
+      <View style={styles.statsRow}>
+        <StatCard title="Datum" value={protocol.protocolDate} icon="📅" />
+        <StatCard title="Einträge" value={String(stats.entryCount)} icon="✏️" />
+      </View>
+      <View style={styles.statsRow}>
+        <StatCard title="Fotos" value={String(stats.photoCount)} icon="📷" />
+        <StatCard title="Offen" value={String(stats.openCount)} icon="🟠" tone="warning" />
+      </View>
 
-      <PrimaryButton label="+ Eintrag mit Foto" onPress={() => void addEntry()} />
+      <View style={styles.actions}>
+        <PrimaryButton
+          label="Stammdaten bearbeiten"
+          variant="secondary"
+          onPress={() => router.push(`/sitereport/protocol/${protocol.id}/edit`)}
+        />
+        <PrimaryButton
+          label={exporting ? 'Export…' : 'Export'}
+          variant="secondary"
+          disabled={exporting}
+          onPress={() => setExportSheetVisible(true)}
+        />
+        <PrimaryButton
+          label="Protokoll abschließen"
+          variant="ghost"
+          disabled={exporting}
+          onPress={() => setCloseVisible(true)}
+        />
+      </View>
 
       <Text style={styles.section}>Einträge ({protocol.entries.length})</Text>
-      {protocol.entries.map((entry) => (
-        <View key={entry.id} style={styles.entryCard}>
-          {entry.photoPath ? <Image source={{ uri: entry.photoPath }} style={styles.photo} /> : null}
-          {dataColumns.map((col) => {
-            const value = String(entry.fields[col.name] ?? '');
-            if (col.name.toLowerCase() === 'status') {
-              return (
-                <ListItem
-                  key={col.id}
-                  title={col.name}
-                  subtitle={value || 'offen'}
-                  onPress={() => {
-                    const nextStatus = value === 'offen' ? 'erledigt' : 'offen';
-                    const entries = protocol.entries.map((row) =>
-                      row.id === entry.id
-                        ? { ...row, fields: { ...row.fields, [col.name]: nextStatus } }
-                        : row
-                    );
-                    void save({ ...protocol, entries });
-                  }}
-                />
-              );
-            }
-            return (
-              <TextField
-                key={col.id}
-                label={col.name}
-                value={value}
-                keyboardType={col.type === 'number' ? 'decimal-pad' : 'default'}
-                onChangeText={(nextValue) => {
-                  const entries = protocol.entries.map((row) =>
-                    row.id === entry.id ? { ...row, fields: { ...row.fields, [col.name]: nextValue } } : row
-                  );
-                  void save({ ...protocol, entries });
-                }}
-                multiline={col.type === 'text' && col.name.length > 12}
-              />
-            );
-          })}
-        </View>
-      ))}
+      {protocol.entries.length === 0 ? (
+        <Text style={styles.muted}>Noch keine Einträge. Tippe auf „+ Neuer Eintrag".</Text>
+      ) : (
+        protocol.entries.map((entry) => (
+          <EntryCard
+            key={entry.id}
+            entry={entry}
+            columns={protocol.columns}
+            onEdit={() => router.push(`/sitereport/protocol/${protocol.id}/wizard?entryId=${entry.id}`)}
+            onDelete={() => deleteEntry(entry.id)}
+          />
+        ))
+      )}
+
+      <ConfirmModal
+        visible={closeVisible}
+        title="Protokoll abschließen"
+        message="Wie möchtest du fortfahren?"
+        onClose={() => setCloseVisible(false)}
+        actions={[
+          { label: 'Nur speichern', onPress: () => void handleClose('save'), variant: 'secondary' },
+          { label: 'PDF erstellen', onPress: () => void handleClose('pdf'), variant: 'primary' },
+          { label: 'Excel erstellen', onPress: () => void handleClose('xlsx'), variant: 'primary' },
+          { label: 'PDF + Excel', onPress: () => void handleClose('both'), variant: 'primary' },
+          { label: 'Abbrechen', onPress: () => setCloseVisible(false), variant: 'ghost' }
+        ]}
+      />
+
+      <BottomSheet visible={exportSheetVisible} title="Export" onClose={() => setExportSheetVisible(false)}>
+        <PrimaryButton label="PDF exportieren" onPress={() => void runExport('pdf')} disabled={exporting} />
+        <PrimaryButton
+          label="Excel exportieren"
+          variant="secondary"
+          onPress={() => void runExport('xlsx')}
+          disabled={exporting}
+        />
+      </BottomSheet>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   muted: { ...typography.body, color: colors.muted },
-  section: { ...typography.bodyStrong, color: colors.ink, marginTop: 8 },
-  entryCard: { gap: 8, marginBottom: 12 },
-  photo: { width: '100%', height: 180, borderRadius: 12, backgroundColor: colors.border },
-  exportRow: { flexDirection: 'row', gap: 8 }
+  section: { ...typography.bodyStrong, color: colors.ink, marginTop: spacing.sm, marginBottom: spacing.xs },
+  statsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
+  actions: { gap: spacing.xs, marginBottom: spacing.md },
+  footer: { gap: spacing.xs }
 });

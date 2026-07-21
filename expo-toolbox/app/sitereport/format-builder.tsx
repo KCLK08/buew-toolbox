@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { ListItem, PrimaryButton, Screen, TextField } from '../../src/components/mobile';
-import { colors, typography } from '../../src/constants/theme';
+import { FormatColumnCard } from '../../src/components/sitereport';
+import { PrimaryButton, Screen, TextField } from '../../src/components/mobile';
+import { useToast } from '../../src/contexts/ToastContext';
+import { colors, spacing, typography } from '../../src/constants/theme';
 import {
   addTemplate,
   defaultColumns,
@@ -26,6 +28,7 @@ function withColumnIds(columns: SiteReportColumn[]): SiteReportColumn[] {
 
 export default function SiteReportFormatBuilderScreen() {
   const router = useRouter();
+  const { showToast } = useToast();
   const { mode, templateId } = useLocalSearchParams<{ mode?: string; templateId?: string }>();
   const isEdit = mode === 'edit' && Boolean(templateId);
 
@@ -129,6 +132,7 @@ export default function SiteReportFormatBuilderScreen() {
         await addTemplate(record);
         await saveSettings({ selectedTemplateId: record.id, columns: nextColumns });
       }
+      showToast('Format gespeichert');
       router.back();
     } catch (err) {
       Alert.alert('Format', err instanceof Error ? err.message : 'Speichern fehlgeschlagen.');
@@ -140,56 +144,42 @@ export default function SiteReportFormatBuilderScreen() {
   return (
     <Screen
       title={isEdit ? 'Format bearbeiten' : 'Neues Tabellenformat'}
-      subtitle="Spalten für Excel- und PDF-Export definieren"
+      subtitle="Spalten für Export definieren"
       showBack
       footer={<PrimaryButton label={saving ? 'Speichern…' : 'Format speichern'} disabled={saving} onPress={() => void save()} />}
     >
       {!isEdit ? (
         <TextField label="Formatname" value={templateName} onChangeText={setTemplateName} placeholder="z. B. Standard Baustelle" />
-      ) : null}
+      ) : (
+        <Text style={styles.templateName}>{templateName}</Text>
+      )}
 
       <Text style={styles.section}>Spalten</Text>
       {columns.map((col, index) => (
-        <View key={col.id} style={styles.colCard}>
-          {editingIndex === index ? (
-            <>
-              <TextField label="Spaltenname" value={editColName} onChangeText={setEditColName} />
-              <ListItem
-                title="Typ"
-                subtitle={editColType === 'number' ? 'Zahl' : 'Text'}
-                onPress={() => setEditColType((prev) => (prev === 'text' ? 'number' : 'text'))}
-              />
-              <View style={styles.row}>
-                <PrimaryButton label="Übernehmen" onPress={saveEditColumn} />
-                <PrimaryButton label="Abbrechen" variant="secondary" onPress={() => setEditingIndex(null)} />
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={styles.colTitle}>{col.name}</Text>
-              <Text style={styles.muted}>
-                {col.isPhoto ? 'Foto-Spalte' : `Typ: ${col.type === 'number' ? 'Zahl' : 'Text'}`}
-              </Text>
-              <View style={styles.row}>
-                {!col.isPhoto ? (
-                  <>
-                    <PrimaryButton label="Bearbeiten" variant="secondary" onPress={() => startEditColumn(index)} />
-                    <PrimaryButton label="Entfernen" variant="ghost" onPress={() => removeColumn(col.id)} />
-                  </>
-                ) : null}
-                <PrimaryButton label="↑" variant="ghost" onPress={() => moveColumn(index, -1)} />
-                <PrimaryButton label="↓" variant="ghost" onPress={() => moveColumn(index, 1)} />
-              </View>
-            </>
-          )}
-        </View>
+        <FormatColumnCard
+          key={col.id}
+          column={col}
+          index={index}
+          total={columns.length}
+          editing={editingIndex === index}
+          editName={editColName}
+          editType={editColType}
+          onEditNameChange={setEditColName}
+          onEditTypeToggle={() => setEditColType((prev) => (prev === 'text' ? 'number' : 'text'))}
+          onStartEdit={() => startEditColumn(index)}
+          onSaveEdit={saveEditColumn}
+          onCancelEdit={() => setEditingIndex(null)}
+          onRemove={() => removeColumn(col.id)}
+          onMoveUp={() => moveColumn(index, -1)}
+          onMoveDown={() => moveColumn(index, 1)}
+        />
       ))}
 
       <Text style={styles.section}>Spalte hinzufügen</Text>
       <TextField label="Spaltenname" value={newColName} onChangeText={setNewColName} />
-      <ListItem
-        title="Typ"
-        subtitle={newColType === 'number' ? 'Zahl' : 'Text'}
+      <PrimaryButton
+        label={`Typ: ${newColType === 'number' ? 'Zahl' : 'Text'}`}
+        variant="secondary"
         onPress={() => setNewColType((prev) => (prev === 'text' ? 'number' : 'text'))}
       />
       <PrimaryButton label="Spalte hinzufügen" variant="secondary" onPress={addColumn} />
@@ -198,9 +188,6 @@ export default function SiteReportFormatBuilderScreen() {
 }
 
 const styles = StyleSheet.create({
-  section: { ...typography.bodyStrong, color: colors.ink, marginTop: 8 },
-  colCard: { gap: 8, marginBottom: 12, padding: 12, borderRadius: 12, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border },
-  colTitle: { ...typography.bodyStrong, color: colors.ink },
-  muted: { ...typography.body, color: colors.muted },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }
+  section: { ...typography.bodyStrong, color: colors.ink, marginTop: spacing.sm },
+  templateName: { ...typography.subtitle, color: colors.ink }
 });
