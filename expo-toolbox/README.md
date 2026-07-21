@@ -1,6 +1,6 @@
 # BÜW-Toolbox (Expo)
 
-Offline Expo-Shell der Toolbox. SiteReport und Bautagebuch bleiben als eingebettete Web-Tools verfügbar. Persistenz der Shell: **SQLite + documentDirectory**.
+Native Offline-App der Toolbox mit Bottom-Tabs. SiteReport und Bautagebuch bleiben als eingebettete Web-Tools unter **Mehr** verfügbar. Persistenz: **SQLite + documentDirectory**.
 
 ```bash
 cd expo-toolbox
@@ -8,6 +8,14 @@ cp .env.example .env
 npm install
 npm start
 ```
+
+## UI
+
+Siehe [`EXPO_UI_REDESIGN.md`](../EXPO_UI_REDESIGN.md).
+
+- Bottom Tabs: Home · Projekte · Tagebuch · Mängel · Mehr
+- Mobile Design-System unter `src/components/mobile/`
+- Fotoaufnahme über Kamera (`expo-image-picker`) → Offline-Speicherung
 
 ## Offline-Architektur
 

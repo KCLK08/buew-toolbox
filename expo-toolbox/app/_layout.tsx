@@ -22,7 +22,15 @@ export default function RootLayout() {
 
   if (!fontsLoaded || !offline.ready) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, gap: 12 }}>
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.bg,
+          gap: 12
+        }}
+      >
         <ActivityIndicator color={colors.accent} size="large" />
         <Text style={{ color: colors.muted, fontFamily: 'SpaceGrotesk_400Regular' }}>
           Offline-Daten werden geprüft…
@@ -38,9 +46,19 @@ export default function RootLayout() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.bg },
-          animation: 'fade'
+          animation: 'slide_from_right'
         }}
-      />
+      >
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="project/new" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="project/[id]" />
+        <Stack.Screen name="diary/new" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="diary/[id]" />
+        <Stack.Screen name="defect/new" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="defect/[id]" />
+        <Stack.Screen name="sitereport" />
+        <Stack.Screen name="bautagebuch" />
+      </Stack>
     </GestureHandlerRootView>
   );
 }

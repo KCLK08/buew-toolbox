@@ -55,6 +55,8 @@ const styles = StyleSheet.create({
   action: {
     color: colors.accent,
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 13
+    fontSize: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 4
   }
 });

@@ -8,25 +8,29 @@ module.exports = ({ config }) => ({
   icon: './assets/icon.png',
   userInterfaceStyle: 'light',
   scheme: 'buew-toolbox',
-  backgroundColor: '#f3efe7',
+  backgroundColor: '#F2F0EB',
   splash: {
     image: './assets/splash-icon.png',
     resizeMode: 'contain',
-    backgroundColor: '#f3efe7'
+    backgroundColor: '#F2F0EB'
   },
   ios: {
     supportsTablet: true,
-    bundleIdentifier: 'de.buew.toolbox'
+    bundleIdentifier: 'de.buew.toolbox',
+    infoPlist: {
+      NSCameraUsageDescription: 'Kamera wird für die Fotodokumentation auf der Baustelle benötigt.'
+    }
   },
   android: {
     adaptiveIcon: {
-      backgroundColor: '#f3efe7',
+      backgroundColor: '#F2F0EB',
       foregroundImage: './assets/android-icon-foreground.png',
       backgroundImage: './assets/android-icon-background.png',
       monochromeImage: './assets/android-icon-monochrome.png'
     },
     package: 'de.buew.toolbox',
-    predictiveBackGestureEnabled: false
+    predictiveBackGestureEnabled: false,
+    permissions: ['CAMERA']
   },
   web: {
     favicon: './assets/favicon.png',
@@ -38,9 +42,15 @@ module.exports = ({ config }) => ({
     'expo-web-browser',
     'expo-sqlite',
     [
+      'expo-image-picker',
+      {
+        cameraPermission: 'Erlaube BÜW-Toolbox den Kamerazugriff für die Fotodokumentation.'
+      }
+    ],
+    [
       'expo-system-ui',
       {
-        backgroundColor: '#f3efe7'
+        backgroundColor: '#F2F0EB'
       }
     ]
   ],
