@@ -3,6 +3,7 @@ import * as SQLite from 'expo-sqlite';
 
 import type { BautagebuchExport, BautagebuchRun, BautagebuchTemplate, DetectedField, SetupModelRecord } from '../types';
 import { nowIso } from '../../../lib/ids';
+import { requestDatabaseBackup } from '../../../storage/backupService';
 
 const DB_NAME = 'bautagebuch_v2_native.db';
 
@@ -459,6 +460,7 @@ export async function deleteRunCascade(runId: string): Promise<void> {
 
   const photoDir = `${FileSystem.documentDirectory}bautagebuch/photos/${runId}/`;
   await FileSystem.deleteAsync(photoDir, { idempotent: true });
+  void requestDatabaseBackup('record_deleted');
 }
 
 export async function renameRun(runId: string, title: string): Promise<BautagebuchRun | null> {

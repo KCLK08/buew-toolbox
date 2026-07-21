@@ -15,6 +15,7 @@ export default function BautagebuchSetupScreen() {
   const [loading, setLoading] = useState(true);
   const [templateId, setTemplateId] = useState('');
   const [templateName, setTemplateName] = useState('');
+  const [templatePdfPath, setTemplatePdfPath] = useState<string | null>(null);
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +30,7 @@ export default function BautagebuchSetupScreen() {
       const bundle = await getActiveTemplateBundle();
       setTemplateId(bundle.template.templateId);
       setTemplateName(bundle.template.templateName);
+      setTemplatePdfPath(bundle.template.pdfPath);
       setSetupModel(bundle.setupModel);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Setup konnte nicht geladen werden.');
@@ -100,6 +102,7 @@ export default function BautagebuchSetupScreen() {
       {setupModel ? (
         <SetupEditor
           templateName={templateName}
+          templatePdfPath={templatePdfPath}
           setupModel={setupModel}
           onChange={handleChange}
           onFinish={() => void handleFinish()}

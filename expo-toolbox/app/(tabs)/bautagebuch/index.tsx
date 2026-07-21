@@ -24,6 +24,7 @@ import {
 } from '../../../src/native/bautagebuch/db/database';
 import { applyRunDefaultsFromModel } from '../../../src/native/bautagebuch/lib/run-defaults';
 import { deleteCachedExport, shareCachedExport } from '../../../src/native/bautagebuch/services/exportService';
+import { exportBautagebuchBackupZip } from '../../../src/native/bautagebuch/services/backupExportService';
 import { ensureBuiltinTemplate } from '../../../src/native/bautagebuch/services/templateService';
 import type { BautagebuchExport, BautagebuchRun } from '../../../src/native/bautagebuch/types';
 
@@ -65,6 +66,7 @@ export default function BautagebuchHomeScreen() {
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
   const [renameRunId, setRenameRunId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
+  const [backupBusy, setBackupBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -196,6 +198,18 @@ export default function BautagebuchHomeScreen() {
     }
   };
 
+  const exportBackup = async () => {
+    setBackupBusy(true);
+    try {
+      await exportBautagebuchBackupZip();
+      showToast('Backup erstellt');
+    } catch (err) {
+      Alert.alert('Backup', err instanceof Error ? err.message : 'Backup fehlgeschlagen.');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
   const removeExport = (exportId: string) => {
     Alert.alert('Export löschen', 'Gespeicherten Export wirklich entfernen?', [
       { text: 'Abbrechen', style: 'cancel' },
@@ -238,6 +252,12 @@ export default function BautagebuchHomeScreen() {
           variant="secondary"
           disabled={!templateId}
           onPress={() => router.push('/bautagebuch/setup')}
+        />
+        <PrimaryButton
+          label={backupBusy ? 'Backup wird erstellt…' : 'Backup exportieren (ZIP)'}
+          variant="secondary"
+          disabled={backupBusy || !templateId}
+          onPress={() => void exportBackup()}
         />
       </View>
 

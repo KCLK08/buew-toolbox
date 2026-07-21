@@ -7,7 +7,7 @@ import {
   ETB_TEMPLATE_NAME,
   buildEtbSetupModel
 } from '../lib/etb-template.js';
-import { scanTemplatePdfLite } from '../lib/pdf-scan-lite';
+import { scanTemplatePdfLite, detectedFieldsNeedRescan, ETB_SCAN_VERSION } from '../lib/pdf-scan-lite';
 import {
   getDetectedFields,
   getSetupModel,
@@ -33,7 +33,12 @@ export async function ensureBuiltinTemplate(): Promise<{
 
   if (existing) {
     const setupModel = await getSetupModel(existing.templateId);
-    if (setupModel && Number(setupModel.version || 0) >= ETB_SETUP_VERSION) {
+    const detectedFields = await getDetectedFields(existing.templateId);
+    const needsRescan =
+      detectedFieldsNeedRescan(detectedFields) ||
+      !setupModel ||
+      Number(setupModel.version || 0) < ETB_SETUP_VERSION;
+    if (setupModel && Number(setupModel.version || 0) >= ETB_SETUP_VERSION && !needsRescan) {
       return { templateId: existing.templateId, setupModel };
     }
   }
