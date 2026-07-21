@@ -7,7 +7,7 @@
 | Bereich | PWA Status | Expo Status (vor Parität) | Aufgabe / Umsetzung |
 |---------|------------|---------------------------|---------------------|
 | **Template-System** | Builtin `Vorlage-eBTB.pdf`, Setup v6, Dexie | Download + `scanTemplatePdfLite`, SQLite | ✅ Beibehalten; Lite-Scan bleibt (kein pdfjs) |
-| **PDF Scan** | pdf-lib + pdfjs, rects, options, Canvas | Nur pdf-lib, keine rects/options | ✅ Dropdown/Radio-Optionen via pdf-lib; Auto-Re-Scan |
+| **PDF Scan** | pdf-lib + pdfjs, rects, options, Canvas | Nur pdf-lib, keine rects/options | ✅ Vollständiger pdfjs-Scan (rects, Seiten, Label-Kandidaten) |
 | **Setup Editor** | Canvas-Feld-Highlights | Text-Editor, Autosave 420 ms | ✅ pdf.js-Vorschau, aktives Feld-Banner, Seitennavigation |
 | **Run Wizard** | 6 Sektionen, Autosave 450 ms, Pflichtfelder | Wizard ohne Export-Sperre, sofortiges Speichern | ✅ Pflichtfeld-Logik, Autosave 450 ms, Stepper |
 | **Tabellen** | Spezial-UI Personal/Leistung | Generische Tabellen | ✅ Zeilenzähler, Uhrzeit, Multiline Leistungsblock |
@@ -24,7 +24,7 @@
 ## Bewusst nicht umgesetzt (Scope)
 
 - **WebView-PWA-Einbettung** — ausgeschlossen
-- **Vollständiger pdfjs-Scan / Canvas-Feld-Overlays** — rects/Labels weiterhin PWA-only; Expo zeigt Seite + Banner, Overlays nur mit rect-Daten
+- **Canvas-Feld-Overlays im Run-Wizard** — Run-Vorschau nutzt WebView-Embed; PWA rendert Werte auf Canvas
 - **Komplette Ordner-Umstruktur** (`src/app/home.tsx` …) — unnötig; bestehende Expo-Router-Struktur erweitert
 - **Dark Mode aktiv** — Tokens vorhanden, Aktivierung separat
 - **Signatur-Erfassung** — in PWA ebenfalls übersprungen
@@ -35,5 +35,5 @@
 - `hooks/useRunAutosave.ts`
 - `components/PdfPreviewPanel.tsx`, `components/BautagebuchRunCard.tsx`, `components/SetupPdfFieldPreview.tsx`
 - `services/backupExportService.ts` (ZIP export + restore), `services/templateService.ts` (Re-Scan)
-- `lib/pdf-scan-lite.ts` (Dropdown-Optionen)
+- `lib/pdf-scan.ts` (pdfjs rects/labels), `lib/pdf-scan-lite.ts` (Fallback)
 - Setup: `SetupEditor.tsx`, `setup.tsx` (PDF-Vorschau)
