@@ -9,7 +9,7 @@ export default {
     }),
     paths: {
       relative: true,
-      base: '/baustellen-tools/sitereport'
+      base: '/buew-toolbox/sitereport'
     }
   }
 };

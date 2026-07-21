@@ -3,9 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/baustellen-tools/apple-touch-icon.png" />
-    <link rel="manifest" href="/baustellen-tools/manifest.webmanifest" />
-    <title>BÜW Toolbox</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="/buew-toolbox/apple-touch-icon.png" />
+    <link rel="manifest" href="/buew-toolbox/manifest.webmanifest" />
+    <title>BÜW-Toolbox</title>
     <style>
       :root {
         --bg: #f3efe7;
@@ -49,39 +49,18 @@
         font-size: 16px;
         line-height: 1.5;
       }
-      .hero-card {
-        background: var(--panel);
-        border: 1px solid var(--border);
-        border-radius: 18px;
-        padding: 18px;
-        box-shadow: 0 20px 40px rgba(23, 21, 18, 0.1);
-      }
-      .hero-card h3 {
-        margin: 0 0 6px;
-        font-size: 18px;
-      }
-      .pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        background: #fff;
-        border: 1px solid var(--border);
-        color: var(--accent-2);
-        padding: 6px 12px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 600;
-      }
       .grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
         gap: 18px;
+        align-items: stretch;
       }
       .card {
         background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 18px;
         padding: 18px;
+        box-sizing: border-box;
         box-shadow: 0 14px 30px rgba(23, 21, 18, 0.08);
         transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
         position: relative;
@@ -99,6 +78,9 @@
         display: block;
         color: inherit;
         text-decoration: none;
+      }
+      .card-link .card {
+        height: 100%;
       }
       .card-link:hover .card,
       .card-link:focus .card {
@@ -154,43 +136,32 @@
     <div class="page">
       <div class="hero">
         <div>
-          <h1>BÜW Toolbox</h1>
+          <h1>BÜW-Toolbox</h1>
           <p class="sub">Zentrale Übersicht für digitale Baustellen‑Workflows und Dokumentation.</p>
         </div>
       </div>
 
       <div class="grid">
-        <a class="card-link" href="/baustellen-tools/sitereport/">
+        <a class="card-link" href="/buew-toolbox/sitereport/">
           <div class="card">
             <div class="card-header">
               <div class="icon">
-                <img src="/baustellen-tools/sitereport/icons/icon-192.png" alt="SiteReport Icon" />
+                <img src="/buew-toolbox/sitereport/icons/icon-192.png" alt="SiteReport Icon" />
               </div>
               <h2>SiteReport</h2>
             </div>
             <p>Foto‑basierte Protokolle mit XLSX‑Export.</p>
           </div>
         </a>
-        <a class="card-link" href="/baustellen-tools/tool-platzhalter-2/">
+        <a class="card-link" href="/buew-toolbox/bautagebuch/">
           <div class="card">
             <div class="card-header">
               <div class="icon">
-                <img src="/baustellen-tools/icon-192.png" alt="Tool 2 Icon" />
+                <img src="/buew-toolbox/bautagebuch/icons/BautagebuchV2.png" alt="Bautagebuch Icon" />
               </div>
-              <h2>Tool 2</h2>
+              <h2>Bautagebuch</h2>
             </div>
-            <p>Demnächst verfügbar.</p>
-          </div>
-        </a>
-        <a class="card-link" href="/baustellen-tools/tool-platzhalter-3/">
-          <div class="card">
-            <div class="card-header">
-              <div class="icon">
-                <img src="/baustellen-tools/icon-192.png" alt="Tool 3 Icon" />
-              </div>
-              <h2>Tool 3</h2>
-            </div>
-            <p>Demnächst verfügbar.</p>
+            <p>AcroForm-Tool mit Auto-Erkennung, Guided Flow und sauberem PDF-Export.</p>
           </div>
         </a>
       </div>
