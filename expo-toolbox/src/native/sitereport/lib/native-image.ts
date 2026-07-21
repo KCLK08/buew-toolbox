@@ -1,3 +1,5 @@
+import { Image } from 'react-native';
+
 export function base64ToBytes(base64: string): Uint8Array {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -11,4 +13,14 @@ export function guessImageExtension(uri: string, mimeType = ''): 'png' | 'jpg' {
   const lower = `${uri} ${mimeType}`.toLowerCase();
   if (lower.includes('png')) return 'png';
   return 'jpg';
+}
+
+export function getImageSizeFromDataUrl(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    Image.getSize(
+      dataUrl,
+      (width, height) => resolve({ width: width || 1, height: height || 1 }),
+      () => resolve({ width: 140, height: 70 })
+    );
+  });
 }

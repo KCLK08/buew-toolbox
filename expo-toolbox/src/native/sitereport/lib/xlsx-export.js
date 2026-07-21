@@ -1,5 +1,7 @@
 import ExcelJS from 'exceljs';
 
+import { getImageSizeFromDataUrl } from './native-image';
+
 export async function exportToXlsxData({
   protocolTitle,
   projectName,
@@ -157,7 +159,42 @@ async function buildWorkbook({
   });
 
   if (logoDataUrl) {
-    // Logo embedding skipped in native v1
+    const { base64, extension } = extractImageData(logoDataUrl);
+    if (base64) {
+      const logoId = workbook.addImage({ base64, extension });
+      const { width: logoW, height: logoH } = await getImageSizeFromDataUrl(logoDataUrl);
+      const maxLogoW = 140;
+      const maxLogoH = 70;
+      const scale = Math.min(maxLogoW / logoW, maxLogoH / logoH, 1);
+      const drawW = logoW * scale;
+      const drawH = logoH * scale;
+      const logoMargin = 8;
+
+      const row1 = worksheet.getRow(1);
+      const textHeightPx = headerLines.length * 18 + 16;
+      row1.height = Math.max(
+        row1.height || 18,
+        rowHeightFromPx(Math.max(drawH + logoMargin * 2, textHeightPx))
+      );
+
+      const columnWidthsPx = [];
+      for (let i = 1; i <= totalCols; i += 1) {
+        const width = worksheet.getColumn(i).width || 10;
+        columnWidthsPx.push(colPx(width));
+      }
+      const totalWidthPx = columnWidthsPx.reduce((sum, w) => sum + w, 0);
+      const logoX = Math.max(0, totalWidthPx - drawW - logoMargin);
+      const { col: logoCol, offset: logoOffset } = pxToColOffset(logoX, columnWidthsPx);
+      const rowHeightPx = rowPx(row1.height || 18);
+      const logoY = Math.max(0, logoMargin);
+      const rowOffset = logoY / rowHeightPx;
+
+      worksheet.addImage(logoId, {
+        tl: { col: logoCol + logoOffset, row: 0 + rowOffset },
+        ext: { width: Math.max(1, drawW), height: Math.max(1, drawH) },
+        editAs: 'oneCell'
+      });
+    }
   }
   if (!logoDataUrl) {
     const row1 = worksheet.getRow(1);
@@ -305,16 +342,6 @@ function getImageExtension(mime) {
   if (mime.includes('heic') || mime.includes('heif')) return 'jpeg';
   return 'jpeg';
 }
-
-function getImageSize(dataUrl) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve({ width: img.width || 1, height: img.height || 1 });
-    img.onerror = () => resolve({ width: 1, height: 1 });
-    img.src = dataUrl;
-  });
-}
-
 function stripDataUrlPrefix(dataUrl) {
   const idx = dataUrl.indexOf(',');
   return idx === -1 ? dataUrl : dataUrl.slice(idx + 1);

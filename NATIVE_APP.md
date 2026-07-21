@@ -22,11 +22,12 @@ Die Expo-App ist eine **eigenständige native Anwendung**, die dieselben Werkzeu
 | Foto-Einträge erfassen | ✅ |
 | PDF-Export | ✅ |
 | XLSX-Export | ✅ |
-| Format-Builder / Templates | 🔜 |
-| Firmenlogo im Export | 🔜 |
+| Format-Builder / Templates | ✅ |
+| Firmenlogo im Export | ✅ |
+| Export-Cache / Liste | 🔜 |
 
 ## Nächste Schritte
 
-1. SiteReport: Format-Builder, Logo, Export-Cache
+1. SiteReport: Export-Cache / Liste
 2. Bautagebuch: Setup-Editor, Live-PDF-Vorschau
 3. Backup/Restore analog PWA

@@ -3,6 +3,7 @@ import * as Sharing from 'expo-sharing';
 
 import { uint8ToBase64 } from '../../../lib/binary';
 import type { SiteReportProtocol } from '../db/database';
+import { loadLogo } from '../db/database';
 import { guessImageExtension } from '../lib/native-image';
 import { exportToPdfData } from '../lib/pdf.js';
 import { exportToXlsxData } from '../lib/xlsx-export.js';
@@ -26,14 +27,15 @@ async function prepareEntries(protocol: SiteReportProtocol) {
   );
 }
 
-function exportPayload(protocol: SiteReportProtocol, entries: Awaited<ReturnType<typeof prepareEntries>>) {
+async function exportPayload(protocol: SiteReportProtocol, entries: Awaited<ReturnType<typeof prepareEntries>>) {
+  const logoDataUrl = await loadLogo();
   return {
     protocolTitle: protocol.protocolTitle,
     projectName: protocol.projectName,
     protocolDate: protocol.protocolDate,
     protocolDescription: protocol.protocolDescription,
     attendees: protocol.attendees,
-    logoDataUrl: '',
+    logoDataUrl,
     columns: protocol.columns,
     entries
   };
@@ -51,7 +53,7 @@ async function writeAndShare(path: string, bytes: Uint8Array, mimeType: string, 
 
 export async function exportProtocolPdf(protocol: SiteReportProtocol): Promise<string> {
   const entries = await prepareEntries(protocol);
-  const result = await exportToPdfData(exportPayload(protocol, entries));
+  const result = await exportToPdfData(await exportPayload(protocol, entries));
   const outDir = `${FileSystem.documentDirectory}sitereport/exports/`;
   await FileSystem.makeDirectoryAsync(outDir, { intermediates: true });
   const outPath = `${outDir}${result.filename}`;
@@ -60,7 +62,7 @@ export async function exportProtocolPdf(protocol: SiteReportProtocol): Promise<s
 
 export async function exportProtocolXlsx(protocol: SiteReportProtocol): Promise<string> {
   const entries = await prepareEntries(protocol);
-  const result = await exportToXlsxData(exportPayload(protocol, entries));
+  const result = await exportToXlsxData(await exportPayload(protocol, entries));
   const outDir = `${FileSystem.documentDirectory}sitereport/exports/`;
   await FileSystem.makeDirectoryAsync(outDir, { intermediates: true });
   const outPath = `${outDir}${result.filename}`;

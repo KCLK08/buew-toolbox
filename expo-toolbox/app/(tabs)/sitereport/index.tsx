@@ -1,27 +1,59 @@
 import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, StyleSheet, Text, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 
 import { EmptyState, Fab, ListItem, PrimaryButton, Screen, TextField } from '../../../src/components/mobile';
 import { colors, typography } from '../../../src/constants/theme';
 import {
+  clearLogo,
   createProtocol,
+  getActiveColumns,
   initSiteReportDatabase,
   listProtocols,
-  todayDe
+  listTemplates,
+  loadLogo,
+  loadSettings,
+  saveLogo,
+  saveSettings,
+  todayDe,
+  type SiteReportColumn,
+  type SiteReportTemplate
 } from '../../../src/native/sitereport/db/database';
 
 export default function SiteReportHomeScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [protocols, setProtocols] = useState<Awaited<ReturnType<typeof listProtocols>>>([]);
+  const [templates, setTemplates] = useState<SiteReportTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [columns, setColumns] = useState<SiteReportColumn[]>([]);
+  const [logoDataUrl, setLogoDataUrl] = useState('');
   const [title, setTitle] = useState('');
   const [project, setProject] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     await initSiteReportDatabase();
-    setProtocols(await listProtocols());
+    const [nextProtocols, nextTemplates, settings, logo] = await Promise.all([
+      listProtocols(),
+      listTemplates(),
+      loadSettings(),
+      loadLogo()
+    ]);
+    setProtocols(nextProtocols);
+    setTemplates(nextTemplates);
+    setLogoDataUrl(logo);
+    const templateId = settings?.selectedTemplateId || nextTemplates[0]?.id || '';
+    setSelectedTemplateId(templateId);
+    if (settings?.columns?.length) {
+      setColumns(settings.columns);
+    } else if (templateId) {
+      const tpl = nextTemplates.find((row) => row.id === templateId);
+      setColumns(tpl?.columns ?? (await getActiveColumns()));
+    } else {
+      setColumns(await getActiveColumns());
+    }
     setLoading(false);
   }, []);
 
@@ -29,11 +61,47 @@ export default function SiteReportHomeScreen() {
     void load();
   }, [load]);
 
+  const selectTemplate = async (templateId: string) => {
+    const tpl = templates.find((row) => row.id === templateId);
+    if (!tpl) return;
+    setSelectedTemplateId(templateId);
+    setColumns(tpl.columns);
+    await saveSettings({ selectedTemplateId: templateId, columns: tpl.columns });
+  };
+
+  const pickLogo = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Fotos', 'Zugriff auf die Fotobibliothek ist erforderlich.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.85,
+      base64: true
+    });
+    if (result.canceled || !result.assets[0]?.base64) return;
+    const mime = result.assets[0].mimeType?.includes('png') ? 'image/png' : 'image/jpeg';
+    const dataUrl = `data:${mime};base64,${result.assets[0].base64}`;
+    await saveLogo(dataUrl);
+    setLogoDataUrl(dataUrl);
+  };
+
+  const removeLogo = async () => {
+    await clearLogo();
+    setLogoDataUrl('');
+  };
+
   const startProtocol = async () => {
+    if (!selectedTemplateId) {
+      Alert.alert('Format', 'Bitte zuerst ein Tabellenformat auswählen.');
+      return;
+    }
     const protocol = await createProtocol({
       protocolTitle: title.trim() || 'Neues Protokoll',
       projectName: project.trim() || 'Projekt',
-      protocolDate: todayDe()
+      protocolDate: todayDe(),
+      columns
     });
     setTitle('');
     setProject('');
@@ -42,11 +110,57 @@ export default function SiteReportHomeScreen() {
 
   return (
     <Screen title="SiteReport" subtitle="Foto-Protokolle mit Export" scroll refreshing={loading} onRefresh={load}>
-      <View style={styles.newCard}>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Firmenlogo (optional)</Text>
+        {logoDataUrl ? (
+          <>
+            <Image source={{ uri: logoDataUrl }} style={styles.logo} resizeMode="contain" />
+            <View style={styles.row}>
+              <PrimaryButton label="Logo ändern" variant="secondary" onPress={() => void pickLogo()} />
+              <PrimaryButton label="Logo entfernen" variant="ghost" onPress={() => void removeLogo()} />
+            </View>
+          </>
+        ) : (
+          <PrimaryButton label="Logo hochladen" variant="secondary" onPress={() => void pickLogo()} />
+        )}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Tabellenformat</Text>
+        {templates.length === 0 ? (
+          <Text style={styles.muted}>Noch kein Format vorhanden.</Text>
+        ) : (
+          templates.map((tpl) => (
+            <ListItem
+              key={tpl.id}
+              title={tpl.name}
+              subtitle={`${tpl.columns.length} Spalten`}
+              meta={selectedTemplateId === tpl.id ? 'Aktiv' : undefined}
+              onPress={() => void selectTemplate(tpl.id)}
+            />
+          ))
+        )}
+        <View style={styles.row}>
+          <PrimaryButton
+            label="Neues Format"
+            variant="secondary"
+            onPress={() => router.push('/sitereport/format-builder?mode=new')}
+          />
+          {selectedTemplateId ? (
+            <PrimaryButton
+              label="Format bearbeiten"
+              variant="ghost"
+              onPress={() => router.push(`/sitereport/format-builder?mode=edit&templateId=${selectedTemplateId}`)}
+            />
+          ) : null}
+        </View>
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.cardTitle}>Neues Protokoll</Text>
         <TextField label="Titel" value={title} onChangeText={setTitle} />
         <TextField label="Projekt" value={project} onChangeText={setProject} />
-        <PrimaryButton label="Protokoll starten" onPress={() => void startProtocol()} />
+        <PrimaryButton label="Protokoll starten" disabled={!selectedTemplateId} onPress={() => void startProtocol()} />
       </View>
 
       {protocols.length === 0 ? (
@@ -69,6 +183,9 @@ export default function SiteReportHomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  newCard: { gap: 12, marginBottom: 8 },
-  cardTitle: { ...typography.bodyStrong, color: colors.ink }
+  card: { gap: 12, marginBottom: 16 },
+  cardTitle: { ...typography.bodyStrong, color: colors.ink },
+  muted: { ...typography.body, color: colors.muted },
+  logo: { width: '100%', height: 96, borderRadius: 12, backgroundColor: colors.panel },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }
 });

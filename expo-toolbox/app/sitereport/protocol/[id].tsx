@@ -12,9 +12,20 @@ import {
 import {
   getProtocol,
   updateProtocol,
+  type SiteReportColumn,
   type SiteReportEntry,
   type SiteReportProtocol
 } from '../../../src/native/sitereport/db/database';
+
+function emptyFieldsFromColumns(columns: SiteReportColumn[]): Record<string, string | number> {
+  const fields: Record<string, string | number> = {};
+  for (const col of columns) {
+    if (!col.isPhoto) {
+      fields[col.name] = col.name.toLowerCase() === 'status' ? 'offen' : '';
+    }
+  }
+  return fields;
+}
 
 export default function SiteReportProtocolScreen() {
   const router = useRouter();
@@ -49,11 +60,7 @@ export default function SiteReportProtocolScreen() {
     const entry: SiteReportEntry = {
       id: `entry_${Date.now()}`,
       createdAt: new Date().toISOString(),
-      fields: {
-        Kilometer: '',
-        Beschreibung: '',
-        Status: 'offen'
-      },
+      fields: emptyFieldsFromColumns(protocol.columns),
       photoPath: result.assets[0].uri
     };
     await save({ ...protocol, entries: [entry, ...protocol.entries] });
@@ -75,6 +82,8 @@ export default function SiteReportProtocolScreen() {
       setExporting(null);
     }
   };
+
+  const dataColumns = protocol?.columns.filter((col) => !col.isPhoto) ?? [];
 
   if (!protocol) {
     return (
@@ -123,38 +132,42 @@ export default function SiteReportProtocolScreen() {
       {protocol.entries.map((entry) => (
         <View key={entry.id} style={styles.entryCard}>
           {entry.photoPath ? <Image source={{ uri: entry.photoPath }} style={styles.photo} /> : null}
-          <TextField
-            label="Kilometer"
-            value={String(entry.fields.Kilometer ?? '')}
-            onChangeText={(value) => {
-              const entries = protocol.entries.map((row) =>
-                row.id === entry.id ? { ...row, fields: { ...row.fields, Kilometer: value } } : row
+          {dataColumns.map((col) => {
+            const value = String(entry.fields[col.name] ?? '');
+            if (col.name.toLowerCase() === 'status') {
+              return (
+                <ListItem
+                  key={col.id}
+                  title={col.name}
+                  subtitle={value || 'offen'}
+                  onPress={() => {
+                    const nextStatus = value === 'offen' ? 'erledigt' : 'offen';
+                    const entries = protocol.entries.map((row) =>
+                      row.id === entry.id
+                        ? { ...row, fields: { ...row.fields, [col.name]: nextStatus } }
+                        : row
+                    );
+                    void save({ ...protocol, entries });
+                  }}
+                />
               );
-              void save({ ...protocol, entries });
-            }}
-          />
-          <TextField
-            label="Beschreibung"
-            value={String(entry.fields.Beschreibung ?? '')}
-            onChangeText={(value) => {
-              const entries = protocol.entries.map((row) =>
-                row.id === entry.id ? { ...row, fields: { ...row.fields, Beschreibung: value } } : row
-              );
-              void save({ ...protocol, entries });
-            }}
-            multiline
-          />
-          <ListItem
-            title="Status"
-            subtitle={String(entry.fields.Status ?? '')}
-            onPress={() => {
-              const nextStatus = entry.fields.Status === 'offen' ? 'erledigt' : 'offen';
-              const entries = protocol.entries.map((row) =>
-                row.id === entry.id ? { ...row, fields: { ...row.fields, Status: nextStatus } } : row
-              );
-              void save({ ...protocol, entries });
-            }}
-          />
+            }
+            return (
+              <TextField
+                key={col.id}
+                label={col.name}
+                value={value}
+                keyboardType={col.type === 'number' ? 'decimal-pad' : 'default'}
+                onChangeText={(nextValue) => {
+                  const entries = protocol.entries.map((row) =>
+                    row.id === entry.id ? { ...row, fields: { ...row.fields, [col.name]: nextValue } } : row
+                  );
+                  void save({ ...protocol, entries });
+                }}
+                multiline={col.type === 'text' && col.name.length > 12}
+              />
+            );
+          })}
         </View>
       ))}
     </Screen>

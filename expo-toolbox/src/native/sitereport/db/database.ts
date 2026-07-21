@@ -38,12 +38,28 @@ function createId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-const defaultColumns: SiteReportColumn[] = [
+export const defaultColumns: SiteReportColumn[] = [
   { id: 'col_photo', name: 'Bilder', type: 'text', isPhoto: true },
   { id: 'col_km', name: 'Kilometer', type: 'number', isPhoto: false },
   { id: 'col_desc', name: 'Beschreibung', type: 'text', isPhoto: false },
   { id: 'col_status', name: 'Status', type: 'text', isPhoto: false }
 ];
+
+export type SiteReportTemplate = {
+  id: string;
+  createdAt: string;
+  name: string;
+  columns: SiteReportColumn[];
+};
+
+export type SiteReportSettings = {
+  selectedTemplateId: string;
+  columns: SiteReportColumn[];
+};
+
+function cloneColumns(columns: SiteReportColumn[]): SiteReportColumn[] {
+  return columns.map((col) => ({ ...col }));
+}
 
 async function getDb() {
   if (!dbPromise) {
@@ -62,7 +78,18 @@ async function getDb() {
           entriesJson TEXT NOT NULL,
           deleted_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS settings (
+          id TEXT PRIMARY KEY NOT NULL,
+          value TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS templates (
+          id TEXT PRIMARY KEY NOT NULL,
+          createdAt TEXT NOT NULL,
+          name TEXT NOT NULL,
+          columnsJson TEXT NOT NULL
+        );
       `);
+      await seedDefaultTemplate(db);
       return db;
     });
   }
@@ -85,8 +112,110 @@ function rowToProtocol(row: Record<string, unknown>): SiteReportProtocol {
   };
 }
 
+async function seedDefaultTemplate(db: SQLite.SQLiteDatabase) {
+  const count = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM templates');
+  if ((count?.count ?? 0) > 0) return;
+
+  const template: SiteReportTemplate = {
+    id: createId('tpl'),
+    createdAt: nowIso(),
+    name: 'Standard Baustelle',
+    columns: cloneColumns(defaultColumns)
+  };
+  await db.runAsync(
+    'INSERT INTO templates (id, createdAt, name, columnsJson) VALUES (?, ?, ?, ?)',
+    template.id,
+    template.createdAt,
+    template.name,
+    JSON.stringify(template.columns)
+  );
+  await saveSettings({
+    selectedTemplateId: template.id,
+    columns: cloneColumns(template.columns)
+  });
+}
+
+function rowToTemplate(row: Record<string, unknown>): SiteReportTemplate {
+  return {
+    id: String(row.id),
+    createdAt: String(row.createdAt),
+    name: String(row.name),
+    columns: JSON.parse(String(row.columnsJson || '[]')) as SiteReportColumn[]
+  };
+}
+
 export async function initSiteReportDatabase() {
   await getDb();
+}
+
+export async function loadSettings(): Promise<SiteReportSettings | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM settings WHERE id = ?', 'current');
+  if (!row?.value) return null;
+  return JSON.parse(row.value) as SiteReportSettings;
+}
+
+export async function saveSettings(value: SiteReportSettings): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT OR REPLACE INTO settings (id, value) VALUES (?, ?)',
+    'current',
+    JSON.stringify(value)
+  );
+}
+
+export async function loadLogo(): Promise<string> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM settings WHERE id = ?', 'logo');
+  return row?.value ?? '';
+}
+
+export async function saveLogo(value: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('INSERT OR REPLACE INTO settings (id, value) VALUES (?, ?)', 'logo', value);
+}
+
+export async function clearLogo(): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM settings WHERE id = ?', 'logo');
+}
+
+export async function listTemplates(): Promise<SiteReportTemplate[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    'SELECT * FROM templates ORDER BY createdAt DESC'
+  );
+  return rows.map(rowToTemplate);
+}
+
+export async function getTemplate(id: string): Promise<SiteReportTemplate | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<Record<string, unknown>>('SELECT * FROM templates WHERE id = ?', id);
+  return row ? rowToTemplate(row) : null;
+}
+
+export async function addTemplate(record: SiteReportTemplate): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT INTO templates (id, createdAt, name, columnsJson) VALUES (?, ?, ?, ?)',
+    record.id,
+    record.createdAt,
+    record.name,
+    JSON.stringify(record.columns)
+  );
+}
+
+export async function updateTemplate(record: SiteReportTemplate): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE templates SET name = ?, columnsJson = ? WHERE id = ?', record.name, JSON.stringify(record.columns), record.id);
+}
+
+export async function getActiveColumns(): Promise<SiteReportColumn[]> {
+  const settings = await loadSettings();
+  if (settings?.columns?.length) return cloneColumns(settings.columns);
+  const templates = await listTemplates();
+  if (templates[0]?.columns?.length) return cloneColumns(templates[0].columns);
+  return cloneColumns(defaultColumns);
 }
 
 export async function listProtocols(): Promise<SiteReportProtocol[]> {
@@ -111,9 +240,11 @@ export async function createProtocol(input: {
   protocolDate: string;
   protocolDescription?: string;
   attendees?: string;
+  columns?: SiteReportColumn[];
 }): Promise<SiteReportProtocol> {
   const db = await getDb();
   const timestamp = nowIso();
+  const columns = input.columns?.length ? cloneColumns(input.columns) : await getActiveColumns();
   const protocol: SiteReportProtocol = {
     id: createId('protocol'),
     createdAt: timestamp,
@@ -123,7 +254,7 @@ export async function createProtocol(input: {
     protocolDate: input.protocolDate,
     protocolDescription: input.protocolDescription?.trim() || '',
     attendees: input.attendees?.trim() || '',
-    columns: defaultColumns,
+    columns,
     entries: [],
     deleted_at: null
   };

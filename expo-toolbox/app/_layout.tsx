@@ -44,6 +44,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="bautagebuch/run/[id]" />
         <Stack.Screen name="sitereport/protocol/[id]" />
+        <Stack.Screen name="sitereport/format-builder" />
       </Stack>
     </GestureHandlerRootView>
   );
