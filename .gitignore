@@ -3,5 +3,8 @@ dist/
 .DS_Store
 expo-toolbox/.expo/
 expo-toolbox/dist/
+expo-toolbox/dist-apk/
 expo-toolbox/web-build/
+expo-toolbox/android/
+expo-toolbox/ios/
 expo-toolbox/.env

@@ -17,6 +17,16 @@ Siehe [`EXPO_UI_REDESIGN.md`](../EXPO_UI_REDESIGN.md).
 - Mobile Design-System unter `src/components/mobile/`
 - Fotoaufnahme über Kamera (`expo-image-picker`) → Offline-Speicherung
 
+## Android APK (GitHub Actions)
+
+Bei Änderungen an `expo-toolbox/` oder `shared/` (Push/PR auf `main`) baut GitHub automatisch eine **Debug-APK**.
+
+- Workflow: `.github/workflows/android-apk.yml`
+- Artifact: `buew-toolbox-android-apk` (ca. 30 Tage verfügbar)
+- Manuell: Actions → **Build Android APK** → Run workflow
+
+Optional lokal/EAS: `eas.json` (Profile `preview` = APK).
+
 ## Offline-Architektur
 
 Siehe `/OFFLINE.md` (inkl. Phase-2 Backup-Härtung), `/OFFLINE_DATA_MODEL.md` und `/DATA_MODEL_PARITY_REPORT.md`.
