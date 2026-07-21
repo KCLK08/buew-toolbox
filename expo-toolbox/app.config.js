@@ -36,6 +36,7 @@ module.exports = ({ config }) => ({
     'expo-router',
     'expo-font',
     'expo-web-browser',
+    'expo-sqlite',
     [
       'expo-system-ui',
       {

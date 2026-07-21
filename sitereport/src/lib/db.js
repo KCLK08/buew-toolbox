@@ -170,7 +170,8 @@ export async function deleteExportsByProtocol(protocolId) {
 
 export async function listProtocols() {
   await ensureDbReady();
-  return db.protocols.orderBy('updatedAt').reverse().toArray();
+  const rows = await db.protocols.orderBy('updatedAt').reverse().toArray();
+  return rows.filter((row) => !row?.deleted_at);
 }
 
 export async function addProtocol(record) {
@@ -185,7 +186,13 @@ export async function getProtocol(id) {
 
 export async function deleteProtocol(id) {
   await ensureDbReady();
-  await db.protocols.delete(id);
+  const existing = await db.protocols.get(id);
+  if (!existing) return;
+  await db.protocols.put({
+    ...existing,
+    deleted_at: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
 }
 
 export async function listTemplates() {

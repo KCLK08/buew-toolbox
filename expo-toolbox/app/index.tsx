@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   ScrollView,
@@ -10,15 +10,19 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { OfflineStatusBanner } from '../src/components/OfflineStatusBanner';
 import { ToolCard } from '../src/components/ToolCard';
 import { ToolboxBackground } from '../src/components/ToolboxBackground';
 import { colors, spacing } from '../src/constants/theme';
 import { TOOLBOX_TOOLS } from '../src/constants/tools';
+import { useOfflineBootstrap } from '../src/hooks/useOfflineBootstrap';
 
 export default function ToolboxHomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const offline = useOfflineBootstrap();
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const fadeIn = useRef(new Animated.Value(0)).current;
   const slideUp = useRef(new Animated.Value(18)).current;
 
@@ -67,8 +71,17 @@ export default function ToolboxHomeScreen() {
             <Text style={styles.sub}>
               Zentrale Übersicht für digitale Baustellen‑Workflows und Dokumentation.
             </Text>
+            <Text style={styles.offlineHint}>Offline · Daten bleiben lokal auf diesem Gerät</Text>
           </View>
         </Animated.View>
+
+        {!bannerDismissed ? (
+          <OfflineStatusBanner
+            report={offline.report}
+            error={offline.error}
+            onDismiss={() => setBannerDismissed(true)}
+          />
+        ) : null}
 
         <Animated.View
           style={[
@@ -120,6 +133,12 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     fontFamily: 'SpaceGrotesk_400Regular',
     marginBottom: 12
+  },
+  offlineHint: {
+    color: colors.accent2,
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    opacity: 0.85
   },
   grid: {
     flexDirection: 'row',

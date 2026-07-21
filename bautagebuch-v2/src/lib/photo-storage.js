@@ -111,7 +111,11 @@ export async function preparePhotoDocForStorage(runId, photoDoc = {}) {
       entryId,
       mimeType,
       data,
-      updatedAt: nowIso()
+      sizeBytes: data.byteLength,
+      status: 'ready',
+      createdAt,
+      updatedAt: nowIso(),
+      deleted_at: null
     });
   }
 
@@ -145,7 +149,7 @@ export async function hydratePhotoDoc(runId, photoDoc = {}, loadAsset) {
 
     if (typeof loadAsset === 'function' && normalizedRunId) {
       const asset = await loadAsset(photoAssetKey(normalizedRunId, entryId));
-      if (asset?.data) {
+      if (asset && !asset.deleted_at && asset?.data) {
         photoBlob = revivePhotoBlob(
           {
             mimeType: asset.mimeType || mimeType,
