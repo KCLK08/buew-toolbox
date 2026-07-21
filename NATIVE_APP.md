@@ -12,7 +12,9 @@ Die Expo-App ist eine **eigenständige native Anwendung**, die dieselben Werkzeu
 | Wetter-Sync | ✅ |
 | PDF-Export (BTB / Fotodoku / Merge) | ✅ |
 | Fotodokumentation | ✅ |
-| Setup-Editor / Live-PDF-Vorschau | 🔜 |
+| Setup-Editor | ✅ |
+| Live-PDF-Vorschau (Canvas) | 🔜 |
+| PDF-Vorschau (Export) | ✅ |
 
 ## SiteReport (nativ)
 
@@ -36,6 +38,6 @@ Die Expo-App ist eine **eigenständige native Anwendung**, die dieselben Werkzeu
 
 ## Nächste Schritte
 
-1. Bautagebuch: Setup-Editor, Live-PDF-Vorschau
-2. On-Device-Tests: Export-Cache, Backup/Restore
+1. Live-PDF-Vorschau mit Feld-Overlays (optional, hoher Aufwand)
+2. On-Device-Tests: Setup-Editor, Export-Cache, Backup/Restore
 3. APK-Release nach Merge
