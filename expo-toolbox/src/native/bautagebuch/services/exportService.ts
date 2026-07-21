@@ -2,15 +2,33 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
 import { base64ToUint8Array, bytesToArrayBuffer, uint8ToBase64 } from '../../../lib/binary';
+import { nowIso } from '../../../lib/ids';
 import { buildFinalPdfBytes } from '../lib/pdf-export.js';
 import { buildPhotoDocPdfBytes, mergeBtbWithPhotoDoc } from '../lib/photo-doc.js';
-import { getRun, getSetupModel, getTemplate } from '../db/database';
+import { deleteExport, getExport, getRun, getSetupModel, getTemplate, upsertExportByRun } from '../db/database';
 import { getActiveTemplateBundle } from './templateService';
 import { readPhotoBytes } from './photoDocService';
 
 export type BautagebuchExportMode = 'btb' | 'photo' | 'merged';
 
-export async function exportRunPdf(runId: string, mode: BautagebuchExportMode = 'merged'): Promise<string> {
+async function buildPhotoEntries(run: Awaited<ReturnType<typeof getRun>>) {
+  const entries = run?.photoDoc?.entries || [];
+  const prepared = [];
+  for (const entry of entries) {
+    if (!entry.localPath) continue;
+    const bytes = await readPhotoBytes(entry.localPath);
+    prepared.push({
+      photoBlob: { bytes, mimeType: entry.mimeType || 'image/jpeg' }
+    });
+  }
+  return prepared;
+}
+
+async function buildRunPdfBytes(runId: string, mode: BautagebuchExportMode): Promise<{
+  bytes: Uint8Array;
+  safeTitle: string;
+  suffix: string;
+}> {
   const run = await getRun(runId);
   if (!run) {
     throw new Error('BTB-Lauf nicht gefunden.');
@@ -26,61 +44,87 @@ export async function exportRunPdf(runId: string, mode: BautagebuchExportMode = 
     encoding: FileSystem.EncodingType.Base64
   });
   const pdfBytes = base64ToUint8Array(base64);
-
-  let outputBytes: Uint8Array;
   const safeTitle = run.title.replace(/[^\w\-äöüÄÖÜß]+/g, '_').slice(0, 80);
 
   if (mode === 'photo') {
     const photoEntries = await buildPhotoEntries(run);
-    outputBytes = await (buildPhotoDocPdfBytes as unknown as (input: {
+    const bytes = await (buildPhotoDocPdfBytes as unknown as (input: {
       title: string;
       entries: Array<{ photoBlob: { bytes: Uint8Array; mimeType: string } }>;
     }) => Promise<Uint8Array>)({
       title: run.title,
       entries: photoEntries
     });
-  } else {
-    const filled = await buildFinalPdfBytes({
-      templateBlob: {
-        arrayBuffer: async () => bytesToArrayBuffer(pdfBytes)
-      },
-      setupModel,
-      runValues: run.values
-    });
-
-    if (mode === 'merged') {
-      const photoEntries = await buildPhotoEntries(run);
-      const photoEnabled = run.photoDoc?.enabled === true || photoEntries.length > 0;
-      const merged = await (mergeBtbWithPhotoDoc as unknown as (input: {
-        btbPdfBytes: Uint8Array;
-        photoDocEnabled: boolean;
-        photoEntries: Array<{ photoBlob: { bytes: Uint8Array; mimeType: string } }>;
-      }) => Promise<{ bytes: Uint8Array }>)({
-        btbPdfBytes: filled,
-        photoDocEnabled: photoEnabled,
-        photoEntries
-      });
-      outputBytes = merged.bytes;
-    } else {
-      outputBytes = filled;
-    }
+    return { bytes, safeTitle, suffix: '_Fotodoku' };
   }
 
-  const suffix = mode === 'photo' ? '_Fotodoku' : mode === 'merged' ? '_komplett' : '';
-  const outDir = `${FileSystem.documentDirectory}bautagebuch/exports/`;
-  await FileSystem.makeDirectoryAsync(outDir, { intermediates: true });
-  const outPath = `${outDir}${safeTitle || run.runId}${suffix}.pdf`;
-  await FileSystem.writeAsStringAsync(outPath, uint8ToBase64(outputBytes), {
-    encoding: FileSystem.EncodingType.Base64
+  const filled = await buildFinalPdfBytes({
+    templateBlob: {
+      arrayBuffer: async () => bytesToArrayBuffer(pdfBytes)
+    },
+    setupModel,
+    runValues: run.values
   });
 
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(outPath, {
-      mimeType: 'application/pdf',
-      dialogTitle: run.title
+  if (mode === 'merged') {
+    const photoEntries = await buildPhotoEntries(run);
+    const photoEnabled = run.photoDoc?.enabled === true || photoEntries.length > 0;
+    const merged = await (mergeBtbWithPhotoDoc as unknown as (input: {
+      btbPdfBytes: Uint8Array;
+      photoDocEnabled: boolean;
+      photoEntries: Array<{ photoBlob: { bytes: Uint8Array; mimeType: string } }>;
+    }) => Promise<{ bytes: Uint8Array }>)({
+      btbPdfBytes: filled,
+      photoDocEnabled: photoEnabled,
+      photoEntries
     });
+    return { bytes: merged.bytes, safeTitle, suffix: '_komplett' };
   }
 
+  return { bytes: filled, safeTitle, suffix: '' };
+}
+
+async function writeRunExport(runId: string, mode: BautagebuchExportMode): Promise<string> {
+  const { bytes, safeTitle, suffix } = await buildRunPdfBytes(runId, mode);
+  const outDir = `${FileSystem.documentDirectory}bautagebuch/exports/`;
+  await FileSystem.makeDirectoryAsync(outDir, { intermediates: true });
+  const fileName = `${safeTitle || runId}${suffix}.pdf`;
+  const outPath = `${outDir}${fileName}`;
+  await FileSystem.writeAsStringAsync(outPath, uint8ToBase64(bytes), {
+    encoding: FileSystem.EncodingType.Base64
+  });
+  await upsertExportByRun({
+    exportId: `export_${runId}`,
+    runId,
+    fileName,
+    filePath: outPath,
+    exportedAt: nowIso()
+  });
+  return outPath;
+}
+
+async function sharePdf(path: string, title: string) {
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(path, {
+      mimeType: 'application/pdf',
+      dialogTitle: title
+    });
+  }
+}
+
+export async function exportRunPdf(runId: string, mode: BautagebuchExportMode = 'merged'): Promise<string> {
+  const run = await getRun(runId);
+  if (!run) throw new Error('BTB-Lauf nicht gefunden.');
+  const outPath = await writeRunExport(runId, mode);
+  await sharePdf(outPath, run.title);
+  return outPath;
+}
+
+export async function previewRunPdf(runId: string): Promise<string> {
+  const run = await getRun(runId);
+  if (!run) throw new Error('BTB-Lauf nicht gefunden.');
+  const outPath = await writeRunExport(runId, 'btb');
+  await sharePdf(outPath, `${run.title} (Vorschau)`);
   return outPath;
 }
 
@@ -112,25 +156,24 @@ export async function exportSetupPreviewPdf(templateId: string): Promise<string>
     encoding: FileSystem.EncodingType.Base64
   });
 
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(outPath, {
-      mimeType: 'application/pdf',
-      dialogTitle: 'Setup-Vorschau'
-    });
-  }
-
+  await sharePdf(outPath, 'Setup-Vorschau');
   return outPath;
 }
 
-async function buildPhotoEntries(run: Awaited<ReturnType<typeof getRun>>) {
-  const entries = run?.photoDoc?.entries || [];
-  const prepared = [];
-  for (const entry of entries) {
-    if (!entry.localPath) continue;
-    const bytes = await readPhotoBytes(entry.localPath);
-    prepared.push({
-      photoBlob: { bytes, mimeType: entry.mimeType || 'image/jpeg' }
-    });
+export async function shareCachedExport(exportId: string): Promise<void> {
+  const record = await getExport(exportId);
+  if (!record) throw new Error('Export nicht gefunden.');
+  const info = await FileSystem.getInfoAsync(record.filePath);
+  if (!info.exists) {
+    await exportRunPdf(record.runId, 'merged');
+    return;
   }
-  return prepared;
+  await sharePdf(record.filePath, record.fileName);
+}
+
+export async function deleteCachedExport(exportId: string): Promise<void> {
+  const record = await getExport(exportId);
+  if (!record) return;
+  await FileSystem.deleteAsync(record.filePath, { idempotent: true });
+  await deleteExport(exportId);
 }

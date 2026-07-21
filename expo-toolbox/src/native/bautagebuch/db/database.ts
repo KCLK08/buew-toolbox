@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SQLite from 'expo-sqlite';
 
-import type { BautagebuchRun, BautagebuchTemplate, DetectedField, SetupModelRecord } from '../types';
+import type { BautagebuchExport, BautagebuchRun, BautagebuchTemplate, DetectedField, SetupModelRecord } from '../types';
 import { nowIso } from '../../../lib/ids';
 
 const DB_NAME = 'bautagebuch_v2_native.db';
@@ -430,4 +430,70 @@ export async function savePhotoAsset(input: {
 
 export function getBautagebuchStorageRoot(): string {
   return `${FileSystem.documentDirectory}bautagebuch/`;
+}
+
+function rowToExport(row: Record<string, unknown>): BautagebuchExport {
+  return {
+    exportId: String(row.exportId),
+    runId: String(row.runId),
+    fileName: String(row.fileName),
+    filePath: String(row.filePath),
+    exportedAt: String(row.exportedAt),
+    deleted_at: row.deleted_at ? String(row.deleted_at) : null
+  };
+}
+
+export async function listExports(): Promise<BautagebuchExport[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    'SELECT * FROM exports WHERE deleted_at IS NULL ORDER BY exportedAt DESC'
+  );
+  return rows.map(rowToExport);
+}
+
+export async function getExport(exportId: string): Promise<BautagebuchExport | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<Record<string, unknown>>(
+    'SELECT * FROM exports WHERE exportId = ? AND deleted_at IS NULL',
+    exportId
+  );
+  return row ? rowToExport(row) : null;
+}
+
+export async function getExportByRun(runId: string): Promise<BautagebuchExport | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<Record<string, unknown>>(
+    'SELECT * FROM exports WHERE runId = ? AND deleted_at IS NULL ORDER BY exportedAt DESC LIMIT 1',
+    runId
+  );
+  return row ? rowToExport(row) : null;
+}
+
+export async function upsertExportByRun(record: Omit<BautagebuchExport, 'deleted_at'>): Promise<BautagebuchExport> {
+  const db = await getDb();
+  const existing = await getExportByRun(record.runId);
+  const exportId = existing?.exportId || record.exportId || createId('export');
+  const next: BautagebuchExport = {
+    exportId,
+    runId: record.runId,
+    fileName: record.fileName,
+    filePath: record.filePath,
+    exportedAt: record.exportedAt,
+    deleted_at: null
+  };
+  await db.runAsync(
+    `INSERT OR REPLACE INTO exports (exportId, runId, fileName, filePath, exportedAt, deleted_at)
+     VALUES (?, ?, ?, ?, ?, NULL)`,
+    next.exportId,
+    next.runId,
+    next.fileName,
+    next.filePath,
+    next.exportedAt
+  );
+  return next;
+}
+
+export async function deleteExport(exportId: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE exports SET deleted_at = ? WHERE exportId = ?', nowIso(), exportId);
 }

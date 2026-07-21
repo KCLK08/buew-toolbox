@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 
 import { PrimaryButton, Screen } from '../../../src/components/mobile';
@@ -8,6 +8,7 @@ import { RunWizard } from '../../../src/native/bautagebuch/components/RunWizard'
 import { getRun, updateRun } from '../../../src/native/bautagebuch/db/database';
 import {
   exportRunPdf,
+  previewRunPdf,
   type BautagebuchExportMode
 } from '../../../src/native/bautagebuch/services/exportService';
 import { capturePhotoDocEntry } from '../../../src/native/bautagebuch/services/photoDocService';
@@ -22,6 +23,7 @@ export default function BautagebuchRunScreen() {
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [weatherBusy, setWeatherBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -91,6 +93,19 @@ export default function BautagebuchRunScreen() {
     }
   };
 
+  const runPreview = async () => {
+    if (!run) return;
+    setPreviewing(true);
+    try {
+      await previewRunPdf(run.runId);
+      Alert.alert('Vorschau', 'PDF-Vorschau wurde erstellt und kann geteilt werden.');
+    } catch (err) {
+      Alert.alert('Vorschau', err instanceof Error ? err.message : 'Vorschau fehlgeschlagen.');
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   const handleExport = () => {
     Alert.alert('PDF exportieren', 'Welche Version soll erstellt werden?', [
       { text: 'Abbrechen', style: 'cancel' },
@@ -153,11 +168,19 @@ export default function BautagebuchRunScreen() {
       subtitle="Guided Flow · PDF-Export"
       showBack
       footer={
-        <PrimaryButton
-          label={exporting ? 'PDF wird erstellt…' : 'PDF exportieren'}
-          disabled={exporting}
-          onPress={handleExport}
-        />
+        <View style={styles.footerRow}>
+          <PrimaryButton
+            label={previewing ? 'Vorschau…' : 'PDF-Vorschau'}
+            variant="secondary"
+            disabled={previewing || exporting}
+            onPress={() => void runPreview()}
+          />
+          <PrimaryButton
+            label={exporting ? 'PDF…' : 'PDF exportieren'}
+            disabled={exporting || previewing}
+            onPress={handleExport}
+          />
+        </View>
       }
     >
       <RunWizard
@@ -178,5 +201,6 @@ export default function BautagebuchRunScreen() {
 }
 
 const styles = StyleSheet.create({
-  error: { ...typography.body, color: colors.danger }
+  error: { ...typography.body, color: colors.danger },
+  footerRow: { flexDirection: 'row', gap: 8 }
 });

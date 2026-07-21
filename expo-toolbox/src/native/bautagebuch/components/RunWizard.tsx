@@ -6,6 +6,7 @@ import { Card, PrimaryButton, TextField } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
 import { normalizeClockTime } from '../lib/time-format.js';
 import { buildRunSections, sectionProgressState } from '../lib/setup-model.js';
+import { RunValuesPreview } from './RunValuesPreview';
 
 type RunSection = ReturnType<typeof buildRunSections>[number];
 
@@ -308,6 +309,8 @@ export function RunWizard({
         <Text style={styles.sectionTitle}>{section?.label}</Text>
         {renderSectionContent()}
       </Card>
+
+      <RunValuesPreview setupModel={setupModel} values={values} sectionIndex={sectionIndex} />
 
       <View style={styles.footerRow}>
         <PrimaryButton
