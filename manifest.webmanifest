@@ -1,20 +1,20 @@
 {
-  "name": "BÜW Toolbox",
-  "short_name": "BÜW Toolbox",
-  "start_url": "/baustellen-tools/",
-  "scope": "/baustellen-tools/",
+  "name": "BÜW-Toolbox",
+  "short_name": "BÜW-Toolbox",
+  "start_url": "/buew-toolbox/",
+  "scope": "/buew-toolbox/",
   "display": "standalone",
   "background_color": "#f3efe7",
   "theme_color": "#d3543c",
   "icons": [
     {
-      "src": "/baustellen-tools/icon-192.png",
+      "src": "/buew-toolbox/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/baustellen-tools/icon-512.png",
+      "src": "/buew-toolbox/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
