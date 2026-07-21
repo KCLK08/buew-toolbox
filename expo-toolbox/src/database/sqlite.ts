@@ -5,10 +5,29 @@ import { DB_NAME, SCHEMA_VERSION } from './schema/constants';
 import { nowIso } from '../lib/ids';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
+let activeWriteCount = 0;
+
+export function isDatabaseWriteInProgress(): boolean {
+  return activeWriteCount > 0;
+}
+
+export function markDatabaseWriteStarted(): void {
+  activeWriteCount += 1;
+}
+
+export function markDatabaseWriteFinished(): void {
+  activeWriteCount = Math.max(0, activeWriteCount - 1);
+}
 
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (!dbPromise) {
-    dbPromise = SQLite.openDatabaseAsync(DB_NAME).catch((error) => {
+    dbPromise = (async () => {
+      const db = await SQLite.openDatabaseAsync(DB_NAME);
+      await db.execAsync('PRAGMA foreign_keys = ON;');
+      await db.execAsync('PRAGMA journal_mode = WAL;');
+      await db.execAsync('PRAGMA synchronous = NORMAL;');
+      return db;
+    })().catch((error) => {
       dbPromise = null;
       throw error;
     });
@@ -18,11 +37,16 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
 
 export async function withTransaction<T>(work: (db: SQLite.SQLiteDatabase) => Promise<T>): Promise<T> {
   const db = await getDatabase();
-  let result!: T;
-  await db.withTransactionAsync(async () => {
-    result = await work(db);
-  });
-  return result;
+  markDatabaseWriteStarted();
+  try {
+    let result!: T;
+    await db.withTransactionAsync(async () => {
+      result = await work(db);
+    });
+    return result;
+  } finally {
+    markDatabaseWriteFinished();
+  }
 }
 
 async function getAppliedVersions(db: SQLite.SQLiteDatabase): Promise<Set<number>> {
@@ -40,22 +64,24 @@ async function getAppliedVersions(db: SQLite.SQLiteDatabase): Promise<Set<number
 export async function runMigrations(): Promise<{ from: number; to: number }> {
   const db = await getDatabase();
   await db.execAsync('PRAGMA foreign_keys = ON;');
+  await db.execAsync('PRAGMA journal_mode = WAL;');
+  await db.execAsync('PRAGMA synchronous = NORMAL;');
   const applied = await getAppliedVersions(db);
   const pending = migrations.filter((migration) => !applied.has(migration.version)).sort((a, b) => a.version - b.version);
   const from = applied.size > 0 ? Math.max(...applied) : 0;
 
   for (const migration of pending) {
-    await db.withTransactionAsync(async () => {
+    await withTransaction(async (txDb) => {
       for (const statement of migration.up) {
-        await db.execAsync(statement);
+        await txDb.execAsync(statement);
       }
-      await db.runAsync(
+      await txDb.runAsync(
         'INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)',
         migration.version,
         migration.name,
         nowIso()
       );
-      await db.runAsync(
+      await txDb.runAsync(
         `INSERT INTO app_meta (key, value, updated_at) VALUES ('schema_version', ?, ?)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
         String(migration.version),
@@ -81,4 +107,10 @@ export async function resetDatabaseConnection(): Promise<void> {
   const db = await dbPromise;
   await db.closeAsync();
   dbPromise = null;
+}
+
+/** Flush WAL before creating a consistent on-disk copy. */
+export async function checkpointWal(): Promise<void> {
+  const db = await getDatabase();
+  await db.execAsync('PRAGMA wal_checkpoint(FULL);');
 }

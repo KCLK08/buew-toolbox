@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { getDatabase, withTransaction } from '../database/sqlite';
 import { createUuid, nowIso } from '../lib/ids';
-import { createDatabaseBackup } from '../storage/backupService';
+import { flushDeferredBackup, requestDatabaseBackup, type BackupReason } from '../storage/backupService';
 import type {
   Defect,
   DefectCreateInput,
@@ -24,10 +24,15 @@ import type {
   ProjectUpdateInput
 } from '../types/offline';
 
-async function importantWrite<T>(work: (db: SQLiteDatabase) => Promise<T>, backup = true): Promise<T> {
+async function importantWrite<T>(
+  work: (db: SQLiteDatabase) => Promise<T>,
+  backupReason?: BackupReason
+): Promise<T> {
   const result = await withTransaction(work);
-  if (backup) {
-    await createDatabaseBackup().catch(() => null);
+  if (backupReason) {
+    await requestDatabaseBackup(backupReason);
+  } else {
+    await flushDeferredBackup();
   }
   return result;
 }
@@ -225,7 +230,7 @@ export const projectRepository = {
   async softDeleteProject(id: string): Promise<void> {
     await importantWrite(async (db) => {
       await db.runAsync(`UPDATE projects SET deleted_at = ?, updated_at = ? WHERE id = ?`, nowIso(), nowIso(), id);
-    });
+    }, 'record_deleted');
   },
 
   /** @deprecated Use getProjects */
@@ -274,9 +279,16 @@ export const diaryRepository = {
   },
 
   async updateDiaryEntry(input: DiaryEntryUpdateInput): Promise<DiaryEntry> {
+    const dbPeek = await getDatabase();
+    const existingPeek = await dbPeek.getFirstAsync<DiaryRow>(`SELECT * FROM diary_runs WHERE id = ?`, input.id);
+    const statusChanged = Boolean(
+      existingPeek && input.status && existingPeek.status !== input.status
+    );
+
     return importantWrite(async (db) => {
       const timestamp = nowIso();
-      const existing = await db.getFirstAsync<DiaryRow>(`SELECT * FROM diary_runs WHERE id = ?`, input.id);
+      const existing =
+        existingPeek ?? (await db.getFirstAsync<DiaryRow>(`SELECT * FROM diary_runs WHERE id = ?`, input.id));
       const record: DiaryEntry = {
         id: input.id,
         project_id: input.project_id !== undefined ? input.project_id : (existing?.project_id ?? null),
@@ -309,7 +321,7 @@ export const diaryRepository = {
         record.updated_at
       );
       return record;
-    });
+    }, statusChanged ? 'status_change' : undefined);
   },
 
   async softDeleteDiaryEntry(id: string): Promise<void> {
@@ -341,7 +353,7 @@ export const diaryRepository = {
         id,
         id
       );
-    });
+    }, 'record_deleted');
   }
 };
 
@@ -393,9 +405,16 @@ export const defectRepository = {
   },
 
   async updateDefect(input: DefectUpdateInput): Promise<Defect> {
+    const dbPeek = await getDatabase();
+    const existingPeek = await dbPeek.getFirstAsync<DefectRow>(`SELECT * FROM defects WHERE id = ?`, input.id);
+    const statusChanged = Boolean(
+      existingPeek && input.status && existingPeek.status !== input.status
+    );
+
     return importantWrite(async (db) => {
       const timestamp = nowIso();
-      const existing = await db.getFirstAsync<DefectRow>(`SELECT * FROM defects WHERE id = ?`, input.id);
+      const existing =
+        existingPeek ?? (await db.getFirstAsync<DefectRow>(`SELECT * FROM defects WHERE id = ?`, input.id));
       const diaryEntryId =
         input.diary_entry_id !== undefined
           ? input.diary_entry_id
@@ -440,7 +459,7 @@ export const defectRepository = {
         record.updated_at
       );
       return record;
-    });
+    }, statusChanged ? 'status_change' : undefined);
   },
 
   async softDeleteDefect(id: string): Promise<void> {
@@ -455,7 +474,7 @@ export const defectRepository = {
         id,
         id
       );
-    });
+    }, 'record_deleted');
   },
 
   /** @deprecated */
@@ -548,7 +567,7 @@ export const noteRepository = {
   async softDeleteNote(id: string): Promise<void> {
     await importantWrite(async (db) => {
       await db.runAsync(`UPDATE notes SET deleted_at = ?, updated_at = ? WHERE id = ?`, nowIso(), nowIso(), id);
-    });
+    }, 'record_deleted');
   },
 
   /** @deprecated */
@@ -671,7 +690,7 @@ export const photoRepository = {
         record.updated_at
       );
       return record;
-    });
+    }, 'photo_added');
   },
 
   async deletePhoto(id: string): Promise<void> {
@@ -682,7 +701,7 @@ export const photoRepository = {
         nowIso(),
         id
       );
-    });
+    }, 'record_deleted');
   },
 
   async listActivePaths(): Promise<string[]> {
@@ -794,6 +813,6 @@ export const documentRepository = {
         nowIso(),
         id
       );
-    });
+    }, 'record_deleted');
   }
 };

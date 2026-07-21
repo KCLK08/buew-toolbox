@@ -57,10 +57,13 @@ export default function DashboardScreen() {
       refreshing={refreshing}
       onRefresh={onRefresh}
     >
-      {!bannerDismissed ? (
+      {!bannerDismissed || offline.report?.pendingRestore ? (
         <OfflineStatusBanner
           report={offline.report}
           error={offline.error}
+          restoreBusy={offline.restoreBusy}
+          onAcceptRestore={() => void offline.acceptRestore()}
+          onRejectRestore={offline.rejectRestore}
           onDismiss={() => setBannerDismissed(true)}
         />
       ) : null}
