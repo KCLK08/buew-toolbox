@@ -1,9 +1,15 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import JSZip from 'jszip';
 
 import { BAUTAGEBUCH_DB_NAME } from '../../../database/schema/constants';
-import { getBautagebuchStorageRoot, listTemplates } from '../db/database';
+import {
+  getBautagebuchStorageRoot,
+  initBautagebuchDatabase,
+  listTemplates,
+  resetBautagebuchDatabaseConnection
+} from '../db/database';
 import { nowIso } from '../../../lib/ids';
 
 async function readFileBase64(path: string): Promise<string | null> {
@@ -33,6 +39,31 @@ async function addDirectoryToZip(
     const base64 = await readFileBase64(fullPath);
     if (!base64) continue;
     zip.file(`${zipPrefix}${name}`, base64, { base64: true });
+    count += 1;
+  }
+  return count;
+}
+
+async function writeBase64File(path: string, base64: string): Promise<void> {
+  const parent = path.replace(/\/[^/]+$/, '/');
+  await FileSystem.makeDirectoryAsync(parent, { intermediates: true });
+  await FileSystem.writeAsStringAsync(path, base64, {
+    encoding: FileSystem.EncodingType.Base64
+  });
+}
+
+async function restoreZipPrefix(zip: JSZip, prefix: string, targetDir: string): Promise<number> {
+  await FileSystem.deleteAsync(targetDir, { idempotent: true });
+  await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true });
+
+  let count = 0;
+  for (const path of Object.keys(zip.files)) {
+    const entry = zip.files[path];
+    if (!entry || entry.dir || !path.startsWith(prefix)) continue;
+    const relative = path.slice(prefix.length);
+    if (!relative) continue;
+    const base64 = await entry.async('base64');
+    await writeBase64File(`${targetDir}${relative}`, base64);
     count += 1;
   }
   return count;
@@ -97,4 +128,61 @@ export async function exportBautagebuchBackupZip(): Promise<string> {
   }
 
   return outPath;
+}
+
+/**
+ * Restores a BTB backup ZIP created by exportBautagebuchBackupZip.
+ * Replaces SQLite DB and bautagebuch/ file trees (templates, photos, exports).
+ */
+export async function importBautagebuchBackupZip(fileUri: string): Promise<{
+  photoFileCount: number;
+  exportFileCount: number;
+}> {
+  const base64 = await FileSystem.readAsStringAsync(fileUri, {
+    encoding: FileSystem.EncodingType.Base64
+  });
+  const zip = await JSZip.loadAsync(base64, { base64: true });
+
+  const manifestRaw = await zip.file('manifest.json')?.async('string');
+  if (!manifestRaw) {
+    throw new Error('Ungültiges Backup: manifest.json fehlt.');
+  }
+  const manifest = JSON.parse(manifestRaw) as { kind?: string };
+  if (manifest.kind !== 'bautagebuch-backup') {
+    throw new Error('Die Datei ist kein Bautagebuch-Backup.');
+  }
+
+  await resetBautagebuchDatabaseConnection();
+
+  const dbEntry = zip.file(`sqlite/${BAUTAGEBUCH_DB_NAME}`);
+  if (!dbEntry) {
+    throw new Error('Backup enthält keine Bautagebuch-Datenbank.');
+  }
+  const dbBase64 = await dbEntry.async('base64');
+  const dbPath = `${FileSystem.documentDirectory}SQLite/${BAUTAGEBUCH_DB_NAME}`;
+  await writeBase64File(dbPath, dbBase64);
+
+  const root = getBautagebuchStorageRoot();
+  await restoreZipPrefix(zip, 'templates/', `${root}templates/`);
+  const photoFileCount = await restoreZipPrefix(zip, 'photos/', `${root}photos/`);
+  const exportFileCount = await restoreZipPrefix(zip, 'exports/', `${root}exports/`);
+
+  await initBautagebuchDatabase();
+
+  return { photoFileCount, exportFileCount };
+}
+
+export async function pickAndRestoreBautagebuchBackup(): Promise<{
+  photoFileCount: number;
+  exportFileCount: number;
+} | null> {
+  const result = await DocumentPicker.getDocumentAsync({
+    type: ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'],
+    copyToCacheDirectory: true,
+    multiple: false
+  });
+  if (result.canceled || !result.assets?.[0]?.uri) {
+    return null;
+  }
+  return importBautagebuchBackupZip(result.assets[0].uri);
 }

@@ -1,12 +1,13 @@
 // @ts-nocheck
 import { useMemo, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ListItem, PrimaryButton, TextField } from '../../../components/mobile';
 import { colors, typography } from '../../../constants/theme';
 import { validateSetupModel } from '../lib/setup-model.js';
 import { mutateSetupModel } from '../hooks/useSetupAutosave';
-import { PdfPreviewPanel } from './PdfPreviewPanel';
+import type { DetectedField } from '../types';
+import { SetupPdfFieldPreview } from './SetupPdfFieldPreview';
 
 type SetupField = {
   fieldId: string;
@@ -40,6 +41,7 @@ type SetupTableSection = {
 type Props = {
   templateName: string;
   templatePdfPath?: string | null;
+  detectedFields?: DetectedField[];
   setupModel: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
   onFinish: () => void;
@@ -53,6 +55,7 @@ type Props = {
 export function SetupEditor({
   templateName,
   templatePdfPath,
+  detectedFields = [],
   setupModel,
   onChange,
   onFinish,
@@ -70,9 +73,25 @@ export function SetupEditor({
   const [showPdfPanel, setShowPdfPanel] = useState(Boolean(templatePdfPath));
   const [activeSingleId, setActiveSingleId] = useState(singleSections[0]?.sectionId || '');
   const [activeTableId, setActiveTableId] = useState(tableSections[0]?.tableId || '');
+  const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
 
   const activeSingle = singleSections.find((section) => section.sectionId === activeSingleId) || singleSections[0];
   const activeTable = tableSections.find((table) => table.tableId === activeTableId) || tableSections[0];
+
+  const activeField = useMemo(() => {
+    if (!activeFieldId) return null;
+    for (const section of singleSections) {
+      const field = (section.fields || []).find((entry) => String(entry.fieldId) === String(activeFieldId));
+      if (field) return field;
+    }
+    return null;
+  }, [activeFieldId, singleSections]);
+
+  const activeFieldPage = useMemo(() => {
+    if (!activeField) return 1;
+    const detected = detectedFields.find((entry) => String(entry.fieldId) === String(activeField.fieldId));
+    return Number(activeField.page || detected?.page || 1);
+  }, [activeField, detectedFields]);
 
   const updateModel = (mutator: (model: Record<string, unknown>) => void) => {
     onChange(mutateSetupModel(setupModel, mutator));
@@ -179,7 +198,15 @@ export function SetupEditor({
               onPress={() => setShowPdfPanel((value) => !value)}
             />
           </View>
-          {showPdfPanel ? <PdfPreviewPanel pdfPath={templatePdfPath} /> : null}
+          {showPdfPanel ? (
+            <SetupPdfFieldPreview
+              pdfPath={templatePdfPath}
+              detectedFields={detectedFields}
+              activeFieldId={activeFieldId}
+              activeFieldLabel={activeField?.label || activeField?.fieldName || activeField?.fieldId || null}
+              activeFieldPage={activeFieldPage}
+            />
+          ) : null}
         </View>
       ) : null}
 
@@ -225,7 +252,11 @@ export function SetupEditor({
                 onChangeText={(value) => updateSingleSectionLabel(activeSingle.sectionId, value)}
               />
               {(activeSingle.fields || []).map((field, index) => (
-                <View key={field.fieldId} style={styles.fieldCard}>
+                <PressableFieldCard
+                  key={field.fieldId}
+                  active={activeFieldId === field.fieldId}
+                  onPress={() => setActiveFieldId(field.fieldId)}
+                >
                   <Text style={styles.fieldMeta}>
                     PDF-Feld: {field.fieldName || field.fieldId}
                     {field.page ? ` · Seite ${field.page}` : ''}
@@ -268,7 +299,7 @@ export function SetupEditor({
                       onPress={() => moveFieldToSection(activeSingle.sectionId, field.fieldId)}
                     />
                   </View>
-                </View>
+                </PressableFieldCard>
               ))}
             </View>
           ) : null}
@@ -331,6 +362,25 @@ export function SetupEditor({
   );
 }
 
+function PressableFieldCard({
+  active,
+  onPress,
+  children
+}: {
+  active: boolean;
+  onPress: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.fieldCard, active ? styles.fieldCardActive : null]}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { gap: 12 },
   title: { ...typography.bodyStrong, color: colors.ink },
@@ -340,7 +390,18 @@ const styles = StyleSheet.create({
   warn: { ...typography.caption, color: colors.accent2 },
   section: { ...typography.label, color: colors.muted, marginTop: 4 },
   editorCard: { gap: 12, padding: 12, borderRadius: 12, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border },
-  fieldCard: { gap: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border },
+  fieldCard: {
+    gap: 8,
+    paddingTop: 8,
+    paddingHorizontal: 4,
+    borderTopWidth: 1,
+    borderTopColor: colors.border
+  },
+  fieldCardActive: {
+    borderRadius: 8,
+    backgroundColor: 'rgba(47, 111, 237, 0.08)',
+    borderTopColor: colors.accent
+  },
   fieldMeta: { ...typography.caption, color: colors.muted },
   previewBlock: { gap: 8 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }
