@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@buew/shared": "file:../shared",
     "@expo-google-fonts/space-grotesk": "^0.4.1",
     "babel-preset-expo": "~57.0.0",
     "expo": "~57.0.7",

@@ -1,61 +1,47 @@
-export type EntityStatus = 'active' | 'archived' | 'draft';
+/**
+ * Expo offline types — re-export shared domain types.
+ * Platform-specific integrity types stay local.
+ */
+export type {
+  Defect,
+  DefectCreateInput,
+  DefectPriority,
+  DefectUpdateInput,
+  DiaryEntry,
+  DiaryEntryCreateInput,
+  DiaryEntryUpdateInput,
+  DiaryPayload,
+  Document,
+  DocumentCreateInput,
+  DocumentStatus,
+  EntityStatus,
+  Note,
+  NoteCreateInput,
+  NoteUpdateInput,
+  ParentType,
+  Photo,
+  PhotoCreateInput,
+  PhotoFilter,
+  PhotoStatus,
+  Project,
+  ProjectCreateInput,
+  ProjectUpdateInput,
+  SoftDeletable,
+  Timestamps
+} from '@buew/shared/types';
 
-export type PhotoStatus = 'ready' | 'pending' | 'error' | 'deleted';
+export { DOMAIN_SCHEMA_VERSION as SHARED_DOMAIN_SCHEMA_VERSION } from '@buew/shared/types';
 
-export type SoftDeletable = {
-  deleted_at: string | null;
-};
-
-export type ProjectRecord = SoftDeletable & {
-  id: string;
-  name: string;
-  created_at: string;
-  updated_at: string;
-};
-
-export type DiaryRunRecord = SoftDeletable & {
-  id: string;
-  project_id: string | null;
-  title: string;
-  status: EntityStatus;
-  payload_json: string;
-  created_at: string;
-  updated_at: string;
-};
-
-export type DefectRecord = SoftDeletable & {
-  id: string;
-  project_id: string | null;
-  diary_run_id: string | null;
-  title: string;
-  notes: string;
-  status: EntityStatus;
-  created_at: string;
-  updated_at: string;
-};
-
-export type NoteRecord = SoftDeletable & {
-  id: string;
-  project_id: string | null;
-  diary_run_id: string | null;
-  defect_id: string | null;
-  body: string;
-  created_at: string;
-  updated_at: string;
-};
-
-export type PhotoRecord = SoftDeletable & {
-  id: string;
-  project_id: string | null;
-  diary_run_id: string | null;
-  defect_id: string | null;
-  file_path: string;
-  mime_type: string;
-  byte_size: number;
-  status: PhotoStatus;
-  created_at: string;
-  updated_at: string;
-};
+/** @deprecated Use Project */
+export type ProjectRecord = import('@buew/shared/types').Project;
+/** @deprecated Use DiaryEntry */
+export type DiaryRunRecord = import('@buew/shared/types').DiaryEntry;
+/** @deprecated Use Defect — maps diary_run_id legacy via repository */
+export type DefectRecord = import('@buew/shared/types').Defect;
+/** @deprecated Use Note */
+export type NoteRecord = import('@buew/shared/types').Note;
+/** @deprecated Use Photo */
+export type PhotoRecord = import('@buew/shared/types').Photo;
 
 export type IntegrityIssue = {
   code: string;
@@ -63,8 +49,16 @@ export type IntegrityIssue = {
   severity: 'info' | 'warning' | 'error';
 };
 
+export type PendingRestoreOffer = {
+  backupUri: string;
+  backupDate: string;
+  backupName: string;
+};
+
 export type IntegrityReport = {
   ok: boolean;
   restoredFromBackup: boolean;
   issues: IntegrityIssue[];
+  orphanFiles?: string[];
+  pendingRestore?: PendingRestoreOffer | null;
 };

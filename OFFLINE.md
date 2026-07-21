@@ -14,13 +14,20 @@ Die Toolbox läuft **vollständig offline**.
 | PWA (`bautagebuch-v2`, `sitereport`) | IndexedDB (Dexie) | Binärdaten in IndexedDB (`photo_assets`), nicht im Browser-Cache |
 | Expo (`expo-toolbox`) | SQLite (`expo-sqlite`) | Fotos/Dokumente in `documentDirectory` (`expo-file-system`) |
 
+## Gemeinsames Datenmodell (Phase 3)
+
+- Spezifikation: [`OFFLINE_DATA_MODEL.md`](./OFFLINE_DATA_MODEL.md)
+- Parity-Report: [`DATA_MODEL_PARITY_REPORT.md`](./DATA_MODEL_PARITY_REPORT.md)
+- Shared Types: `shared/types/` (`DOMAIN_SCHEMA_VERSION = 2`)
+- Repositories: gleiche Methodennamen auf Expo (SQLite) und PWA (IndexedDB)
+
 ## Expo-Struktur
 
 ```
 expo-toolbox/src/
   database/       SQLite, Schema, Migrationen
   storage/        FileService, BackupService
-  repositories/   Datenzugriff
+  repositories/   Datenzugriff (shared API)
   services/       Integrity, Autosave-Koordination
   hooks/          useOfflineBootstrap, useAutosave
 ```
@@ -33,3 +40,4 @@ expo-toolbox/src/
 4. **Startcheck** – DB/Tabellen/Dateien prüfen, ggf. Restore aus Backup.
 5. **Soft Delete** – `deleted_at` statt sofortigem Hard-Delete.
 6. **Migrationen** – Schema-Updates ohne Datenverlust.
+7. **Datenmodell-Parität** – Expo und PWA nutzen dieselben fachlichen Typen und Repository-Methoden.

@@ -30,6 +30,17 @@ export async function runBautagebuchIntegrityCheck(db) {
     }
   }
 
+  const domainTables = ['projects', 'diary_entries', 'defects', 'notes', 'photos', 'documents', 'app_meta'];
+  for (const name of domainTables) {
+    if (!db.tables.some((table) => table.name === name)) {
+      issues.push({
+        code: 'missing_domain_table',
+        message: `Domain-Tabelle fehlt: ${name}`,
+        severity: 'warning'
+      });
+    }
+  }
+
   try {
     const runs = await db.runs.toArray();
     const assets = await db.photo_assets.toArray();

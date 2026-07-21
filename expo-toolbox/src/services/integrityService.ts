@@ -55,11 +55,12 @@ async function collectIssues(): Promise<IntegrityIssue[]> {
 
   if (await tableExists('photos')) {
     const db = await getDatabase();
-    const photos = await db.getAllAsync<{ id: string; file_path: string }>(
-      `SELECT id, file_path FROM photos WHERE deleted_at IS NULL`
+    const photos = await db.getAllAsync<{ id: string; file_path: string; local_path?: string }>(
+      `SELECT id, file_path, local_path FROM photos WHERE deleted_at IS NULL`
     );
     for (const photo of photos) {
-      const uri = resolveDocumentUri(photo.file_path);
+      const relative = photo.local_path || photo.file_path;
+      const uri = resolveDocumentUri(relative);
       if (!(await fileExists(uri))) {
         issues.push({
           code: 'orphan_photo_meta',

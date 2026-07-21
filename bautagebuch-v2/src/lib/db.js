@@ -2,6 +2,7 @@ import Dexie from 'dexie';
 
 import { createIndexedDbBackup, restoreLatestIndexedDbBackup } from './offline-backup.js';
 import { runBautagebuchIntegrityCheck } from './offline-integrity.js';
+import { DOMAIN_SCHEMA_VERSION, DOMAIN_STORES_V4 } from './domain-schema.js';
 import { hydratePhotoDoc, preparePhotoDocForStorage } from './photo-storage.js';
 
 const DB_NAME = 'BautagebuchV2';
@@ -22,6 +23,11 @@ const storesV2 = {
 const storesV3 = {
   ...storesV2,
   db_backups: '&id, createdAt'
+};
+
+const storesV4 = {
+  ...storesV3,
+  ...DOMAIN_STORES_V4
 };
 
 let dbInstance = null;
@@ -55,8 +61,21 @@ function getDb() {
   db.version(1).stores(storesV1);
   db.version(2).stores(storesV2);
   db.version(3).stores(storesV3);
+  db.version(4).stores(storesV4);
   dbInstance = db;
   return dbInstance;
+}
+
+export function getOfflineDb() {
+  return getDb();
+}
+
+export async function ensureOfflineDbReady() {
+  await ensureDbReady();
+}
+
+export function getDomainSchemaVersion() {
+  return DOMAIN_SCHEMA_VERSION;
 }
 
 async function ensureDbReady() {
@@ -64,6 +83,11 @@ async function ensureDbReady() {
   if (!dbReadyPromise) {
     dbReadyPromise = (async () => {
       await db.open();
+      await db.app_meta.put({
+        key: 'domain_schema_version',
+        value: String(DOMAIN_SCHEMA_VERSION),
+        updated_at: nowIso()
+      });
       let integrity = await runBautagebuchIntegrityCheck(db);
       if (!integrity.ok) {
         const restored = await restoreLatestIndexedDbBackup(db).catch(() => false);
