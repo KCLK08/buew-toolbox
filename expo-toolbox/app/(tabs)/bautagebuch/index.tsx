@@ -24,7 +24,7 @@ import {
 } from '../../../src/native/bautagebuch/db/database';
 import { applyRunDefaultsFromModel } from '../../../src/native/bautagebuch/lib/run-defaults';
 import { deleteCachedExport, shareCachedExport } from '../../../src/native/bautagebuch/services/exportService';
-import { exportBautagebuchBackupZip } from '../../../src/native/bautagebuch/services/backupExportService';
+import { exportBautagebuchBackupZip, pickAndRestoreBautagebuchBackup } from '../../../src/native/bautagebuch/services/backupExportService';
 import { ensureBuiltinTemplate } from '../../../src/native/bautagebuch/services/templateService';
 import type { BautagebuchExport, BautagebuchRun } from '../../../src/native/bautagebuch/types';
 
@@ -67,6 +67,7 @@ export default function BautagebuchHomeScreen() {
   const [renameRunId, setRenameRunId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
   const [backupBusy, setBackupBusy] = useState(false);
+  const [restoreBusy, setRestoreBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -210,6 +211,37 @@ export default function BautagebuchHomeScreen() {
     }
   };
 
+  const restoreBackup = () => {
+    Alert.alert(
+      'Backup wiederherstellen',
+      'Das aktuelle Bautagebuch wird durch das ZIP-Backup ersetzt (Datenbank, Vorlagen, Fotos, Exporte). Fortfahren?',
+      [
+        { text: 'Abbrechen', style: 'cancel' },
+        {
+          text: 'Wiederherstellen',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setRestoreBusy(true);
+              try {
+                const result = await pickAndRestoreBautagebuchBackup();
+                if (!result) return;
+                showToast(
+                  `Backup wiederhergestellt (${result.photoFileCount} Fotos, ${result.exportFileCount} Exporte)`
+                );
+                await load();
+              } catch (err) {
+                Alert.alert('Wiederherstellung', err instanceof Error ? err.message : 'Wiederherstellung fehlgeschlagen.');
+              } finally {
+                setRestoreBusy(false);
+              }
+            })();
+          }
+        }
+      ]
+    );
+  };
+
   const removeExport = (exportId: string) => {
     Alert.alert('Export löschen', 'Gespeicherten Export wirklich entfernen?', [
       { text: 'Abbrechen', style: 'cancel' },
@@ -256,8 +288,14 @@ export default function BautagebuchHomeScreen() {
         <PrimaryButton
           label={backupBusy ? 'Backup wird erstellt…' : 'Backup exportieren (ZIP)'}
           variant="secondary"
-          disabled={backupBusy || !templateId}
+          disabled={backupBusy || restoreBusy || !templateId}
           onPress={() => void exportBackup()}
+        />
+        <PrimaryButton
+          label={restoreBusy ? 'Wird wiederhergestellt…' : 'Backup wiederherstellen'}
+          variant="secondary"
+          disabled={backupBusy || restoreBusy}
+          onPress={restoreBackup}
         />
       </View>
 

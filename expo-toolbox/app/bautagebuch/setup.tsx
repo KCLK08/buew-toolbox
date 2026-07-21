@@ -4,11 +4,12 @@ import { useRouter } from 'expo-router';
 
 import { Screen } from '../../src/components/mobile';
 import { SetupEditor } from '../../src/native/bautagebuch/components/SetupEditor';
-import { saveSetupModel } from '../../src/native/bautagebuch/db/database';
+import { getDetectedFields, saveSetupModel } from '../../src/native/bautagebuch/db/database';
 import { useSetupAutosave } from '../../src/native/bautagebuch/hooks/useSetupAutosave';
 import { exportSetupPreviewPdf } from '../../src/native/bautagebuch/services/exportService';
 import { getActiveTemplateBundle } from '../../src/native/bautagebuch/services/templateService';
 import { validateSetupModel } from '../../src/native/bautagebuch/lib/setup-model.js';
+import type { DetectedField } from '../../src/native/bautagebuch/types';
 
 export default function BautagebuchSetupScreen() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function BautagebuchSetupScreen() {
   const [templateId, setTemplateId] = useState('');
   const [templateName, setTemplateName] = useState('');
   const [templatePdfPath, setTemplatePdfPath] = useState<string | null>(null);
+  const [detectedFields, setDetectedFields] = useState<DetectedField[]>([]);
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +34,7 @@ export default function BautagebuchSetupScreen() {
       setTemplateName(bundle.template.templateName);
       setTemplatePdfPath(bundle.template.pdfPath);
       setSetupModel(bundle.setupModel);
+      setDetectedFields(await getDetectedFields(bundle.template.templateId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Setup konnte nicht geladen werden.');
     } finally {
@@ -103,6 +106,7 @@ export default function BautagebuchSetupScreen() {
         <SetupEditor
           templateName={templateName}
           templatePdfPath={templatePdfPath}
+          detectedFields={detectedFields}
           setupModel={setupModel}
           onChange={handleChange}
           onFinish={() => void handleFinish()}
