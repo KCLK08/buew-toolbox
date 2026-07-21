@@ -6,6 +6,7 @@ import { ListItem, PrimaryButton, TextField } from '../../../components/mobile';
 import { colors, typography } from '../../../constants/theme';
 import { validateSetupModel } from '../lib/setup-model.js';
 import { mutateSetupModel } from '../hooks/useSetupAutosave';
+import { PdfPreviewPanel } from './PdfPreviewPanel';
 
 type SetupField = {
   fieldId: string;
@@ -38,6 +39,7 @@ type SetupTableSection = {
 
 type Props = {
   templateName: string;
+  templatePdfPath?: string | null;
   setupModel: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
   onFinish: () => void;
@@ -50,6 +52,7 @@ type Props = {
 
 export function SetupEditor({
   templateName,
+  templatePdfPath,
   setupModel,
   onChange,
   onFinish,
@@ -64,6 +67,7 @@ export function SetupEditor({
   const validationErrors = useMemo(() => validateSetupModel(setupModel), [setupModel]);
 
   const [mode, setMode] = useState<'single' | 'table'>('single');
+  const [showPdfPanel, setShowPdfPanel] = useState(Boolean(templatePdfPath));
   const [activeSingleId, setActiveSingleId] = useState(singleSections[0]?.sectionId || '');
   const [activeTableId, setActiveTableId] = useState(tableSections[0]?.tableId || '');
 
@@ -163,6 +167,20 @@ export function SetupEditor({
         <Text style={styles.warn}>
           {validationErrors.length} Validierungsproblem(e): {validationErrors[0]}
         </Text>
+      ) : null}
+
+      {templatePdfPath ? (
+        <View style={styles.previewBlock}>
+          <View style={styles.row}>
+            <Text style={styles.section}>Vorlagen-PDF</Text>
+            <PrimaryButton
+              label={showPdfPanel ? 'Ausblenden' : 'Anzeigen'}
+              variant="ghost"
+              onPress={() => setShowPdfPanel((value) => !value)}
+            />
+          </View>
+          {showPdfPanel ? <PdfPreviewPanel pdfPath={templatePdfPath} /> : null}
+        </View>
       ) : null}
 
       <View style={styles.row}>
@@ -324,5 +342,6 @@ const styles = StyleSheet.create({
   editorCard: { gap: 12, padding: 12, borderRadius: 12, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border },
   fieldCard: { gap: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border },
   fieldMeta: { ...typography.caption, color: colors.muted },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }
+  previewBlock: { gap: 8 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }
 });
