@@ -7,7 +7,7 @@ import {
   ETB_TEMPLATE_NAME,
   buildEtbSetupModel
 } from '../lib/etb-template.js';
-import { scanTemplatePdfLite, detectedFieldsNeedRescan, ETB_SCAN_VERSION } from '../lib/pdf-scan-lite';
+import { scanTemplatePdf, detectedFieldsNeedRescan } from '../lib/pdf-scan';
 import {
   getDetectedFields,
   getSetupModel,
@@ -18,9 +18,50 @@ import {
   saveSetupModel
 } from '../db/database';
 import { appConfig } from '../../../lib/config';
-import { uint8ToBase64 } from '../../../lib/binary';
+import { base64ToUint8Array, uint8ToBase64 } from '../../../lib/binary';
 
 const TEMPLATE_URL = `${appConfig.toolboxWebBaseUrl.replace(/\/$/, '')}/bautagebuch/templates/Vorlage-eBTB.pdf`;
+
+async function readTemplateBytes(pdfPath: string): Promise<Uint8Array> {
+  const base64 = await FileSystem.readAsStringAsync(pdfPath, {
+    encoding: FileSystem.EncodingType.Base64
+  });
+  return base64ToUint8Array(base64);
+}
+
+async function rescanExistingTemplate(
+  existing: NonNullable<Awaited<ReturnType<typeof listTemplates>>[number]>,
+  setupModel: Record<string, unknown>
+): Promise<{ templateId: string; setupModel: Record<string, unknown> }> {
+  if (!existing.pdfPath) {
+    throw new Error('Vorlage-eBTB ist lokal nicht verfügbar.');
+  }
+
+  const bytes = await readTemplateBytes(existing.pdfPath);
+  const scanResult = await scanTemplatePdf(bytes);
+
+  await putTemplate({
+    ...existing,
+    pageCount: scanResult.pageCount,
+    updatedAt: new Date().toISOString()
+  });
+
+  await saveDetectedFields(
+    existing.templateId,
+    scanResult.detectedFields.map((field) => ({
+      fieldId: field.fieldId,
+      fieldName: field.fieldName,
+      labelCandidate: field.labelCandidate,
+      type: field.type,
+      options: field.options,
+      page: field.page,
+      orderIndex: field.orderIndex,
+      rect: field.rect
+    }))
+  );
+
+  return { templateId: existing.templateId, setupModel };
+}
 
 export async function ensureBuiltinTemplate(): Promise<{
   templateId: string;
@@ -34,12 +75,15 @@ export async function ensureBuiltinTemplate(): Promise<{
   if (existing) {
     const setupModel = await getSetupModel(existing.templateId);
     const detectedFields = await getDetectedFields(existing.templateId);
-    const needsRescan =
-      detectedFieldsNeedRescan(detectedFields) ||
-      !setupModel ||
-      Number(setupModel.version || 0) < ETB_SETUP_VERSION;
-    if (setupModel && Number(setupModel.version || 0) >= ETB_SETUP_VERSION && !needsRescan) {
+    const setupReady = setupModel && Number(setupModel.version || 0) >= ETB_SETUP_VERSION;
+    const fieldsNeedRescan = detectedFieldsNeedRescan(detectedFields);
+
+    if (setupReady && !fieldsNeedRescan) {
       return { templateId: existing.templateId, setupModel };
+    }
+
+    if (setupReady && fieldsNeedRescan && existing.pdfPath) {
+      return rescanExistingTemplate(existing, setupModel);
     }
   }
 
@@ -50,7 +94,7 @@ export async function ensureBuiltinTemplate(): Promise<{
 
   const arrayBuffer = await response.arrayBuffer();
   const bytes = new Uint8Array(arrayBuffer);
-  const scanResult = await scanTemplatePdfLite(bytes);
+  const scanResult = await scanTemplatePdf(bytes);
 
   const pdfDir = `${FileSystem.documentDirectory}bautagebuch/templates/`;
   await FileSystem.makeDirectoryAsync(pdfDir, { intermediates: true });

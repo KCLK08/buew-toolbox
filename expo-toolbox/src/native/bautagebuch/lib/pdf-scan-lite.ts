@@ -1,9 +1,9 @@
 import { PDFDocument, PDFDropdown, PDFRadioGroup } from 'pdf-lib';
 
 import { detectPdfFieldType } from './setup-model.js';
+import { ETB_SCAN_VERSION, detectedFieldsNeedRescan } from './pdf-scan';
 
-/** Bump when scan logic changes — triggers template re-scan on next load. */
-export const ETB_SCAN_VERSION = 2;
+export { ETB_SCAN_VERSION, detectedFieldsNeedRescan };
 
 function humanizeFieldName(value: string): string {
   return String(value || '')
@@ -122,14 +122,4 @@ export async function scanTemplatePdfLite(pdfBytes: Uint8Array) {
     scanVersion: ETB_SCAN_VERSION,
     detectedFields: assignFieldIds(sortDetectedFields(detectedFields))
   };
-}
-
-export function detectedFieldsNeedRescan(
-  fields: Array<{ type?: string; options?: string[] }>
-): boolean {
-  return fields.some((field) => {
-    const type = String(field.type || '').toLowerCase();
-    if (type !== 'dropdown' && type !== 'radio') return false;
-    return !Array.isArray(field.options) || field.options.length === 0;
-  });
 }
