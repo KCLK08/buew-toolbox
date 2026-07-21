@@ -1,8 +1,8 @@
 {
-  "name": "Site Report",
-  "short_name": "Site Report",
-  "start_url": "/buew-toolbox/sitereport/",
-  "scope": "/buew-toolbox/sitereport/",
+  "name": "SiteReport",
+  "short_name": "SiteReport",
+  "start_url": "/baustellen-tools/sitereport/",
+  "scope": "/baustellen-tools/sitereport/",
   "display": "standalone",
   "background_color": "#f6f3ee",
   "theme_color": "#0f172a",
