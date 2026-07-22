@@ -14,10 +14,11 @@ type Props = {
   activeFieldId?: string | null;
   activeFieldLabel?: string | null;
   activeFieldPage?: number;
-  variant?: 'default' | 'pinned';
+  variant?: 'default' | 'pinned' | 'mapping';
 };
 
 const PINNED_PREVIEW_HEIGHT = Math.max(220, Math.round(Dimensions.get('window').height * 0.34));
+const MAPPING_PREVIEW_HEIGHT = Math.max(360, Math.round(Dimensions.get('window').height * 0.62));
 
 type PreviewState = {
   page: number;
@@ -26,13 +27,17 @@ type PreviewState = {
   error: string | null;
 };
 
-function buildPreviewHtml(base64: string, highlights: Array<{ fieldId: string; page: number; rect: number[] }>) {
+function buildPreviewHtml(
+  base64: string,
+  highlights: Array<{ fieldId: string; page: number; rect: number[] }>,
+  mappingMode = false
+) {
   const highlightsJson = JSON.stringify(highlights);
   return `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=4.0" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
       * { box-sizing: border-box; }
@@ -47,9 +52,19 @@ function buildPreviewHtml(base64: string, highlights: Array<{ fieldId: string; p
         border-radius: 4px;
       }
       .highlight.active {
-        border-color: rgba(214, 69, 69, 0.9);
-        background: rgba(214, 69, 69, 0.18);
-        box-shadow: 0 0 0 2px rgba(214, 69, 69, 0.2);
+        border-color: rgba(196, 75, 50, 0.95);
+        background: rgba(196, 75, 50, 0.2);
+        box-shadow: 0 0 0 3px rgba(196, 75, 50, 0.25);
+        animation: pulse 1.2s ease-in-out infinite;
+        z-index: 3;
+      }
+      .highlight.dim {
+        background: rgba(26, 25, 22, 0.28);
+        border-color: rgba(26, 25, 22, 0.18);
+      }
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.02); opacity: 0.92; }
       }
     </style>
   </head>
@@ -59,6 +74,7 @@ function buildPreviewHtml(base64: string, highlights: Array<{ fieldId: string; p
       <div id="overlay"></div>
     </div>
     <script>
+      const mappingMode = ${mappingMode ? 'true' : 'false'};
       const pdfjsLib = window.pdfjsLib;
       if (!pdfjsLib) {
         throw new Error('pdf.js nicht geladen');
@@ -96,7 +112,11 @@ function buildPreviewHtml(base64: string, highlights: Array<{ fieldId: string; p
           const width = Math.abs(x2 - x1) * viewportScale;
           const height = Math.abs(y2 - y1) * viewportScale;
           const box = document.createElement('div');
-          box.className = 'highlight' + (entry.fieldId === activeFieldId ? ' active' : '');
+          const isActive = entry.fieldId === activeFieldId;
+          let className = 'highlight';
+          if (isActive) className += ' active';
+          else if (mappingMode && activeFieldId) className += ' dim';
+          box.className = className;
           box.style.left = left + 'px';
           box.style.top = top + 'px';
           box.style.width = width + 'px';
@@ -113,8 +133,8 @@ function buildPreviewHtml(base64: string, highlights: Array<{ fieldId: string; p
         const canvas = document.getElementById('canvas');
         const context = canvas.getContext('2d');
         const baseViewport = page.getViewport({ scale: 1 });
-        const maxWidth = Math.min(window.innerWidth || 860, 860);
-        viewportScale = Math.min(maxWidth / baseViewport.width, 2.1);
+        const maxWidth = Math.min(window.innerWidth || 860, mappingMode ? window.innerWidth || 860 : 860);
+        viewportScale = Math.min(maxWidth / baseViewport.width, mappingMode ? 2.6 : 2.1);
         const viewport = page.getViewport({ scale: viewportScale });
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
@@ -175,6 +195,7 @@ export function SetupPdfFieldPreview({
   variant = 'default'
 }: Props) {
   const pinned = variant === 'pinned';
+  const mapping = variant === 'mapping';
   const webViewRef = useRef<WebView>(null);
   const [html, setHtml] = useState<string | null>(null);
   const [readBusy, setReadBusy] = useState(false);
@@ -213,7 +234,7 @@ export function SetupPdfFieldPreview({
     })
       .then((base64) => {
         if (cancelled) return;
-        setHtml(buildPreviewHtml(base64, highlights));
+        setHtml(buildPreviewHtml(base64, highlights, mapping));
         setPreviewState({ page: 1, pageCount: 1, ready: false, error: null });
       })
       .catch(() => {
@@ -229,7 +250,7 @@ export function SetupPdfFieldPreview({
     return () => {
       cancelled = true;
     };
-  }, [pdfPath, highlights]);
+  }, [pdfPath, highlights, mapping]);
 
   useEffect(() => {
     if (!previewState.ready || useFallback) return;
@@ -284,22 +305,26 @@ export function SetupPdfFieldPreview({
     return <PdfPreviewPanel pdfPath={pdfPath} error={previewState.error} />;
   }
 
-  const banner = activeFieldLabel
+  const banner = mapping
+    ? activeFieldLabel || 'Feld zuordnen'
+    : activeFieldLabel
     ? `Aktiv: ${activeFieldLabel}${activeFieldPage ? ` · Seite ${activeFieldPage}` : ''}`
     : pinned
       ? 'Feld oder Spalte antippen — Markierung in der PDF zeigt die Position.'
       : 'Feld in der Liste antippen, um die zugehörige PDF-Seite zu sehen.';
 
   return (
-    <View style={[styles.root, pinned ? styles.rootPinned : null]}>
-      <Text style={[styles.banner, pinned ? styles.bannerPinned : null]} numberOfLines={2}>
-        {banner}
-      </Text>
-      <View style={[styles.panel, pinned ? styles.panelPinned : null]}>
+    <View style={[styles.root, pinned ? styles.rootPinned : null, mapping ? styles.rootMapping : null]}>
+      {!mapping ? (
+        <Text style={[styles.banner, pinned ? styles.bannerPinned : null]} numberOfLines={2}>
+          {banner}
+        </Text>
+      ) : null}
+      <View style={[styles.panel, pinned ? styles.panelPinned : null, mapping ? styles.panelMapping : null]}>
         <WebView
           ref={webViewRef}
           source={{ html }}
-          style={[styles.webview, pinned ? styles.webviewPinned : null]}
+          style={[styles.webview, pinned ? styles.webviewPinned : null, mapping ? styles.webviewMapping : null]}
           originWhitelist={['*']}
           scrollEnabled
           onMessage={onWebMessage}
@@ -307,29 +332,31 @@ export function SetupPdfFieldPreview({
           onHttpError={() => setUseFallback(true)}
         />
       </View>
-      <View style={styles.controls}>
-        <PrimaryButton
-          label="◀"
-          variant="ghost"
-          disabled={!previewState.ready || previewState.page <= 1}
-          onPress={() => goToPage(previewState.page - 1)}
-        />
-        <Text style={styles.pageLabel}>
-          Seite {previewState.page} / {previewState.pageCount}
-        </Text>
-        <PrimaryButton
-          label="▶"
-          variant="ghost"
-          disabled={!previewState.ready || previewState.page >= previewState.pageCount}
-          onPress={() => goToPage(previewState.page + 1)}
-        />
-      </View>
-      {highlights.length === 0 && !pinned ? (
+      {!mapping ? (
+        <View style={styles.controls}>
+          <PrimaryButton
+            label="◀"
+            variant="ghost"
+            disabled={!previewState.ready || previewState.page <= 1}
+            onPress={() => goToPage(previewState.page - 1)}
+          />
+          <Text style={styles.pageLabel}>
+            Seite {previewState.page} / {previewState.pageCount}
+          </Text>
+          <PrimaryButton
+            label="▶"
+            variant="ghost"
+            disabled={!previewState.ready || previewState.page >= previewState.pageCount}
+            onPress={() => goToPage(previewState.page + 1)}
+          />
+        </View>
+      ) : null}
+      {highlights.length === 0 && !pinned && !mapping ? (
         <Text style={styles.hint}>
           Feld-Overlays sind ohne Positionsdaten nicht verfügbar. Seitennavigation und Feld-Banner funktionieren weiterhin.
         </Text>
       ) : null}
-      {pinned ? (
+      {pinned && !mapping ? (
         <Text style={styles.legend}>Markierung: aktives Feld · Seite mit Pfeilen wechseln</Text>
       ) : null}
     </View>
@@ -343,6 +370,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.pageX,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs
+  },
+  rootMapping: {
+    flex: 1,
+    gap: 0,
+    paddingHorizontal: 0,
+    paddingTop: 0
   },
   banner: { ...typography.caption, color: colors.accent2 },
   bannerPinned: {
@@ -362,6 +395,12 @@ const styles = StyleSheet.create({
     height: PINNED_PREVIEW_HEIGHT,
     borderRadius: 10
   },
+  panelMapping: {
+    flex: 1,
+    minHeight: MAPPING_PREVIEW_HEIGHT,
+    borderRadius: 0,
+    borderWidth: 0
+  },
   webview: {
     flex: 1,
     minHeight: 360,
@@ -370,6 +409,11 @@ const styles = StyleSheet.create({
   webviewPinned: {
     minHeight: PINNED_PREVIEW_HEIGHT - 2,
     height: PINNED_PREVIEW_HEIGHT - 2
+  },
+  webviewMapping: {
+    flex: 1,
+    minHeight: MAPPING_PREVIEW_HEIGHT - 2,
+    height: MAPPING_PREVIEW_HEIGHT - 2
   },
   controls: {
     flexDirection: 'row',

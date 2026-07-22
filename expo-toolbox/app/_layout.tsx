@@ -83,6 +83,8 @@ function RootLayoutContent() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="bautagebuch/run/[id]" />
           <Stack.Screen name="bautagebuch/setup" />
+          <Stack.Screen name="bautagebuch/setup/[templateId]/mapping" />
+          <Stack.Screen name="bautagebuch/setup/[templateId]/fields" />
           <Stack.Screen name="sitereport/new-protocol" />
           <Stack.Screen name="sitereport/protocol/[id]" />
           <Stack.Screen name="sitereport/protocol/[id]/edit" />

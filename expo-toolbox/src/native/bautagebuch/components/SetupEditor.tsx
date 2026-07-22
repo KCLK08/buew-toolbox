@@ -64,6 +64,7 @@ type Props = {
   onChange: (next: Record<string, unknown>) => void;
   info?: string | null;
   error?: string | null;
+  embedded?: boolean;
 };
 
 function fieldBadges(field: SetupField) {
@@ -96,7 +97,8 @@ export function SetupEditor({
   setupModel,
   onChange,
   info,
-  error
+  error,
+  embedded = false
 }: Props) {
   const insets = useSafeAreaInsets();
   const singleSections = (setupModel.single_sections || []) as SetupSingleSection[];
@@ -293,20 +295,24 @@ export function SetupEditor({
       >
         <View style={styles.intro}>
           <Text style={styles.templateName}>Setup: {templateName}</Text>
-          <Text style={styles.muted}>
-            Feld antippen — die Markierung in der PDF-Vorschau zeigt die Position im Formular.
-          </Text>
+          {!embedded ? (
+            <Text style={styles.muted}>
+              Feld antippen — die Markierung in der PDF-Vorschau zeigt die Position im Formular.
+            </Text>
+          ) : null}
         </View>
 
-        <SetupTemplateManager
-          templates={templates}
-          activeTemplateId={activeTemplateId}
-          editingTemplateId={editingTemplateId}
-          importing={importing}
-          onSelectEdit={onSelectEdit}
-          onSetActive={onSetActive}
-          onImport={onImport}
-        />
+        {!embedded ? (
+          <SetupTemplateManager
+            templates={templates}
+            activeTemplateId={activeTemplateId}
+            editingTemplateId={editingTemplateId}
+            importing={importing}
+            onSelectEdit={onSelectEdit}
+            onSetActive={onSetActive}
+            onImport={onImport}
+          />
+        ) : null}
 
         {info ? <Text style={styles.info}>{info}</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}

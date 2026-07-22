@@ -292,7 +292,7 @@ export async function getDetectedFields(templateId: string): Promise<DetectedFie
 export async function saveSetupModel(
   templateId: string,
   setupModel: Record<string, unknown>,
-  status: 'draft' | 'ready' = 'draft'
+  status: 'draft' | 'in_progress' | 'ready' | 'archived' = 'draft'
 ): Promise<void> {
   const db = await getDb();
   const timestamp = nowIso();

@@ -37,6 +37,8 @@ export type BautagebuchExport = {
   deleted_at: string | null;
 };
 
+export type BautagebuchTemplateStatus = 'draft' | 'in_progress' | 'ready' | 'archived';
+
 export type BautagebuchTemplate = {
   templateId: string;
   templateName: string;
@@ -46,10 +48,40 @@ export type BautagebuchTemplate = {
   sizeBytes: number;
   pageCount: number;
   pdfPath: string;
-  status: 'draft' | 'ready';
+  status: BautagebuchTemplateStatus;
   createdAt: string;
   updatedAt: string;
   deleted_at: string | null;
+};
+
+export type SetupWizardStep = 'mapping' | 'fields';
+
+export type SetupWizardGroup = {
+  sectionId: string;
+  label: string;
+};
+
+export type SetupWizardState = {
+  step: SetupWizardStep;
+  currentFieldIndex: number;
+  groups: SetupWizardGroup[];
+  assignments: Record<string, string>;
+  deferredFieldIds: string[];
+};
+
+export type SetupFieldConfig = {
+  fieldId: string;
+  fieldName?: string;
+  label?: string;
+  required?: boolean;
+  skipped?: boolean;
+  multiline?: boolean;
+  defaultValue?: string;
+  hint?: string;
+  page?: number;
+  type?: string;
+  options?: string[];
+  rect?: number[] | null;
 };
 
 export type DetectedField = {
@@ -69,7 +101,7 @@ export type DetectedField = {
 
 export type SetupModelRecord = {
   templateId: string;
-  status: 'draft' | 'ready';
+  status: BautagebuchTemplateStatus;
   version: number;
   setupModel: Record<string, unknown>;
   createdAt: string;
