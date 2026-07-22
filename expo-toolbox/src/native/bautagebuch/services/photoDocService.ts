@@ -7,7 +7,9 @@ import type { PhotoDocMeta } from '../types';
 import { nowIso } from '../../../lib/ids';
 import { requestDatabaseBackup } from '../../../storage/backupService';
 
-type PhotoSource = 'camera' | 'gallery';
+function createPhotoEntryId(): string {
+  return `photo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 async function persistPhotoFromUri(
   runId: string,
@@ -19,7 +21,7 @@ async function persistPhotoFromUri(
     { compress: 0.75, format: ImageManipulator.SaveFormat.JPEG }
   );
 
-  const entryId = `photo_${Date.now()}`;
+  const entryId = createPhotoEntryId();
   const photoDir = `${FileSystem.documentDirectory}bautagebuch/photos/${runId}/`;
   await FileSystem.makeDirectoryAsync(photoDir, { intermediates: true });
   const localPath = `${photoDir}${entryId}.jpg`;
@@ -45,39 +47,63 @@ async function persistPhotoFromUri(
   };
 }
 
-async function pickImage(source: PhotoSource): Promise<string | null> {
-  if (source === 'camera') {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      throw new Error('Kamerazugriff ist erforderlich.');
-    }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
-    if (result.canceled || !result.assets[0]?.uri) return null;
-    return result.assets[0].uri;
+async function pickCameraImage(): Promise<string | null> {
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (!permission.granted) {
+    throw new Error('Kamerazugriff ist erforderlich.');
   }
+  const result = await ImagePicker.launchCameraAsync({
+    quality: 0.8,
+    allowsEditing: false
+  });
+  if (result.canceled || !result.assets[0]?.uri) return null;
+  return result.assets[0].uri;
+}
 
+async function pickImagesFromGallery(): Promise<string[]> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
     throw new Error('Zugriff auf die Fotobibliothek ist erforderlich.');
   }
   const result = await ImagePicker.launchImageLibraryAsync({
     quality: 0.8,
-    mediaTypes: ['images']
+    mediaTypes: ['images'],
+    allowsMultipleSelection: true,
+    selectionLimit: 0
   });
-  if (result.canceled || !result.assets[0]?.uri) return null;
-  return result.assets[0].uri;
+  if (result.canceled || !result.assets?.length) {
+    return [];
+  }
+  return result.assets.map((asset) => asset.uri).filter(Boolean);
+}
+
+export async function addPhotoDocEntriesFromUris(
+  runId: string,
+  uris: string[]
+): Promise<PhotoDocMeta['entries']> {
+  const entries: PhotoDocMeta['entries'] = [];
+  for (const uri of uris) {
+    entries.push(await persistPhotoFromUri(runId, uri));
+  }
+  return entries;
 }
 
 export async function capturePhotoDocEntry(runId: string): Promise<PhotoDocMeta['entries'][number] | null> {
-  const uri = await pickImage('camera');
+  const uri = await pickCameraImage();
   if (!uri) return null;
   return persistPhotoFromUri(runId, uri);
 }
 
+/** @deprecated Use pickMultiplePhotoDocEntries for gallery selection. */
 export async function pickPhotoDocEntry(runId: string): Promise<PhotoDocMeta['entries'][number] | null> {
-  const uri = await pickImage('gallery');
-  if (!uri) return null;
-  return persistPhotoFromUri(runId, uri);
+  const entries = await pickMultiplePhotoDocEntries(runId);
+  return entries[0] || null;
+}
+
+export async function pickMultiplePhotoDocEntries(runId: string): Promise<PhotoDocMeta['entries']> {
+  const uris = await pickImagesFromGallery();
+  if (uris.length === 0) return [];
+  return addPhotoDocEntriesFromUris(runId, uris);
 }
 
 export async function removePhotoDocEntry(

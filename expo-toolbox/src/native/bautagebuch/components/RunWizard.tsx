@@ -27,8 +27,9 @@ type Props = {
   photoDoc?: { enabled: boolean | null; entries: Array<{ id: string; localPath?: string }> };
   onPhotoDocChange?: (enabled: boolean) => void;
   onAddPhoto?: () => void;
-  onPickPhoto?: () => void;
+  onPickPhotos?: () => void;
   onRemovePhoto?: (entryId: string) => void;
+  photoBusy?: boolean;
   totalMissingRequired?: number;
   onRequestExport?: () => void;
   showPreview?: boolean;
@@ -88,8 +89,9 @@ export function RunWizard({
   photoDoc,
   onPhotoDocChange,
   onAddPhoto,
-  onPickPhoto,
+  onPickPhotos,
   onRemovePhoto,
+  photoBusy = false,
   totalMissingRequired = 0,
   onRequestExport,
   showPreview = false,
@@ -311,41 +313,70 @@ export function RunWizard({
 
   const renderPhotoDocSection = () => {
     const choiceMissing = isPhotoDocRequiredMissing(photoDoc?.enabled ?? null);
+    const photoCount = photoDoc?.entries?.length || 0;
+    const photosMissing = photoDoc?.enabled === true && photoCount === 0;
     return (
       <View style={styles.sectionBody}>
         <View style={choiceMissing ? styles.missingField : null}>
           <Text style={styles.label}>Fotodokumentation anhängen? *</Text>
+          <Text style={styles.hint}>
+            Wähle Ja, wenn Baustellenfotos als separates PDF oder zusammen mit dem BTB exportiert werden sollen.
+          </Text>
           <View style={styles.chipRow}>
             <Pressable
               style={[styles.chip, photoDoc?.enabled === true ? styles.chipActive : null]}
               onPress={() => onPhotoDocChange?.(true)}
             >
-              <Text style={styles.chipText}>Ja</Text>
+              <Text style={[styles.chipText, photoDoc?.enabled === true ? styles.chipTextActive : null]}>Ja</Text>
             </Pressable>
             <Pressable
               style={[styles.chip, photoDoc?.enabled === false ? styles.chipActive : null]}
               onPress={() => onPhotoDocChange?.(false)}
             >
-              <Text style={styles.chipText}>Nein</Text>
+              <Text style={[styles.chipText, photoDoc?.enabled === false ? styles.chipTextActive : null]}>Nein</Text>
             </Pressable>
           </View>
         </View>
         {photoDoc?.enabled ? (
           <>
-            <View style={styles.photoActions}>
-              <PrimaryButton label="Kamera" variant="secondary" onPress={() => onAddPhoto?.()} />
-              <PrimaryButton label="Galerie" variant="secondary" onPress={() => onPickPhoto?.()} />
+            <View style={[styles.photoSummary, photosMissing ? styles.missingField : null]}>
+              <Text style={styles.label}>
+                Fotos ({photoCount})
+                {photosMissing ? ' · mindestens 1 Foto empfohlen' : ''}
+              </Text>
+              <Text style={styles.hint}>
+                Nimm ein Foto auf oder wähle mehrere Bilder aus der Galerie. Du kannst beliebig viele Fotos hinzufügen.
+              </Text>
             </View>
-            {(photoDoc.entries || []).map((entry) => (
+            <View style={styles.photoActions}>
+              <PrimaryButton
+                label={photoBusy ? 'Wird gespeichert…' : 'Foto aufnehmen'}
+                variant="secondary"
+                disabled={photoBusy}
+                onPress={() => onAddPhoto?.()}
+              />
+              <PrimaryButton
+                label={photoBusy ? 'Wird geladen…' : 'Mehrere aus Galerie'}
+                variant="secondary"
+                disabled={photoBusy}
+                onPress={() => onPickPhotos?.()}
+              />
+            </View>
+            {(photoDoc.entries || []).map((entry, index) => (
               <View key={entry.id} style={styles.photoRow}>
+                <Text style={styles.photoMeta}>Foto {photoCount - index}</Text>
                 {entry.localPath ? <Image source={{ uri: entry.localPath }} style={styles.photoPreview} /> : null}
                 <PrimaryButton
                   label="Entfernen"
                   variant="ghost"
+                  disabled={photoBusy}
                   onPress={() => onRemovePhoto?.(entry.id)}
                 />
               </View>
             ))}
+            {photoCount === 0 ? (
+              <Text style={styles.hint}>Noch keine Fotos vorhanden. Tippe auf „Foto aufnehmen“ oder „Mehrere aus Galerie“.</Text>
+            ) : null}
           </>
         ) : null}
       </View>
@@ -470,6 +501,7 @@ const styles = StyleSheet.create({
   sectionTitle: { ...typography.subtitle, color: colors.ink, marginBottom: spacing.sm },
   sectionBody: { gap: spacing.sm },
   label: { ...typography.label, color: colors.muted },
+  hint: { ...typography.caption, color: colors.muted },
   choiceBlock: { gap: spacing.xs },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   chip: {
@@ -499,7 +531,9 @@ const styles = StyleSheet.create({
   tableCard: { gap: spacing.sm },
   tableRowTitle: { ...typography.bodyStrong, color: colors.ink },
   photoActions: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
+  photoSummary: { gap: spacing.xxs },
   photoRow: { gap: spacing.xs },
+  photoMeta: { ...typography.caption, color: colors.muted },
   photoPreview: { width: '100%', height: 180, borderRadius: 12, backgroundColor: colors.border },
   missingField: {
     borderWidth: 1,

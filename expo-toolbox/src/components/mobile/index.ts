@@ -8,3 +8,4 @@ export { Section } from './Section';
 export { StatCard } from './StatCard';
 export { StatusBadge } from './StatusBadge';
 export { TextField } from './TextField';
+export { BottomSheet, BottomSheetOption } from './BottomSheet';
