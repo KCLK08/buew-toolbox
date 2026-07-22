@@ -16,7 +16,13 @@ export function useSetupAutosave(templateId: string) {
     pendingRef.current = null;
     savingRef.current = true;
     try {
-      await saveSetupModel(templateId, snapshot, 'draft');
+      const status =
+        snapshot.status === 'ready'
+          ? 'ready'
+          : snapshot.status === 'archived'
+            ? 'archived'
+            : 'in_progress';
+      await saveSetupModel(templateId, snapshot, status);
     } finally {
       savingRef.current = false;
       if (pendingRef.current) {

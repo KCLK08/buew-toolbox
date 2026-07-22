@@ -10,6 +10,7 @@ import {
   upgradeSetupModel
 } from '../lib/etb-template.js';
 import { buildGenericSetupModel } from '../lib/generic-setup-model.js';
+import { withWizardState } from '../lib/setup-mapping';
 import { scanTemplatePdf } from '../lib/pdf-scan';
 import { scanTemplatePdfLite } from '../lib/pdf-scan-lite';
 import { detectedFieldsNeedRescan } from '../lib/scan-meta';
@@ -26,7 +27,7 @@ import {
 } from '../db/database';
 import { appConfig } from '../../../lib/config';
 import { base64ToUint8Array, uint8ToBase64 } from '../../../lib/binary';
-import type { BautagebuchTemplate } from '../types';
+import type { BautagebuchTemplate, BautagebuchTemplateStatus } from '../types';
 
 const TEMPLATE_URL = `${appConfig.toolboxWebBaseUrl.replace(/\/$/, '')}/bautagebuch/templates/Vorlage-eBTB.pdf`;
 const ACTIVE_TEMPLATE_KEY = 'activeTemplateId';
@@ -75,7 +76,7 @@ async function persistSetupModel(
       await saveSetupModel(
         templateId,
         setupModel,
-        String(setupModel.status || 'ready') as 'draft' | 'ready'
+        String(setupModel.status || 'ready') as BautagebuchTemplateStatus
       );
     }
   }
@@ -129,7 +130,31 @@ export async function setActiveTemplateId(templateId: string): Promise<void> {
   if (!template) {
     throw new Error('Vorlage nicht gefunden.');
   }
+  if (template.status !== 'ready') {
+    throw new Error('Nur abgeschlossene Vorlagen können aktiviert werden.');
+  }
   await setAppSetting(ACTIVE_TEMPLATE_KEY, template.templateId);
+}
+
+export async function archiveTemplate(templateId: string): Promise<void> {
+  const template = await getTemplate(templateId);
+  if (!template) {
+    throw new Error('Vorlage nicht gefunden.');
+  }
+  const activeId = await getActiveTemplateId();
+  if (activeId === templateId) {
+    throw new Error('Die aktive Vorlage kann nicht archiviert werden.');
+  }
+  const setupModel = await getSetupModel(templateId);
+  if (setupModel) {
+    await saveSetupModel(templateId, setupModel, 'archived');
+    return;
+  }
+  await putTemplate({
+    ...template,
+    status: 'archived',
+    updatedAt: new Date().toISOString()
+  });
 }
 
 export async function listManagedTemplates(): Promise<BautagebuchTemplate[]> {
@@ -332,13 +357,24 @@ export async function importTemplateFromDocument(): Promise<{ templateId: string
   );
 
   const detectedFields = await getDetectedFields(template.templateId);
-  const setupModel = buildGenericSetupModel({
-    templateId: template.templateId,
-    templateName: template.templateName,
-    pageCount: scanResult.pageCount,
-    detectedFields: detectedFields as never[]
-  });
+  const setupModel = withWizardState(
+    buildGenericSetupModel({
+      templateId: template.templateId,
+      templateName: template.templateName,
+      pageCount: scanResult.pageCount,
+      detectedFields: detectedFields as never[]
+    }),
+    { step: 'mapping' }
+  );
 
-  await saveSetupModel(template.templateId, setupModel, 'draft');
+  await saveSetupModel(template.templateId, setupModel, 'in_progress');
   return { templateId: template.templateId };
+}
+
+export function isTemplateEditable(template: BautagebuchTemplate): boolean {
+  return template.status !== 'archived';
+}
+
+export function canActivateTemplate(template: BautagebuchTemplate): boolean {
+  return template.status === 'ready';
 }

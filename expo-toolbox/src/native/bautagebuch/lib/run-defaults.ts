@@ -16,7 +16,9 @@ function hasRunValue(type: string | undefined, value: unknown): boolean {
   return String(value ?? '').trim().length > 0;
 }
 
-function runDefaultValueForField(field: { fieldName?: string }): string {
+function runDefaultValueForField(field: { fieldName?: string; defaultValue?: string }): string {
+  const configured = String(field?.defaultValue || '').trim();
+  if (configured) return configured;
   const fieldName = String(field?.fieldName || '').trim();
   if (!fieldName) return '';
   if (RUN_DEFAULTS_BY_FIELD_NAME.has(fieldName)) {
