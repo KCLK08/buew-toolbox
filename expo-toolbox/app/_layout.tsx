@@ -9,7 +9,7 @@ import {
 } from '@expo-google-fonts/space-grotesk';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineStatusBanner } from '../src/components/OfflineStatusBanner';
 import { colors } from '../src/constants/theme';
@@ -19,6 +19,14 @@ import { initBautagebuchDatabase } from '../src/native/bautagebuch/db/database';
 import { initSiteReportDatabase } from '../src/native/sitereport/db/database';
 
 export default function RootLayout() {
+  return (
+    <SafeAreaProvider>
+      <RootLayoutContent />
+    </SafeAreaProvider>
+  );
+}
+
+function RootLayoutContent() {
   const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts({
     SpaceGrotesk_400Regular,
@@ -41,9 +49,11 @@ export default function RootLayout() {
 
   if (!appReady) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, gap: 12 }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, gap: 12, paddingTop: insets.top }}>
         <ActivityIndicator color={colors.accent} size="large" />
-        <Text style={{ color: colors.muted, fontFamily: 'SpaceGrotesk_400Regular' }}>App wird geladen…</Text>
+        <Text style={{ color: colors.muted, fontFamily: fontsLoaded ? 'SpaceGrotesk_400Regular' : undefined }}>
+          App wird geladen…
+        </Text>
       </View>
     );
   }
@@ -52,9 +62,9 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ToastProvider>
       <StatusBar style="dark" />
-      <View style={{ flex: 1, paddingTop: insets.top }}>
-        <View style={{ paddingHorizontal: 16 }}>
-          {showBanner ? (
+      <View style={{ flex: 1 }}>
+        {showBanner ? (
+          <View style={{ paddingHorizontal: 16, paddingTop: insets.top }}>
             <OfflineStatusBanner
               report={report}
               error={error}
@@ -67,8 +77,8 @@ export default function RootLayout() {
               onRejectRestore={rejectRestore}
               onDismiss={() => setBannerDismissed(true)}
             />
-          ) : null}
-        </View>
+          </View>
+        ) : null}
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="bautagebuch/run/[id]" />

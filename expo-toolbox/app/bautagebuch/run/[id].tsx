@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 
-import { PrimaryButton, Screen } from '../../../src/components/mobile';
+import { PrimaryButton, Screen, StatusBadge } from '../../../src/components/mobile';
 import { colors, typography } from '../../../src/constants/theme';
 import { useToast } from '../../../src/contexts/ToastContext';
 import { PdfPreviewPanel } from '../../../src/native/bautagebuch/components/PdfPreviewPanel';
@@ -254,6 +254,14 @@ export default function BautagebuchRunScreen() {
       showBack
       footer={
         <View style={styles.footerCol}>
+          {totalMissingRequired > 0 ? (
+            <StatusBadge
+              label={`${totalMissingRequired} Pflichtfeld${totalMissingRequired === 1 ? '' : 'er'} offen`}
+              tone="warning"
+            />
+          ) : (
+            <StatusBadge label="Bereit zum Export" tone="success" />
+          )}
           <Pressable onPress={() => setShowPreview((value) => !value)}>
             <Text style={styles.previewToggle}>
               {showPreview ? 'Vorschau ausblenden' : 'Live-PDF-Vorschau anzeigen'}

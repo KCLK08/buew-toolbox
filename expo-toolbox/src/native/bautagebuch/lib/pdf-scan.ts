@@ -1,11 +1,11 @@
 import { Asset } from 'expo-asset';
 import { PDFDocument } from 'pdf-lib';
-import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 import { detectPdfFieldType } from './setup-model.js';
+import { ETB_SCAN_VERSION } from './scan-meta';
 
-/** Bump when scan logic changes — triggers template re-scan on next load. */
-export const ETB_SCAN_VERSION = 3;
+export { ETB_SCAN_VERSION } from './scan-meta';
+export { detectedFieldsNeedRescan } from './scan-meta';
 
 type ScanField = {
   fieldName: string;
@@ -41,11 +41,14 @@ type PdfJsDoc = {
   getPage: (pageNumber: number) => Promise<PdfJsPage>;
 };
 
-let pdfJsPromise: Promise<typeof pdfjs> | null = null;
+type PdfJsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 
-async function loadPdfJs(): Promise<typeof pdfjs> {
+let pdfJsPromise: Promise<PdfJsModule> | null = null;
+
+async function loadPdfJs(): Promise<PdfJsModule> {
   if (!pdfJsPromise) {
     pdfJsPromise = (async () => {
+      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
       const asset = Asset.fromModule(require('../../../../assets/pdf.worker.min.mjs'));
       await asset.downloadAsync();
       pdfjs.GlobalWorkerOptions.workerSrc = asset.localUri || asset.uri;
@@ -352,22 +355,4 @@ export async function scanTemplatePdf(pdfBytes: Uint8Array) {
     scanVersion: ETB_SCAN_VERSION,
     detectedFields: assignFieldIds(sortDetectedFields(detectedFields))
   };
-}
-
-export function detectedFieldsNeedRescan(
-  fields: Array<{ type?: string; options?: string[]; rect?: number[] | null }>
-): boolean {
-  if (fields.length === 0) {
-    return true;
-  }
-
-  if (fields.some((field) => !Array.isArray(field.rect) || field.rect.length < 4)) {
-    return true;
-  }
-
-  return fields.some((field) => {
-    const type = String(field.type || '').toLowerCase();
-    if (type !== 'dropdown' && type !== 'radio') return false;
-    return !Array.isArray(field.options) || field.options.length === 0;
-  });
 }
