@@ -4,7 +4,9 @@ export const ETB_TEMPLATE_KIND = 'builtin-etb';
 export const ETB_TEMPLATE_NAME = 'Vorlage-eBTB';
 export const ETB_TEMPLATE_FILE_NAME = 'Vorlage-eBTB.pdf';
 export const ETB_TEMPLATE_PUBLIC_URL = '/buew-toolbox/bautagebuch/templates/Vorlage-eBTB.pdf';
-export const ETB_SETUP_VERSION = 6;
+export const ETB_SETUP_VERSION = 7;
+
+const MULTILINE_COLUMNS_BY_TABLE = new Map([['table_detail_blocks', new Set(['c4', 'c5'])]]);
 
 const MAIN_PERSONAL_COLUMNS = [
   { columnId: 'c1', label: 'Firmenbezeichnung' },
@@ -33,9 +35,10 @@ const DETAIL_BLOCK_COLUMNS = [
   {
     columnId: 'c4',
     label: `a) Ausgeführte Arbeiten und Bauablauf
-b) Verwendete Maschinen und Geräte`
+b) Verwendete Maschinen und Geräte`,
+    multiline: true
   },
-  { columnId: 'c5', label: 'Besonderes' }
+  { columnId: 'c5', label: 'Besonderes', multiline: true }
 ];
 
 const DETAIL_BLOCK_FIELD_NAMES = [['Text63', 'Text64', 'Text65', 'Text66', 'Text67']];
@@ -111,7 +114,7 @@ function buildFieldMap(fields = []) {
   return map;
 }
 
-function fieldEntry(sourceField, { label = '', skipped = false } = {}) {
+function fieldEntry(sourceField, { label = '', skipped = false, multiline = false } = {}) {
   if (sourceField) {
     return {
       fieldId: String(sourceField.fieldId || ''),
@@ -121,6 +124,7 @@ function fieldEntry(sourceField, { label = '', skipped = false } = {}) {
       options: Array.isArray(sourceField.options) ? [...sourceField.options] : [],
       required: false,
       skipped: skipped === true,
+      multiline: multiline === true,
       rect: Array.isArray(sourceField.rect) ? sourceField.rect.slice(0, 4) : null
     };
   }
@@ -132,6 +136,7 @@ function fieldEntry(sourceField, { label = '', skipped = false } = {}) {
     options: [],
     required: false,
     skipped: true,
+    multiline: false,
     rect: null
   };
 }
@@ -153,7 +158,8 @@ function tableCellEntry({ tableId, rowId, column, sourceField }) {
       page: Number(sourceField.page || 1),
       rect: Array.isArray(sourceField.rect) ? sourceField.rect.slice(0, 4) : null,
       skipped: false,
-      required: false
+      required: false,
+      multiline: column?.multiline === true
     };
   }
   return {
@@ -169,7 +175,8 @@ function tableCellEntry({ tableId, rowId, column, sourceField }) {
     page: 1,
     rect: null,
     skipped: true,
-    required: false
+    required: false,
+    multiline: column?.multiline === true
   };
 }
 
@@ -182,12 +189,17 @@ function buildFixedTableSection({
   requiredColumnIds = new Set(),
   skippedColumnIds = new Set()
 }) {
-  const normalizedColumns = columns.map((column, index) => ({
-    columnId: String(column.columnId || `c${index + 1}`),
-    label: String(column.label || `Spalte ${index + 1}`),
-    required: requiredColumnIds.has(String(column.columnId || `c${index + 1}`)),
-    skipped: skippedColumnIds.has(String(column.columnId || `c${index + 1}`))
-  }));
+  const normalizedColumns = columns.map((column, index) => {
+    const columnId = String(column.columnId || `c${index + 1}`);
+    const multilineDefaults = MULTILINE_COLUMNS_BY_TABLE.get(tableId);
+    return {
+      columnId,
+      label: String(column.label || `Spalte ${index + 1}`),
+      required: requiredColumnIds.has(columnId),
+      skipped: skippedColumnIds.has(columnId),
+      multiline: column.multiline === true || multilineDefaults?.has(columnId) === true
+    };
+  });
 
   const rows = rowFieldNames.map((fieldNames, rowIndex) => {
     const rowId = `r${rowIndex + 1}`;
@@ -202,6 +214,7 @@ function buildFixedTableSection({
       });
       cell.required = column.required === true;
       cell.skipped = column.skipped === true || cell.skipped === true;
+      cell.multiline = column.multiline === true;
       return cell;
     });
     return {
@@ -258,7 +271,8 @@ function buildEtbSetupModelFromSnapshot({ templateId, pageCount, detectedFields 
       columnId: uniqueToken(column?.columnId, `c${columnIndex + 1}`, usedColumnIds),
       label: String(column?.label || `Spalte ${columnIndex + 1}`),
       required: column?.required === true,
-      skipped: column?.skipped === true
+      skipped: column?.skipped === true,
+      multiline: column?.multiline === true
     }));
     const usedRowIds = new Set();
     const rows = ((table?.rows) || []).map((row, rowIndex) => {
@@ -343,7 +357,7 @@ function buildSnapshotSingleField(snapshotField, sourceField, fieldToken) {
     };
   }
 
-  const field = fieldEntry(sourceField, { label, skipped });
+  const field = fieldEntry(sourceField, { label, skipped, multiline: snapshotField?.multiline === true });
   field.required = required;
   field.skipped = skipped;
   return field;
@@ -360,6 +374,7 @@ function buildSnapshotTableCell({ tableId, rowId, column, entry, sourceField }) 
     cell.label = label;
     cell.required = required;
     cell.skipped = skipped;
+    cell.multiline = column?.multiline === true || entry?.multiline === true;
     return cell;
   }
 
@@ -383,6 +398,53 @@ function uniqueToken(value, fallback, used) {
   const next = `${base}-${suffix}`;
   used.add(next);
   return next;
+}
+
+export function upgradeSetupModel(model) {
+  if (!model || typeof model !== 'object') {
+    return { model, changed: false };
+  }
+
+  let changed = false;
+  const version = Number(model.version || 0);
+
+  if (version < ETB_SETUP_VERSION) {
+    for (const table of model.table_sections || []) {
+      const tableId = String(table.tableId || '');
+      const multilineDefaults = MULTILINE_COLUMNS_BY_TABLE.get(tableId);
+      if (!multilineDefaults) {
+        continue;
+      }
+
+      for (const column of table.columns || []) {
+        if (!multilineDefaults.has(String(column.columnId || ''))) {
+          continue;
+        }
+        if (column.multiline !== true) {
+          column.multiline = true;
+          changed = true;
+        }
+      }
+
+      for (const row of table.rows || []) {
+        for (const cell of row.cells || []) {
+          if (!multilineDefaults.has(String(cell.columnId || ''))) {
+            continue;
+          }
+          if (cell.multiline !== true) {
+            cell.multiline = true;
+            changed = true;
+          }
+        }
+      }
+    }
+
+    model.version = ETB_SETUP_VERSION;
+    model.updatedAt = nowIso();
+    changed = true;
+  }
+
+  return { model, changed };
 }
 
 export function buildEtbSetupModel({ templateId, pageCount, detectedFields = [] }) {

@@ -1,5 +1,7 @@
 import { PDFCheckBox, PDFDropdown, PDFOptionList, PDFRadioGroup, PDFTextField } from 'pdf-lib';
 
+import { getPdfFieldRectangle, prepareMultilinePdfText } from './pdf-text-fit.js';
+
 const COMPACT_FIELD_FONT_SIZES = new Map([
   ['Text63', 12],
   ['Text64', 12],
@@ -451,7 +453,8 @@ export function collectPdfValueAssignments(model, values = {}) {
         assignments.push({
           fieldName: String(field.fieldName || '').trim(),
           type: String(field.type || 'text'),
-          value
+          value,
+          multiline: field.multiline === true
         });
       }
     }
@@ -460,6 +463,7 @@ export function collectPdfValueAssignments(model, values = {}) {
   for (const table of model?.table_sections || []) {
     const activeColumns = (table.columns || []).filter((column) => column?.skipped !== true);
     const activeColumnIds = new Set(activeColumns.map((column) => String(column.columnId)));
+    const columnsById = new Map(activeColumns.map((column) => [String(column.columnId), column]));
     for (const row of table.rows || []) {
       if (row?.skipped === true) {
         continue;
@@ -475,12 +479,14 @@ export function collectPdfValueAssignments(model, values = {}) {
         const inputKey = inputKeyForCell(cell);
         const value = values[inputKey];
         if (hasValue(cell?.type, value)) {
+          const column = columnsById.get(String(cell.columnId));
           assignments.push({
             fieldName: String(cell.fieldName || '').trim(),
             type: String(cell.type || 'text'),
             tableId: String(table.tableId || '').trim(),
             columnId: String(cell.columnId || '').trim(),
-            value
+            value,
+            multiline: column?.multiline === true || cell.multiline === true
           });
         }
       }
@@ -490,7 +496,12 @@ export function collectPdfValueAssignments(model, values = {}) {
   return assignments;
 }
 
-export function applyPdfFieldValue(field, type, value, { fieldName = '', tableId = '', columnId = '' } = {}) {
+export function applyPdfFieldValue(
+  field,
+  type,
+  value,
+  { fieldName = '', tableId = '', columnId = '', multiline = false } = {}
+) {
   const resolvedType = type || detectPdfFieldType(field);
   if (!field) {
     return;
@@ -519,7 +530,31 @@ export function applyPdfFieldValue(field, type, value, { fieldName = '', tableId
     return;
   }
 
-  const fontSize = fieldFontSize(fieldName, { tableId, columnId });
+  const startFontSize = fieldFontSize(fieldName, { tableId, columnId });
+  const resolvedMultiline = multiline === true || normalizedText.includes('\n');
+
+  if (resolvedMultiline && typeof field.enableMultiline === 'function') {
+    try {
+      field.enableMultiline();
+    } catch {
+      // Ignore fields that already have multiline state.
+    }
+  }
+
+  let textToSet = normalizedText;
+  let fontSize = Number.isFinite(startFontSize) ? startFontSize : 12;
+
+  if (resolvedMultiline) {
+    const rect = getPdfFieldRectangle(field);
+    const prepared = prepareMultilinePdfText({
+      text: normalizedText,
+      rect,
+      startFontSize: fontSize
+    });
+    textToSet = prepared.text;
+    fontSize = prepared.fontSize;
+  }
+
   if (Number.isFinite(fontSize) && typeof field.setFontSize === 'function') {
     try {
       field.setFontSize(fontSize);
@@ -528,13 +563,5 @@ export function applyPdfFieldValue(field, type, value, { fieldName = '', tableId
     }
   }
 
-  if (normalizedText.includes('\n') && typeof field.enableMultiline === 'function') {
-    try {
-      field.enableMultiline();
-    } catch {
-      // Ignore fields that already have multiline state.
-    }
-  }
-
-  field.setText(normalizedText);
+  field.setText(textToSet);
 }

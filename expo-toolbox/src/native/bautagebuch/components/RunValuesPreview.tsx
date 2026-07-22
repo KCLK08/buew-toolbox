@@ -31,14 +31,16 @@ export function RunValuesPreview({ setupModel, values, sectionIndex }: Props) {
   const section = sections[sectionIndex];
   if (!section) return null;
 
-  const rows: Array<{ label: string; value: string }> = [];
+  const rows: Array<{ key: string; label: string; value: string; multiline: boolean }> = [];
 
   if (section.kind === 'single') {
     for (const field of section.fields || []) {
       if (field.skipped) continue;
       rows.push({
+        key: field.fieldId,
         label: field.label || field.fieldName,
-        value: formatValue(values[fieldKey(field.fieldId)])
+        value: formatValue(values[fieldKey(field.fieldId)]),
+        multiline: field.multiline === true
       });
     }
   }
@@ -53,8 +55,10 @@ export function RunValuesPreview({ setupModel, values, sectionIndex }: Props) {
         const column = (section.columns || []).find((entry) => entry.columnId === cell.columnId);
         if (column?.skipped) continue;
         rows.push({
+          key: cell.cellId,
           label: `${column?.label || cell.columnId} (Zeile ${row.index ?? '?'})`,
-          value: formatValue(values[cellKey(cell.cellId)])
+          value: formatValue(values[cellKey(cell.cellId)]),
+          multiline: column?.multiline === true || cell.multiline === true
         });
       }
     }
@@ -74,9 +78,9 @@ export function RunValuesPreview({ setupModel, values, sectionIndex }: Props) {
     <View style={styles.card}>
       <Text style={styles.title}>PDF-Vorschau (aktueller Abschnitt)</Text>
       {filled.map((row) => (
-        <View key={`${row.label}:${row.value}`} style={styles.row}>
+        <View key={row.key} style={styles.row}>
           <Text style={styles.label}>{row.label}</Text>
-          <Text style={styles.value}>{row.value}</Text>
+          <Text style={[styles.value, row.multiline ? styles.valueMultiline : null]}>{row.value}</Text>
         </View>
       ))}
     </View>
@@ -96,5 +100,8 @@ const styles = StyleSheet.create({
   muted: { ...typography.caption, color: colors.muted },
   row: { gap: 2, paddingVertical: 4, borderTopWidth: 1, borderTopColor: colors.border },
   label: { ...typography.caption, color: colors.muted },
-  value: { ...typography.body, color: colors.ink }
+  value: { ...typography.body, color: colors.ink },
+  valueMultiline: {
+    lineHeight: 22
+  }
 });

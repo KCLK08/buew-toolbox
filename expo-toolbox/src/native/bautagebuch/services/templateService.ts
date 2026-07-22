@@ -5,7 +5,8 @@ import {
   ETB_TEMPLATE_FILE_NAME,
   ETB_TEMPLATE_KIND,
   ETB_TEMPLATE_NAME,
-  buildEtbSetupModel
+  buildEtbSetupModel,
+  upgradeSetupModel
 } from '../lib/etb-template.js';
 import { scanTemplatePdf } from '../lib/pdf-scan';
 import { scanTemplatePdfLite } from '../lib/pdf-scan-lite';
@@ -83,7 +84,12 @@ export async function ensureBuiltinTemplate(): Promise<{
   );
 
   if (existing) {
-    const setupModel = await getSetupModel(existing.templateId);
+    const rawSetupModel = await getSetupModel(existing.templateId);
+    const upgraded = upgradeSetupModel(rawSetupModel);
+    let setupModel = upgraded.model;
+    if (upgraded.changed && setupModel) {
+      await saveSetupModel(existing.templateId, setupModel, String(setupModel.status || 'ready') as 'draft' | 'ready');
+    }
     const detectedFields = await getDetectedFields(existing.templateId);
     const setupReady = setupModel && Number(setupModel.version || 0) >= ETB_SETUP_VERSION;
     const fieldsNeedRescan = detectedFieldsNeedRescan(detectedFields);

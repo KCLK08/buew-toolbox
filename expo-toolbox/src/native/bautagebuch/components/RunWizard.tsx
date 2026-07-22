@@ -38,7 +38,6 @@ type Props = {
 
 const GEWERK_FIELDS = ['Text3', 'Text5', 'Text6', 'Text7', 'Text8'];
 const SHIFT_FIELDS = ['Check Box1', 'Check Box2', 'Check Box3'];
-const LEISTUNGSBLOCK_TABLE_ID = 'table_detail_blocks';
 const MAIN_PERSONAL_TABLE_ID = 'table_main_personal';
 
 function fieldKey(fieldId: string) {
@@ -61,13 +60,6 @@ function isFieldMissing(section: RunSection, field: { fieldId: string; type?: st
   const value = values[key];
   if (field.type === 'checkbox') return value !== true;
   return String(value ?? '').trim().length === 0;
-}
-
-function isLeistungsblockTable(section: RunSection) {
-  if (section.kind !== 'table') return false;
-  const tableId = String(section.tableId || '').trim();
-  if (tableId === LEISTUNGSBLOCK_TABLE_ID) return true;
-  return String(section.label || '').toLowerCase().includes('leistungsblock');
 }
 
 function isMainPersonalTable(section: RunSection) {
@@ -163,7 +155,8 @@ export function RunWizard({
                 : text;
             setFieldValue(field.fieldId, normalized);
           }}
-          multiline={label.length > 30}
+          multiline={field.multiline === true}
+          autoGrow={field.multiline === true}
         />
       </View>
     );
@@ -262,7 +255,6 @@ export function RunWizard({
     const tableId = String(section.tableId || '');
     const visibleCount = visibleRowCountForSection(section, values);
     const rows = section.rows.slice(0, Math.max(1, visibleCount));
-    const leistung = isLeistungsblockTable(section);
     const personal = isMainPersonalTable(section);
 
     return (
@@ -274,9 +266,8 @@ export function RunWizard({
               const label = cell.label;
               const labelLower = label.toLowerCase();
               const isTime = personal && (labelLower.includes('beginn') || labelLower.includes('ende'));
-              const multiline = leistung
-                ? String(cell.columnId || '').match(/^c[45]$/)
-                : label.length > 24;
+              const column = section.columns.find((entry) => entry.columnId === cell.columnId);
+              const multiline = column?.multiline === true || cell.multiline === true;
               const missing =
                 cell.required &&
                 String(values[cellKey(cell.cellId)] ?? '').trim().length === 0 &&
@@ -292,6 +283,7 @@ export function RunWizard({
                       setCellValue(cell.cellId, normalized);
                     }}
                     multiline={multiline}
+                    autoGrow={multiline}
                   />
                 </View>
               );

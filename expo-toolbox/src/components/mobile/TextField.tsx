@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 
 import { colors, spacing, typography } from '../../constants/theme';
@@ -5,15 +6,48 @@ import { colors, spacing, typography } from '../../constants/theme';
 type Props = TextInputProps & {
   label: string;
   hint?: string;
+  autoGrow?: boolean;
 };
 
-export function TextField({ label, hint, style, ...rest }: Props) {
+const MULTILINE_MIN_HEIGHT = 132;
+const MULTILINE_MAX_HEIGHT = 320;
+
+export function TextField({ label, hint, style, multiline, autoGrow, value, onContentSizeChange, ...rest }: Props) {
+  const [inputHeight, setInputHeight] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (!multiline || !autoGrow) {
+      setInputHeight(undefined);
+    }
+  }, [multiline, autoGrow, value]);
+
+  const minHeight = multiline ? (autoGrow ? MULTILINE_MIN_HEIGHT : 96) : spacing.touchMin + 8;
+
   return (
     <View style={styles.wrap}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
         placeholderTextColor={colors.muted}
-        style={[styles.input, style]}
+        multiline={multiline}
+        textAlignVertical={multiline ? 'top' : 'center'}
+        scrollEnabled={!(multiline && autoGrow)}
+        value={value}
+        onContentSizeChange={(event) => {
+          if (multiline && autoGrow) {
+            const nextHeight = Math.min(
+              MULTILINE_MAX_HEIGHT,
+              Math.max(MULTILINE_MIN_HEIGHT, event.nativeEvent.contentSize.height + spacing.md)
+            );
+            setInputHeight(nextHeight);
+          }
+          onContentSizeChange?.(event);
+        }}
+        style={[
+          styles.input,
+          multiline ? styles.inputMultiline : null,
+          multiline && autoGrow ? { minHeight, height: inputHeight ?? minHeight } : multiline ? { minHeight } : null,
+          style
+        ]}
         {...rest}
       />
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
@@ -40,6 +74,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     color: colors.ink,
     ...typography.body
+  },
+  inputMultiline: {
+    lineHeight: 22
   },
   hint: {
     ...typography.caption,

@@ -15,6 +15,7 @@ type SetupField = {
   label?: string;
   required?: boolean;
   skipped?: boolean;
+  multiline?: boolean;
   page?: number;
 };
 
@@ -29,6 +30,7 @@ type SetupTableColumn = {
   label?: string;
   required?: boolean;
   skipped?: boolean;
+  multiline?: boolean;
 };
 
 type SetupTableSection = {
@@ -170,6 +172,15 @@ export function SetupEditor({
           Object.assign(column, patch);
         }
       }
+      if ('multiline' in patch) {
+        for (const row of table?.rows || []) {
+          for (const cell of row.cells || []) {
+            if (String(cell.columnId) === String(columnId)) {
+              cell.multiline = patch.multiline === true;
+            }
+          }
+        }
+      }
     });
   };
 
@@ -280,6 +291,13 @@ export function SetupEditor({
                       updateSingleField(activeSingle.sectionId, field.fieldId, { skipped: !field.skipped })
                     }
                   />
+                  <ListItem
+                    title="Mehrzeilig"
+                    subtitle={field.multiline ? 'Ja · großes Eingabefeld' : 'Nein · einzeilig'}
+                    onPress={() =>
+                      updateSingleField(activeSingle.sectionId, field.fieldId, { multiline: !field.multiline })
+                    }
+                  />
                   <View style={styles.row}>
                     <PrimaryButton
                       label="↑"
@@ -344,6 +362,13 @@ export function SetupEditor({
                     subtitle={column.skipped ? 'Ausgeblendet' : 'Sichtbar'}
                     onPress={() =>
                       updateTableColumn(activeTable.tableId, column.columnId, { skipped: !column.skipped })
+                    }
+                  />
+                  <ListItem
+                    title="Mehrzeilig"
+                    subtitle={column.multiline ? 'Ja · großes Eingabefeld' : 'Nein · einzeilig'}
+                    onPress={() =>
+                      updateTableColumn(activeTable.tableId, column.columnId, { multiline: !column.multiline })
                     }
                   />
                 </View>
