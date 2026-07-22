@@ -22,7 +22,8 @@ import {
 } from '../../../src/components/mobile';
 import { colors, spacing, typography } from '../../../src/constants/theme';
 import { useToast } from '../../../src/contexts/ToastContext';
-import { BautagebuchRunCard } from '../../../src/native/bautagebuch/components/BautagebuchRunCard';
+import { BautagebuchRunList } from '../../../src/native/bautagebuch/components/BautagebuchRunList';
+import { groupRunsByCalendar } from '../../../src/native/bautagebuch/lib/group-runs-by-calendar';
 import {
   createRun,
   deleteRunCascade,
@@ -39,27 +40,6 @@ import {
 } from '../../../src/native/bautagebuch/services/backupExportService';
 import { ensureBuiltinTemplate } from '../../../src/native/bautagebuch/services/templateService';
 import type { BautagebuchExport, BautagebuchRun } from '../../../src/native/bautagebuch/types';
-
-function groupRunsByWeek(runs: BautagebuchRun[]) {
-  const groups = new Map<string, BautagebuchRun[]>();
-  for (const run of runs) {
-    const date = run.title.match(/\d{4}-\d{2}-\d{2}/)?.[0] || run.createdAt.slice(0, 10);
-    const weekKey = `KW ${getIsoWeek(date)} · ${date.slice(0, 7)}`;
-    const bucket = groups.get(weekKey) || [];
-    bucket.push(run);
-    groups.set(weekKey, bucket);
-  }
-  return [...groups.entries()];
-}
-
-function getIsoWeek(dateString: string): number {
-  const date = new Date(`${dateString}T12:00:00`);
-  const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const day = target.getUTCDay() || 7;
-  target.setUTCDate(target.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
-  return Math.ceil((((target.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-}
 
 function formatTodayLabel(): string {
   return new Date().toLocaleDateString('de-DE', {
@@ -83,6 +63,7 @@ export default function BautagebuchHomeScreen() {
   const [sharingExport, setSharingExport] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
+  const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
   const [renameRunId, setRenameRunId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
@@ -110,12 +91,14 @@ export default function BautagebuchHomeScreen() {
     void load();
   }, [load]);
 
-  const grouped = useMemo(() => groupRunsByWeek(runs), [runs]);
+  const runTree = useMemo(() => groupRunsByCalendar(runs), [runs]);
   const openRuns = useMemo(() => runs.filter((run) => run.status !== 'completed').length, [runs]);
 
   useEffect(() => {
-    setExpandedWeeks(new Set(grouped.map(([week]) => week)));
-  }, [grouped.length]);
+    setExpandedYears(new Set(runTree.years.map((yearGroup) => yearGroup.year)));
+    const weekKeys = runTree.years.flatMap((yearGroup) => yearGroup.weeks.map((week) => week.weekKey));
+    setExpandedWeeks(new Set(weekKeys));
+  }, [runTree]);
 
   const startRun = async () => {
     if (!templateId || !setupModel) return;
@@ -138,11 +121,20 @@ export default function BautagebuchHomeScreen() {
     }
   };
 
-  const toggleWeek = (week: string) => {
+  const toggleYear = (year: number) => {
+    setExpandedYears((current) => {
+      const next = new Set(current);
+      if (next.has(year)) next.delete(year);
+      else next.add(year);
+      return next;
+    });
+  };
+
+  const toggleWeek = (weekKey: string) => {
     setExpandedWeeks((current) => {
       const next = new Set(current);
-      if (next.has(week)) next.delete(week);
-      else next.add(week);
+      if (next.has(weekKey)) next.delete(weekKey);
+      else next.add(weekKey);
       return next;
     });
   };
@@ -365,33 +357,19 @@ export default function BautagebuchHomeScreen() {
                 description="Tippe oben auf „BTB jetzt starten“, um dein erstes elektronisches Bautagebuch zu erfassen."
               />
             ) : (
-              grouped.map(([week, weekRuns]) => {
-                const expanded = expandedWeeks.has(week);
-                return (
-                  <View key={week} style={styles.weekGroup}>
-                    <Pressable style={styles.weekHeader} onPress={() => toggleWeek(week)}>
-                      <Text style={styles.weekTitle}>{week}</Text>
-                      <Text style={styles.weekToggle}>
-                        {expanded ? '▾' : '▸'} {weekRuns.length}
-                      </Text>
-                    </Pressable>
-                    {expanded
-                      ? weekRuns.map((run) => (
-                          <BautagebuchRunCard
-                            key={run.runId}
-                            run={run}
-                            selectionMode={selectionMode}
-                            selected={selectedRunIds.includes(run.runId)}
-                            onPress={() => router.push(`/bautagebuch/run/${run.runId}`)}
-                            onToggleSelect={() => toggleSelection(run.runId)}
-                            onRename={() => openRename(run)}
-                            onDelete={() => deleteRun(run.runId)}
-                          />
-                        ))
-                      : null}
-                  </View>
-                );
-              })
+              <BautagebuchRunList
+                tree={runTree}
+                expandedYears={expandedYears}
+                expandedWeeks={expandedWeeks}
+                selectionMode={selectionMode}
+                selectedRunIds={selectedRunIds}
+                onToggleYear={toggleYear}
+                onToggleWeek={toggleWeek}
+                onOpenRun={(runId) => router.push(`/bautagebuch/run/${runId}`)}
+                onToggleSelect={toggleSelection}
+                onRename={openRename}
+                onDelete={deleteRun}
+              />
             )}
           </Section>
 
@@ -477,15 +455,6 @@ const styles = StyleSheet.create({
   heroTitle: { ...typography.subtitle, color: colors.ink },
   heroHint: { ...typography.caption, color: colors.muted, marginBottom: spacing.xs },
   listActions: { flexDirection: 'row', gap: spacing.xs },
-  weekGroup: { gap: spacing.sm },
-  weekHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    minHeight: spacing.touchMin,
-    paddingHorizontal: spacing.xxs
-  },
-  weekTitle: { ...typography.label, color: colors.muted },
   weekToggle: { ...typography.caption, color: colors.muted },
   exportRow: { gap: spacing.sm },
   exportName: { ...typography.body, color: colors.ink },
