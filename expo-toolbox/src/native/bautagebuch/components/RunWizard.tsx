@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, PrimaryButton, TextField } from '../../../components/mobile';
@@ -91,6 +91,14 @@ export function RunWizard({
 }: Props) {
   const sections = useMemo(() => buildRunSectionsWithPhotoDoc(setupModel), [setupModel]);
   const section = sections[sectionIndex] || sections[0];
+  const safeSectionIndex = sections.length > 0 ? Math.min(sectionIndex, sections.length - 1) : 0;
+
+  useEffect(() => {
+    if (sections.length === 0) return;
+    if (sectionIndex > sections.length - 1) {
+      onSectionChange(sections.length - 1);
+    }
+  }, [sectionIndex, sections.length, onSectionChange]);
 
   const setFieldValue = (fieldId: string, value: unknown) => {
     onChange({ ...values, [fieldKey(fieldId)]: value });
@@ -387,14 +395,14 @@ export function RunWizard({
     return null;
   };
 
-  const isLastSection = sectionIndex >= sections.length - 1;
+  const isLastSection = safeSectionIndex >= sections.length - 1;
   const exportBlocked = totalMissingRequired > 0;
 
   return (
     <View style={styles.root}>
       <View style={styles.progressBar}>
         <Text style={styles.progressText}>
-          Schritt {sectionIndex + 1} von {sections.length}
+          Schritt {safeSectionIndex + 1} von {sections.length}
         </Text>
         {exportBlocked ? (
           <Text style={styles.missingSummary}>
@@ -424,7 +432,7 @@ export function RunWizard({
               <View
                 style={[
                   styles.navDot,
-                  index === sectionIndex ? styles.navDotActive : null,
+                  index === safeSectionIndex ? styles.navDotActive : null,
                   progress === 'done' ? styles.navDotDone : null,
                   progress === 'progress' ? styles.navDotProgress : null
                 ]}
@@ -449,8 +457,8 @@ export function RunWizard({
         <PrimaryButton
           label="Zurück"
           variant="secondary"
-          disabled={sectionIndex <= 0}
-          onPress={() => onSectionChange(Math.max(0, sectionIndex - 1))}
+          disabled={safeSectionIndex <= 0}
+          onPress={() => onSectionChange(Math.max(0, safeSectionIndex - 1))}
         />
         <PrimaryButton
           label={isLastSection ? 'Abschließen' : 'Weiter'}
@@ -460,7 +468,7 @@ export function RunWizard({
               onRequestExport?.();
               return;
             }
-            onSectionChange(Math.min(sections.length - 1, sectionIndex + 1));
+            onSectionChange(Math.min(sections.length - 1, safeSectionIndex + 1));
           }}
         />
       </View>

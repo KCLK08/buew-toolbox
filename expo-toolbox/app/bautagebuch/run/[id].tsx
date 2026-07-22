@@ -11,7 +11,8 @@ import { getRun, updateRun } from '../../../src/native/bautagebuch/db/database';
 import { useRunAutosave } from '../../../src/native/bautagebuch/hooks/useRunAutosave';
 import {
   computeTotalMissingRequired,
-  exportBlockedMessage
+  exportBlockedMessage,
+  buildRunSectionsWithPhotoDoc
 } from '../../../src/native/bautagebuch/lib/run-validation';
 import {
   exportRunPdf,
@@ -36,6 +37,7 @@ export default function BautagebuchRunScreen() {
   const { showToast } = useToast();
   const [run, setRun] = useState<BautagebuchRun | null>(null);
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportSheetOpen, setExportSheetOpen] = useState(false);
@@ -50,18 +52,30 @@ export default function BautagebuchRunScreen() {
 
   const load = useCallback(async () => {
     if (!id) return;
+    setLoading(true);
     try {
       const loadedRun = await getRun(id);
       if (!loadedRun) {
         setError('BTB-Lauf nicht gefunden.');
+        setRun(null);
+        setSetupModel(null);
         return;
       }
       const bundle = await getTemplateBundle(loadedRun.templateId);
-      setRun(loadedRun);
+      const sections = buildRunSectionsWithPhotoDoc(bundle.setupModel);
+      const maxSectionIndex = Math.max(0, sections.length - 1);
+      let nextRun = loadedRun;
+      if (loadedRun.sectionIndex > maxSectionIndex) {
+        const corrected = await updateRun(loadedRun.runId, { sectionIndex: maxSectionIndex });
+        nextRun = corrected || { ...loadedRun, sectionIndex: maxSectionIndex };
+      }
+      setRun(nextRun);
       setSetupModel(bundle.setupModel);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Laden fehlgeschlagen.');
+    } finally {
+      setLoading(false);
     }
   }, [id]);
 
@@ -101,10 +115,12 @@ export default function BautagebuchRunScreen() {
   }, [run?.values, run?.photoDoc, showPreview, refreshPreview]);
 
   const persist = (patch: Partial<BautagebuchRun>) => {
-    if (!run) return;
-    const next = { ...run, ...patch };
-    setRun(next);
-    schedule(patch);
+    setRun((current) => {
+      if (!current) return current;
+      const next = { ...current, ...patch };
+      schedule(patch);
+      return next;
+    });
   };
 
   const handleWeatherSync = async () => {
@@ -169,13 +185,16 @@ export default function BautagebuchRunScreen() {
   };
 
   const appendPhotoEntries = (entries: NonNullable<BautagebuchRun['photoDoc']>['entries']) => {
-    if (!run || entries.length === 0) return;
-    persist({
-      photoDoc: {
-        enabled: true,
-        entries: [...entries, ...(run.photoDoc?.entries || [])],
+    if (entries.length === 0) return;
+    setRun((current) => {
+      if (!current) return current;
+      const nextPhotoDoc = {
+        enabled: true as const,
+        entries: [...entries, ...(current.photoDoc?.entries || [])],
         updatedAt: nowIso()
-      }
+      };
+      schedule({ photoDoc: nextPhotoDoc });
+      return { ...current, photoDoc: nextPhotoDoc };
     });
   };
 
@@ -222,6 +241,7 @@ export default function BautagebuchRunScreen() {
 
   const handleRemovePhoto = (entryId: string) => {
     if (!run) return;
+    const runId = run.runId;
     const entry = (run.photoDoc?.entries || []).find((item) => item.id === entryId);
     Alert.alert('Foto entfernen', 'Dieses Foto wirklich löschen?', [
       { text: 'Abbrechen', style: 'cancel' },
@@ -229,13 +249,16 @@ export default function BautagebuchRunScreen() {
         text: 'Löschen',
         style: 'destructive',
         onPress: () => {
-          void removePhotoDocEntry(run.runId, entryId, entry?.localPath).then(() => {
-            persist({
-              photoDoc: {
-                ...run.photoDoc,
-                entries: (run.photoDoc?.entries || []).filter((item) => item.id !== entryId),
+          void removePhotoDocEntry(runId, entryId, entry?.localPath).then(() => {
+            setRun((current) => {
+              if (!current) return current;
+              const nextPhotoDoc = {
+                enabled: current.photoDoc?.enabled ?? null,
+                entries: (current.photoDoc?.entries || []).filter((item) => item.id !== entryId),
                 updatedAt: nowIso()
-              }
+              };
+              schedule({ photoDoc: nextPhotoDoc });
+              return { ...current, photoDoc: nextPhotoDoc };
             });
             showToast('Foto entfernt');
           });
@@ -244,10 +267,18 @@ export default function BautagebuchRunScreen() {
     ]);
   };
 
+  if (loading) {
+    return (
+      <Screen title="Bautagebuch" showBack>
+        <Text style={styles.muted}>Wird geladen…</Text>
+      </Screen>
+    );
+  }
+
   if (!run || !setupModel) {
     return (
       <Screen title="Bautagebuch" showBack>
-        <Text style={styles.error}>{error || 'Wird geladen…'}</Text>
+        <Text style={styles.error}>{error || 'BTB-Lauf nicht gefunden.'}</Text>
       </Screen>
     );
   }
@@ -317,6 +348,7 @@ export default function BautagebuchRunScreen() {
 
 const styles = StyleSheet.create({
   error: { ...typography.body, color: colors.danger },
+  muted: { ...typography.caption, color: colors.muted },
   footerCol: { gap: 8 },
   footerRow: { flexDirection: 'row', gap: 8 },
   previewToggle: { ...typography.caption, color: colors.accent, textAlign: 'center' }

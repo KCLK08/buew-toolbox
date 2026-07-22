@@ -86,22 +86,31 @@ async function buildRunPdfBytes(runId: string, mode: BautagebuchExportMode): Pro
   return { bytes: filled, safeTitle, suffix: '' };
 }
 
-async function writeRunExport(runId: string, mode: BautagebuchExportMode): Promise<string> {
+async function writeRunExport(
+  runId: string,
+  mode: BautagebuchExportMode,
+  options: { persistExport?: boolean } = {}
+): Promise<string> {
+  const { persistExport = true } = options;
   const { bytes, safeTitle, suffix } = await buildRunPdfBytes(runId, mode);
-  const outDir = `${FileSystem.documentDirectory}bautagebuch/exports/`;
+  const outDir = persistExport
+    ? `${FileSystem.documentDirectory}bautagebuch/exports/`
+    : `${FileSystem.documentDirectory}bautagebuch/previews/`;
   await FileSystem.makeDirectoryAsync(outDir, { intermediates: true });
-  const fileName = `${safeTitle || runId}${suffix}.pdf`;
+  const fileName = persistExport ? `${safeTitle || runId}${suffix}.pdf` : `${runId}_preview.pdf`;
   const outPath = `${outDir}${fileName}`;
   await FileSystem.writeAsStringAsync(outPath, uint8ToBase64(bytes), {
     encoding: FileSystem.EncodingType.Base64
   });
-  await upsertExportByRun({
-    exportId: `export_${runId}`,
-    runId,
-    fileName,
-    filePath: outPath,
-    exportedAt: nowIso()
-  });
+  if (persistExport) {
+    await upsertExportByRun({
+      exportId: `export_${runId}`,
+      runId,
+      fileName,
+      filePath: outPath,
+      exportedAt: nowIso()
+    });
+  }
   return outPath;
 }
 
@@ -132,7 +141,7 @@ export async function previewRunPdf(runId: string): Promise<string> {
 
 /** Generates a BTB preview PDF on disk without opening the share sheet. */
 export async function generateRunPreviewPdfPath(runId: string): Promise<string> {
-  return writeRunExport(runId, 'btb');
+  return writeRunExport(runId, 'btb', { persistExport: false });
 }
 
 export async function exportSetupPreviewPdf(templateId: string): Promise<string> {
