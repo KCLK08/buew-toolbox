@@ -23,7 +23,7 @@ import {
   pickMultiplePhotoDocEntries,
   removePhotoDocEntry
 } from '../../../src/native/bautagebuch/services/photoDocService';
-import { getActiveTemplateBundle } from '../../../src/native/bautagebuch/services/templateService';
+import { getTemplateBundle } from '../../../src/native/bautagebuch/services/templateService';
 import { syncWeatherValues } from '../../../src/native/bautagebuch/services/weatherService';
 import { ExportFinishSheet } from '../../../src/native/bautagebuch/components/ExportFinishSheet';
 import type { BautagebuchRun } from '../../../src/native/bautagebuch/types';
@@ -51,11 +51,12 @@ export default function BautagebuchRunScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [loadedRun, bundle] = await Promise.all([getRun(id), getActiveTemplateBundle()]);
+      const loadedRun = await getRun(id);
       if (!loadedRun) {
         setError('BTB-Lauf nicht gefunden.');
         return;
       }
+      const bundle = await getTemplateBundle(loadedRun.templateId);
       setRun(loadedRun);
       setSetupModel(bundle.setupModel);
       setError(null);

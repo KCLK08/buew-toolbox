@@ -6,7 +6,6 @@ import { nowIso } from '../../../lib/ids';
 import { buildFinalPdfBytes } from '../lib/pdf-export.js';
 import { buildPhotoDocPdfBytes, mergeBtbWithPhotoDoc } from '../lib/photo-doc.js';
 import { deleteExport, getExport, getRun, getSetupModel, getTemplate, upsertExportByRun } from '../db/database';
-import { getActiveTemplateBundle } from './templateService';
 import { readPhotoBytes } from './photoDocService';
 
 export type BautagebuchExportMode = 'btb' | 'photo' | 'merged';
@@ -34,7 +33,10 @@ async function buildRunPdfBytes(runId: string, mode: BautagebuchExportMode): Pro
     throw new Error('BTB-Lauf nicht gefunden.');
   }
 
-  const { setupModel } = await getActiveTemplateBundle();
+  const setupModel = await getSetupModel(run.templateId);
+  if (!setupModel) {
+    throw new Error('Setup-Modell für diese Vorlage fehlt.');
+  }
   const templateRecord = await getTemplate(run.templateId);
   if (!templateRecord?.pdfPath) {
     throw new Error('PDF-Vorlage fehlt.');
