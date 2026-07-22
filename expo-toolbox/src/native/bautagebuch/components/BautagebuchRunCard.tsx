@@ -83,7 +83,9 @@ export function BautagebuchRunCard({
           </Text>
           {!selectionMode ? (
             <Text style={styles.hint}>Nach links wischen für Aktionen · Tippen zum Öffnen</Text>
-          ) : null}
+          ) : (
+            <Text style={styles.hint}>{selected ? '✓ Ausgewählt' : 'Tippen zum Auswählen'}</Text>
+          )}
         </Card>
       </Pressable>
     </Swipeable>

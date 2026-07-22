@@ -120,7 +120,7 @@ function sortRunsByDateDesc(runs: BautagebuchRun[]): BautagebuchRun[] {
     const leftDate = parseBtbDate(left)?.getTime() ?? Number.NEGATIVE_INFINITY;
     const rightDate = parseBtbDate(right)?.getTime() ?? Number.NEGATIVE_INFINITY;
     if (leftDate !== rightDate) return rightDate - leftDate;
-    return String(right.updatedAt || '').localeCompare(String(right.updatedAt || ''));
+    return String(right.updatedAt || '').localeCompare(String(left.updatedAt || ''));
   });
 }
 
