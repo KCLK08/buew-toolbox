@@ -7,8 +7,9 @@ import { ListItem, PrimaryButton, TextField } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
 import { validateSetupModel } from '../lib/setup-model.js';
 import { mutateSetupModel } from '../hooks/useSetupAutosave';
-import type { DetectedField } from '../types';
+import type { BautagebuchTemplate, DetectedField } from '../types';
 import { SetupPdfFieldPreview } from './SetupPdfFieldPreview';
+import { SetupTemplateManager } from './SetupTemplateManager';
 
 type SetupField = {
   fieldId: string;
@@ -49,6 +50,13 @@ type SetupTableSection = {
 };
 
 type Props = {
+  templates: BautagebuchTemplate[];
+  activeTemplateId: string;
+  editingTemplateId: string;
+  importing?: boolean;
+  onSelectEdit: (templateId: string) => void;
+  onSetActive: (templateId: string) => void;
+  onImport: () => void;
   templateName: string;
   templatePdfPath?: string | null;
   detectedFields?: DetectedField[];
@@ -75,6 +83,13 @@ function columnBadges(column: SetupTableColumn) {
 }
 
 export function SetupEditor({
+  templates,
+  activeTemplateId,
+  editingTemplateId,
+  importing = false,
+  onSelectEdit,
+  onSetActive,
+  onImport,
   templateName,
   templatePdfPath,
   detectedFields = [],
@@ -277,11 +292,21 @@ export function SetupEditor({
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.intro}>
-          <Text style={styles.templateName}>{templateName}</Text>
+          <Text style={styles.templateName}>Setup: {templateName}</Text>
           <Text style={styles.muted}>
             Feld antippen — die Markierung in der PDF-Vorschau zeigt die Position im Formular.
           </Text>
         </View>
+
+        <SetupTemplateManager
+          templates={templates}
+          activeTemplateId={activeTemplateId}
+          editingTemplateId={editingTemplateId}
+          importing={importing}
+          onSelectEdit={onSelectEdit}
+          onSetActive={onSetActive}
+          onImport={onImport}
+        />
 
         {info ? <Text style={styles.info}>{info}</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}

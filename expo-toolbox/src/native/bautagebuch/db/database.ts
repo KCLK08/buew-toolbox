@@ -94,6 +94,11 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
           updatedAt TEXT NOT NULL,
           deleted_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key TEXT PRIMARY KEY NOT NULL,
+          value TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        );
       `);
       await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}bautagebuch/`, {
         intermediates: true
@@ -158,6 +163,28 @@ export async function listTemplates(): Promise<BautagebuchTemplate[]> {
     'SELECT * FROM templates ORDER BY updatedAt DESC'
   );
   return rows.map(rowToTemplate).filter(isActive);
+}
+
+export async function getAppSetting(key: string): Promise<string | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<Record<string, unknown>>(
+    'SELECT value FROM app_settings WHERE key = ?',
+    key
+  );
+  return row?.value != null ? String(row.value) : null;
+}
+
+export async function setAppSetting(key: string, value: string): Promise<void> {
+  const db = await getDb();
+  const timestamp = nowIso();
+  await db.runAsync(
+    `INSERT INTO app_settings (key, value, updatedAt)
+     VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`,
+    key,
+    value,
+    timestamp
+  );
 }
 
 export async function getTemplate(templateId: string): Promise<BautagebuchTemplate | null> {

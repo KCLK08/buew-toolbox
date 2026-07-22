@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { PrimaryButton, Screen } from '../../src/components/mobile';
@@ -7,13 +7,22 @@ import { colors, spacing, typography } from '../../src/constants/theme';
 import { SetupEditor } from '../../src/native/bautagebuch/components/SetupEditor';
 import { getDetectedFields, saveSetupModel } from '../../src/native/bautagebuch/db/database';
 import { useSetupAutosave } from '../../src/native/bautagebuch/hooks/useSetupAutosave';
-import { getActiveTemplateBundle } from '../../src/native/bautagebuch/services/templateService';
+import {
+  ensureBuiltinTemplate,
+  getTemplateBundle,
+  importTemplateFromDocument,
+  listManagedTemplates,
+  resolveActiveTemplateId,
+  setActiveTemplateId
+} from '../../src/native/bautagebuch/services/templateService';
 import { validateSetupModel } from '../../src/native/bautagebuch/lib/setup-model.js';
-import type { DetectedField } from '../../src/native/bautagebuch/types';
+import type { BautagebuchTemplate, DetectedField } from '../../src/native/bautagebuch/types';
 
 export default function BautagebuchSetupScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [templates, setTemplates] = useState<BautagebuchTemplate[]>([]);
+  const [activeTemplateId, setActiveTemplateIdState] = useState('');
   const [templateId, setTemplateId] = useState('');
   const [templateName, setTemplateName] = useState('');
   const [templatePdfPath, setTemplatePdfPath] = useState<string | null>(null);
@@ -22,24 +31,36 @@ export default function BautagebuchSetupScreen() {
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
   const { schedule, flush } = useSetupAutosave(templateId);
+
+  const loadEditingTemplate = useCallback(async (nextTemplateId: string) => {
+    const bundle = await getTemplateBundle(nextTemplateId);
+    setTemplateId(bundle.template.templateId);
+    setTemplateName(bundle.template.templateName);
+    setTemplatePdfPath(bundle.template.pdfPath);
+    setSetupModel(bundle.setupModel);
+    setDetectedFields(await getDetectedFields(bundle.template.templateId));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const bundle = await getActiveTemplateBundle();
-      setTemplateId(bundle.template.templateId);
-      setTemplateName(bundle.template.templateName);
-      setTemplatePdfPath(bundle.template.pdfPath);
-      setSetupModel(bundle.setupModel);
-      setDetectedFields(await getDetectedFields(bundle.template.templateId));
+      await ensureBuiltinTemplate();
+      const [templateList, activeId] = await Promise.all([
+        listManagedTemplates(),
+        resolveActiveTemplateId()
+      ]);
+      setTemplates(templateList);
+      setActiveTemplateIdState(activeId);
+      await loadEditingTemplate(activeId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Setup konnte nicht geladen werden.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadEditingTemplate]);
 
   useEffect(() => {
     void load();
@@ -49,6 +70,48 @@ export default function BautagebuchSetupScreen() {
     setSetupModel(next);
     setInfo('Änderungen werden gespeichert…');
     schedule(next);
+  };
+
+  const handleSelectEdit = async (nextTemplateId: string) => {
+    if (nextTemplateId === templateId) return;
+    setError(null);
+    try {
+      if (templateId) {
+        await flush();
+      }
+      await loadEditingTemplate(nextTemplateId);
+      setInfo(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Vorlage konnte nicht geladen werden.');
+    }
+  };
+
+  const handleSetActive = async (nextTemplateId: string) => {
+    setError(null);
+    try {
+      await setActiveTemplateId(nextTemplateId);
+      setActiveTemplateIdState(nextTemplateId);
+      setInfo('Aktive Vorlage gespeichert. Neue BTBs nutzen diese Vorlage.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Aktive Vorlage konnte nicht gesetzt werden.');
+    }
+  };
+
+  const handleImport = async () => {
+    setImporting(true);
+    setError(null);
+    try {
+      const result = await importTemplateFromDocument();
+      if (!result) return;
+      const templateList = await listManagedTemplates();
+      setTemplates(templateList);
+      await handleSelectEdit(result.templateId);
+      setInfo('PDF-Vorlage importiert. Bitte Setup prüfen und abschließen.');
+    } catch (err) {
+      Alert.alert('Import', err instanceof Error ? err.message : 'Vorlage konnte nicht importiert werden.');
+    } finally {
+      setImporting(false);
+    }
   };
 
   const handleFinish = async () => {
@@ -68,6 +131,7 @@ export default function BautagebuchSetupScreen() {
         updatedAt: new Date().toISOString()
       };
       await saveSetupModel(templateId, readyModel, 'ready');
+      setTemplates(await listManagedTemplates());
       setInfo('Setup abgeschlossen. Vorlage ist startbereit.');
       router.back();
     } catch (err) {
@@ -85,7 +149,7 @@ export default function BautagebuchSetupScreen() {
   return (
     <Screen
       title="Setup-Editor"
-      subtitle={templateName || 'eBTB-Vorlage anpassen'}
+      subtitle={templateName || 'Vorlagen verwalten'}
       showBack
       scroll={false}
       contentStyle={styles.screenContent}
@@ -110,6 +174,13 @@ export default function BautagebuchSetupScreen() {
 
       {!loading && setupModel ? (
         <SetupEditor
+          templates={templates}
+          activeTemplateId={activeTemplateId}
+          editingTemplateId={templateId}
+          importing={importing}
+          onSelectEdit={(id) => void handleSelectEdit(id)}
+          onSetActive={(id) => void handleSetActive(id)}
+          onImport={() => void handleImport()}
           templateName={templateName}
           templatePdfPath={templatePdfPath}
           detectedFields={detectedFields}

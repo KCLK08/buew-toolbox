@@ -37,7 +37,7 @@ import {
   exportBautagebuchBackupZip,
   pickAndRestoreBautagebuchBackup
 } from '../../../src/native/bautagebuch/services/backupExportService';
-import { ensureBuiltinTemplate } from '../../../src/native/bautagebuch/services/templateService';
+import { getActiveTemplateBundle } from '../../../src/native/bautagebuch/services/templateService';
 import type { BautagebuchExport, BautagebuchRun } from '../../../src/native/bautagebuch/types';
 
 function formatTodayLabel(): string {
@@ -56,6 +56,8 @@ export default function BautagebuchHomeScreen() {
   const [runs, setRuns] = useState<BautagebuchRun[]>([]);
   const [newName, setNewName] = useState('');
   const [templateId, setTemplateId] = useState('');
+  const [templateName, setTemplateName] = useState('');
+  const [templateReady, setTemplateReady] = useState(false);
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = useState(false);
   const [exportsList, setExportsList] = useState<BautagebuchExport[]>([]);
@@ -75,10 +77,12 @@ export default function BautagebuchHomeScreen() {
     setLoading(true);
     setError(null);
     try {
-      const bundle = await ensureBuiltinTemplate();
-      setTemplateId(bundle.templateId);
+      const bundle = await getActiveTemplateBundle();
+      setTemplateId(bundle.template.templateId);
+      setTemplateName(bundle.template.templateName);
+      setTemplateReady(bundle.template.status === 'ready');
       setSetupModel(bundle.setupModel);
-      setRuns(await listRuns(bundle.templateId));
+      setRuns(await listRuns());
       setExportsList(await listExports());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bautagebuch konnte nicht geladen werden.');
@@ -109,12 +113,22 @@ export default function BautagebuchHomeScreen() {
   }, [runTree]);
 
   const startRun = async () => {
-    if (!templateId || !setupModel) return;
+    if (!templateId || !setupModel || !templateReady) {
+      Alert.alert(
+        'Vorlage nicht bereit',
+        'Die aktive Vorlage ist noch nicht startbereit. Bitte Setup abschließen.'
+      );
+      return;
+    }
     setCreating(true);
     try {
       const today = new Date().toISOString().slice(0, 10);
       const title = `BTB ${today} - ${newName.trim() || 'Baustelle'}`;
-      let run = await createRun({ templateId, title, setupVersion: 6 });
+      let run = await createRun({
+        templateId,
+        title,
+        setupVersion: Number(setupModel.version || 1)
+      });
       const defaults = applyRunDefaultsFromModel(setupModel, run.values);
       if (defaults.changed) {
         const updated = await updateRun(run.runId, { values: defaults.values });
@@ -319,6 +333,12 @@ export default function BautagebuchHomeScreen() {
             <Text style={styles.heroHint}>
               Gib der Baustelle einen kurzen Namen — Datum und Vorlage werden automatisch gesetzt.
             </Text>
+            {templateName ? (
+              <Text style={styles.activeTemplate}>
+                Aktive Vorlage: {templateName}
+                {!templateReady ? ' · Setup offen' : ''}
+              </Text>
+            ) : null}
             <TextField
               label="Baustelle / Strecke"
               hint="z. B. Strecke Nord, Tunnel Süd"
@@ -327,7 +347,7 @@ export default function BautagebuchHomeScreen() {
             />
             <PrimaryButton
               label={creating ? 'Wird erstellt…' : 'BTB jetzt starten'}
-              disabled={creating || !templateId}
+              disabled={creating || !templateId || !templateReady}
               onPress={() => void startRun()}
             />
           </Card>
@@ -466,6 +486,7 @@ const styles = StyleSheet.create({
   heroDate: { ...typography.caption, color: colors.accent, textTransform: 'capitalize' },
   heroTitle: { ...typography.subtitle, color: colors.ink },
   heroHint: { ...typography.caption, color: colors.muted, marginBottom: spacing.xs },
+  activeTemplate: { ...typography.caption, color: colors.accent2, marginBottom: spacing.xs },
   listActions: { flexDirection: 'row', gap: spacing.xs },
   weekToggle: { ...typography.caption, color: colors.muted },
   exportRow: { gap: spacing.sm },
