@@ -8,6 +8,7 @@ import { getDetectedFields } from '../../../../src/native/bautagebuch/db/databas
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
 import {
   ensureWizardInitialized,
+  getWizardState,
   rebuildSectionsFromWizard,
   sortMappingFields
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
@@ -32,18 +33,44 @@ export default function SetupMappingScreen() {
     try {
       const bundle = await getTemplateBundle(templateId);
       const fields = await getDetectedFields(templateId);
+      const sortedFields = sortMappingFields(fields);
+
+      if (getWizardState(bundle.setupModel).step === 'fields') {
+        setLoading(false);
+        router.replace(`/bautagebuch/setup/${templateId}/fields`);
+        return;
+      }
+
       const initialized = ensureWizardInitialized(bundle.setupModel);
       setTemplateName(bundle.template.templateName);
       setPdfPath(bundle.template.pdfPath);
       setDetectedFields(fields);
       setSetupModel(initialized);
-      schedule(initialized);
+
+      if (sortedFields.length === 0) {
+        const rebuilt = rebuildSectionsFromWizard(initialized, sortedFields);
+        setSetupModel(rebuilt);
+        await saveSetupModelToFields(rebuilt);
+        setLoading(false);
+        router.replace(`/bautagebuch/setup/${templateId}/fields`);
+        return;
+      }
+
+      if (initialized !== bundle.setupModel) {
+        schedule(initialized);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Setup konnte nicht geladen werden.');
     } finally {
       setLoading(false);
     }
-  }, [templateId, schedule]);
+  }, [templateId, schedule, router]);
+
+  async function saveSetupModelToFields(model: Record<string, unknown>) {
+    setSetupModel(model);
+    schedule(model);
+    await flush();
+  }
 
   useEffect(() => {
     void load();
@@ -56,17 +83,14 @@ export default function SetupMappingScreen() {
     schedule(next);
   };
 
-  const goToFields = async (model: Record<string, unknown>) => {
-    await flush();
-    router.replace(`/bautagebuch/setup/${templateId}/fields`);
-  };
-
-  const handleComplete = () => {
-    if (!setupModel) return;
-    const rebuilt = rebuildSectionsFromWizard(setupModel, mappingFields);
+  const handleComplete = (sourceModel: Record<string, unknown>) => {
+    const rebuilt = rebuildSectionsFromWizard(sourceModel, mappingFields);
     setSetupModel(rebuilt);
     schedule(rebuilt);
-    void goToFields(rebuilt);
+    void (async () => {
+      await flush();
+      router.replace(`/bautagebuch/setup/${templateId}/fields`);
+    })();
   };
 
   const handleFinishLater = async () => {

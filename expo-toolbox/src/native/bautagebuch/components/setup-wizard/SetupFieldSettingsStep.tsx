@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useWindowDimensions } from 'react-native';
 
@@ -52,6 +52,15 @@ export function SetupFieldSettingsStep({
     label: section.label,
     count: section.fields.length
   }));
+
+  useEffect(() => {
+    if (sections.length === 0) return;
+    const sectionExists = sections.some((section) => section.sectionId === activeSectionId);
+    if (!sectionExists) {
+      setActiveSectionId(sections[0].sectionId);
+      setActiveFieldId(sections[0].fields[0]?.fieldId || null);
+    }
+  }, [sections, activeSectionId]);
 
   return (
     <View style={styles.root}>
