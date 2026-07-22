@@ -8,7 +8,9 @@ import {
   addWizardGroup,
   deferField,
   getMappingProgress,
+  getNextUnassignedIndex,
   getWizardState,
+  isMappingComplete,
   resolveOverlayPlacement,
   type MappingField
 } from '../../lib/setup-mapping';
@@ -23,7 +25,7 @@ type Props = {
   mappingFields: MappingField[];
   setupModel: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
-  onComplete: () => void;
+  onComplete: (nextModel: Record<string, unknown>) => void;
   onFinishLater: () => void;
 };
 
@@ -47,27 +49,29 @@ export function SetupMappingStep({
     [mappingFields, wizard]
   );
   const placement = resolveOverlayPlacement(currentField?.rect || null);
+  const mappingDone = isMappingComplete(mappingFields, wizard);
 
-  const assignGroup = (sectionId: string) => {
-    if (!currentField) return;
-    let next = assignFieldToGroup(setupModel, currentField.fieldId, sectionId);
+  const advanceAfterChange = (next: Record<string, unknown>) => {
     const nextWizard = getWizardState(next);
-    const nextIndex = Math.min(currentIndex + 1, Math.max(0, mappingFields.length - 1));
-    next = {
+    if (isMappingComplete(mappingFields, nextWizard)) {
+      onChange(next);
+      onComplete(next);
+      return;
+    }
+    const nextIndex = getNextUnassignedIndex(mappingFields, nextWizard, 0);
+    onChange({
       ...next,
       wizard: {
         ...nextWizard,
-        currentFieldIndex: nextIndex
+        currentFieldIndex: nextIndex >= 0 ? nextIndex : nextWizard.currentFieldIndex
       }
-    };
-    onChange(next);
+    });
+  };
 
-    const assignedCount = mappingFields.filter((field) =>
-      Boolean(getWizardState(next).assignments[field.fieldId])
-    ).length;
-    if (assignedCount >= mappingFields.length) {
-      onComplete();
-    }
+  const assignGroup = (sectionId: string) => {
+    if (!currentField) return;
+    const next = assignFieldToGroup(setupModel, currentField.fieldId, sectionId);
+    advanceAfterChange(next);
   };
 
   const createGroup = (label: string) => {
@@ -97,15 +101,8 @@ export function SetupMappingStep({
 
   const skipField = () => {
     if (!currentField) return;
-    let next = deferField(setupModel, currentField.fieldId);
-    next = {
-      ...next,
-      wizard: {
-        ...getWizardState(next),
-        currentFieldIndex: Math.min(mappingFields.length - 1, currentIndex + 1)
-      }
-    };
-    onChange(next);
+    const next = deferField(setupModel, currentField.fieldId);
+    advanceAfterChange(next);
   };
 
   return (
@@ -148,6 +145,9 @@ export function SetupMappingStep({
           </Pressable>
         </View>
         <PrimaryButton label="Später bearbeiten" variant="ghost" onPress={onFinishLater} />
+        {mappingDone ? (
+          <PrimaryButton label="Weiter zu Schritt 2" onPress={() => onComplete(setupModel)} />
+        ) : null}
       </View>
     </View>
   );

@@ -8,7 +8,7 @@ import { SetupEditor } from '../../../../src/native/bautagebuch/components/Setup
 import { SetupFieldSettingsStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupFieldSettingsStep';
 import { getDetectedFields, saveSetupModel } from '../../../../src/native/bautagebuch/db/database';
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
-import { hasTableSections } from '../../../../src/native/bautagebuch/lib/setup-mapping';
+import { hasTableSections, getWizardState } from '../../../../src/native/bautagebuch/lib/setup-mapping';
 import { validateSetupModel } from '../../../../src/native/bautagebuch/lib/setup-model.js';
 import { getTemplateBundle } from '../../../../src/native/bautagebuch/services/templateService';
 
@@ -48,6 +48,15 @@ export default function SetupFieldsScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (loading || !setupModel || !templateId) return;
+    const legacy = templateKind === 'builtin-etb' || hasTableSections(setupModel);
+    if (legacy) return;
+    if (getWizardState(setupModel).step !== 'fields') {
+      router.replace(`/bautagebuch/setup/${templateId}/mapping`);
+    }
+  }, [loading, setupModel, templateKind, templateId, router]);
 
   const validationIssues = useMemo(
     () => (setupModel ? validateSetupModel(setupModel) : []),

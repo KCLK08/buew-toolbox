@@ -110,13 +110,17 @@ export function getMappingProgress(
 ): MappingProgress {
   const total = fields.length;
   const assigned = fields.filter((field) => Boolean(wizard.assignments[field.fieldId])).length;
-  const current = Math.min(total, Math.max(1, wizard.currentFieldIndex + 1));
-  const percent = total > 0 ? Math.round((assigned / total) * 100) : 0;
+  const handled = fields.filter(
+    (field) =>
+      Boolean(wizard.assignments[field.fieldId]) || wizard.deferredFieldIds.includes(field.fieldId)
+  ).length;
+  const current = total > 0 ? Math.min(total, Math.max(1, handled + 1)) : 0;
+  const percent = total > 0 ? Math.round((handled / total) * 100) : 100;
   return {
     current,
     total,
     percent,
-    remaining: Math.max(0, total - assigned),
+    remaining: Math.max(0, total - handled),
     assigned
   };
 }
@@ -221,14 +225,22 @@ export function rebuildSectionsFromWizard(
 ): Record<string, unknown> {
   const wizard = getWizardState(setupModel);
   const grouped = new Map<string, SetupFieldConfig[]>();
+  const fallbackGroupId =
+    wizard.groups.find((group) => group.sectionId === 'sonstiges')?.sectionId ||
+    wizard.groups[wizard.groups.length - 1]?.sectionId ||
+    'sonstiges';
 
   for (const group of wizard.groups) {
     grouped.set(group.sectionId, []);
   }
 
   for (const field of fields) {
-    const sectionId = wizard.assignments[field.fieldId];
+    let sectionId = wizard.assignments[field.fieldId];
+    if (!sectionId && wizard.deferredFieldIds.includes(field.fieldId)) {
+      sectionId = fallbackGroupId;
+    }
     if (!sectionId) continue;
+
     const bucket = grouped.get(sectionId) || [];
     bucket.push(
       fieldConfigFromDetected(
@@ -249,7 +261,7 @@ export function rebuildSectionsFromWizard(
 
   if (singleSections.length === 0) {
     singleSections.push({
-      sectionId: 'sonstiges',
+      sectionId: fallbackGroupId,
       label: 'Sonstiges',
       fields: []
     });
@@ -340,9 +352,9 @@ export function templateDisplayStatus(
 }
 
 export function ensureWizardInitialized(setupModel: Record<string, unknown>): Record<string, unknown> {
-  const wizard = getWizardState(setupModel);
-  if (wizard.groups.length > 0) {
-    return withWizardState(setupModel, { step: 'mapping' });
+  const raw = (setupModel.wizard || {}) as Partial<SetupWizardState>;
+  if (Array.isArray(raw.groups) && raw.groups.length > 0) {
+    return setupModel;
   }
   return withWizardState(setupModel, { step: 'mapping', groups: DEFAULT_SETUP_GROUPS });
 }
