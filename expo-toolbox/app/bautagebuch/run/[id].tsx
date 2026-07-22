@@ -20,11 +20,12 @@ import {
 } from '../../../src/native/bautagebuch/services/exportService';
 import {
   capturePhotoDocEntry,
-  pickPhotoDocEntry,
+  pickMultiplePhotoDocEntries,
   removePhotoDocEntry
 } from '../../../src/native/bautagebuch/services/photoDocService';
 import { getActiveTemplateBundle } from '../../../src/native/bautagebuch/services/templateService';
 import { syncWeatherValues } from '../../../src/native/bautagebuch/services/weatherService';
+import { ExportFinishSheet } from '../../../src/native/bautagebuch/components/ExportFinishSheet';
 import type { BautagebuchRun } from '../../../src/native/bautagebuch/types';
 import { nowIso } from '../../../src/lib/ids';
 
@@ -37,6 +38,8 @@ export default function BautagebuchRunScreen() {
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportSheetOpen, setExportSheetOpen] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [weatherBusy, setWeatherBusy] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
@@ -147,6 +150,7 @@ export default function BautagebuchRunScreen() {
         completedAt: nowIso()
       });
       if (completed) setRun(completed);
+      setExportSheetOpen(false);
       showToast('PDF exportiert');
     } catch (err) {
       Alert.alert('Export', err instanceof Error ? err.message : 'PDF-Export fehlgeschlagen.');
@@ -160,12 +164,48 @@ export default function BautagebuchRunScreen() {
       Alert.alert('Export blockiert', exportBlockedMessage(totalMissingRequired));
       return;
     }
-    Alert.alert('PDF exportieren', 'Welche Version soll erstellt werden?', [
-      { text: 'Abbrechen', style: 'cancel' },
-      { text: 'Nur BTB', onPress: () => void runExport('btb') },
-      { text: 'Nur Fotodoku', onPress: () => void runExport('photo') },
-      { text: 'Zusammengeführt', onPress: () => void runExport('merged') }
-    ]);
+    setExportSheetOpen(true);
+  };
+
+  const appendPhotoEntries = (entries: NonNullable<BautagebuchRun['photoDoc']>['entries']) => {
+    if (!run || entries.length === 0) return;
+    persist({
+      photoDoc: {
+        enabled: true,
+        entries: [...entries, ...(run.photoDoc?.entries || [])],
+        updatedAt: nowIso()
+      }
+    });
+  };
+
+  const handleAddPhoto = async () => {
+    if (!run) return;
+    setPhotoBusy(true);
+    try {
+      const entry = await capturePhotoDocEntry(run.runId);
+      if (!entry) return;
+      appendPhotoEntries([entry]);
+      showToast('Foto gespeichert');
+    } catch (err) {
+      Alert.alert('Foto', err instanceof Error ? err.message : 'Foto konnte nicht gespeichert werden.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const handlePickPhotos = async () => {
+    if (!run) return;
+    setPhotoBusy(true);
+    try {
+      const entries = await pickMultiplePhotoDocEntries(run.runId);
+      if (entries.length === 0) return;
+      appendPhotoEntries(entries);
+      showToast(`${entries.length} Foto${entries.length === 1 ? '' : 's'} hinzugefügt`);
+    } catch (err) {
+      Alert.alert('Fotos', err instanceof Error ? err.message : 'Fotos konnten nicht hinzugefügt werden.');
+    } finally {
+      setPhotoBusy(false);
+    }
   };
 
   const handlePhotoDocChange = (enabled: boolean) => {
@@ -177,42 +217,6 @@ export default function BautagebuchRunScreen() {
         updatedAt: nowIso()
       }
     });
-  };
-
-  const handleAddPhoto = async () => {
-    if (!run) return;
-    try {
-      const entry = await capturePhotoDocEntry(run.runId);
-      if (!entry) return;
-      persist({
-        photoDoc: {
-          enabled: true,
-          entries: [entry, ...(run.photoDoc?.entries || [])],
-          updatedAt: nowIso()
-        }
-      });
-      showToast('Foto gespeichert');
-    } catch (err) {
-      Alert.alert('Foto', err instanceof Error ? err.message : 'Foto konnte nicht gespeichert werden.');
-    }
-  };
-
-  const handlePickPhoto = async () => {
-    if (!run) return;
-    try {
-      const entry = await pickPhotoDocEntry(run.runId);
-      if (!entry) return;
-      persist({
-        photoDoc: {
-          enabled: true,
-          entries: [entry, ...(run.photoDoc?.entries || [])],
-          updatedAt: nowIso()
-        }
-      });
-      showToast('Foto hinzugefügt');
-    } catch (err) {
-      Alert.alert('Foto', err instanceof Error ? err.message : 'Foto konnte nicht gespeichert werden.');
-    }
   };
 
   const handleRemovePhoto = (entryId: string) => {
@@ -289,13 +293,22 @@ export default function BautagebuchRunScreen() {
           <PdfPreviewPanel pdfPath={previewPath} loading={previewLoading} error={previewError} />
         }
         onPhotoDocChange={handlePhotoDocChange}
+        photoBusy={photoBusy}
         onAddPhoto={() => void handleAddPhoto()}
-        onPickPhoto={() => void handlePickPhoto()}
+        onPickPhotos={() => void handlePickPhotos()}
         onRemovePhoto={handleRemovePhoto}
         onWeatherSync={handleWeatherSync}
         onSectionChange={(sectionIndex) => persist({ sectionIndex })}
         onChange={(values) => persist({ values })}
         onRequestExport={handleExport}
+      />
+      <ExportFinishSheet
+        visible={exportSheetOpen}
+        photoCount={run.photoDoc?.entries?.length || 0}
+        photoDocEnabled={run.photoDoc?.enabled}
+        exporting={exporting}
+        onClose={() => setExportSheetOpen(false)}
+        onExport={(mode) => void runExport(mode)}
       />
     </Screen>
   );
