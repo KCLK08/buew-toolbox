@@ -17,13 +17,12 @@ import {
   PrimaryButton,
   Screen,
   Section,
-  StatCard,
   TextField
 } from '../../../src/components/mobile';
 import { colors, spacing, typography } from '../../../src/constants/theme';
 import { useToast } from '../../../src/contexts/ToastContext';
 import { BautagebuchRunList } from '../../../src/native/bautagebuch/components/BautagebuchRunList';
-import { groupRunsByCalendar } from '../../../src/native/bautagebuch/lib/group-runs-by-calendar';
+import { groupRunsByCalendar, projectGroupKey } from '../../../src/native/bautagebuch/lib/group-runs-by-calendar';
 import {
   createRun,
   deleteRunCascade,
@@ -65,6 +64,7 @@ export default function BautagebuchHomeScreen() {
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [renameRunId, setRenameRunId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
   const [backupBusy, setBackupBusy] = useState(false);
@@ -91,13 +91,21 @@ export default function BautagebuchHomeScreen() {
     void load();
   }, [load]);
 
-  const runTree = useMemo(() => groupRunsByCalendar(runs), [runs]);
-  const openRuns = useMemo(() => runs.filter((run) => run.status !== 'completed').length, [runs]);
+  const runTree = useMemo(
+    () => groupRunsByCalendar(runs, { setupModel }),
+    [runs, setupModel]
+  );
 
   useEffect(() => {
     setExpandedYears(new Set(runTree.years.map((yearGroup) => yearGroup.year)));
     const weekKeys = runTree.years.flatMap((yearGroup) => yearGroup.weeks.map((week) => week.weekKey));
     setExpandedWeeks(new Set(weekKeys));
+    const projectKeys = runTree.years.flatMap((yearGroup) =>
+      yearGroup.weeks.flatMap((week) =>
+        week.projects.map((project) => projectGroupKey(week.weekKey, project.projectKey))
+      )
+    );
+    setExpandedProjects(new Set(projectKeys));
   }, [runTree]);
 
   const startRun = async () => {
@@ -135,6 +143,15 @@ export default function BautagebuchHomeScreen() {
       const next = new Set(current);
       if (next.has(weekKey)) next.delete(weekKey);
       else next.add(weekKey);
+      return next;
+    });
+  };
+
+  const toggleProject = (groupKey: string) => {
+    setExpandedProjects((current) => {
+      const next = new Set(current);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
       return next;
     });
   };
@@ -296,12 +313,6 @@ export default function BautagebuchHomeScreen() {
 
       {!loading && !error ? (
         <>
-          <View style={styles.statsRow}>
-            <StatCard title="Offen" value={String(openRuns)} icon="📝" />
-            <StatCard title="Gesamt" value={String(runs.length)} icon="📚" />
-            <StatCard title="Exporte" value={String(exportsList.length)} icon="📤" />
-          </View>
-
           <Card>
             <Text style={styles.heroDate}>{formatTodayLabel()}</Text>
             <Text style={styles.heroTitle}>Neues Bautagebuch starten</Text>
@@ -361,10 +372,12 @@ export default function BautagebuchHomeScreen() {
                 tree={runTree}
                 expandedYears={expandedYears}
                 expandedWeeks={expandedWeeks}
+                expandedProjects={expandedProjects}
                 selectionMode={selectionMode}
                 selectedRunIds={selectedRunIds}
                 onToggleYear={toggleYear}
                 onToggleWeek={toggleWeek}
+                onToggleProject={toggleProject}
                 onOpenRun={(runId) => router.push(`/bautagebuch/run/${runId}`)}
                 onToggleSelect={toggleSelection}
                 onRename={openRename}
@@ -450,7 +463,6 @@ const styles = StyleSheet.create({
   muted: { ...typography.caption, color: colors.muted },
   errorCard: { gap: spacing.sm, borderColor: colors.danger },
   error: { ...typography.body, color: colors.danger },
-  statsRow: { flexDirection: 'row', gap: spacing.sm },
   heroDate: { ...typography.caption, color: colors.accent, textTransform: 'capitalize' },
   heroTitle: { ...typography.subtitle, color: colors.ink },
   heroHint: { ...typography.caption, color: colors.muted, marginBottom: spacing.xs },

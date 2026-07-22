@@ -72,7 +72,14 @@ export function BautagebuchRunCard({
             />
           </View>
           <Text style={styles.updated}>
-            Zuletzt bearbeitet: {new Date(run.updatedAt).toLocaleString('de-DE')}
+            Zuletzt geändert/bearbeitet am:{' '}
+            {new Date(run.updatedAt).toLocaleString('de-DE', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
           </Text>
           {!selectionMode ? (
             <Text style={styles.hint}>Nach links wischen für Aktionen · Tippen zum Öffnen</Text>
