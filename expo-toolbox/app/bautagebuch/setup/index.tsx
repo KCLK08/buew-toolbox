@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Screen } from '../../src/components/mobile';
-import { colors, spacing, typography } from '../../src/constants/theme';
-import { TemplateOverviewList } from '../../src/native/bautagebuch/components/setup-wizard/TemplateOverviewList';
-import { getSetupModel } from '../../src/native/bautagebuch/db/database';
-import { resolveSetupEntryPath } from '../../src/native/bautagebuch/lib/setup-mapping';
+import { Screen } from '../../../src/components/mobile';
+import { colors, spacing, typography } from '../../../src/constants/theme';
+import { TemplateOverviewList } from '../../../src/native/bautagebuch/components/setup-wizard/TemplateOverviewList';
+import { getSetupModel } from '../../../src/native/bautagebuch/db/database';
+import { resolveSetupEntryPath } from '../../../src/native/bautagebuch/lib/setup-mapping';
 import {
   archiveTemplate,
   ensureBuiltinTemplate,
@@ -14,7 +14,7 @@ import {
   listManagedTemplates,
   resolveActiveTemplateId,
   setActiveTemplateId
-} from '../../src/native/bautagebuch/services/templateService';
+} from '../../../src/native/bautagebuch/services/templateService';
 
 export default function BautagebuchSetupScreen() {
   const router = useRouter();
