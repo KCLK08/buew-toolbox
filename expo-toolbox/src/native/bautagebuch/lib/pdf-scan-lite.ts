@@ -1,9 +1,9 @@
 import { PDFDocument, PDFDropdown, PDFRadioGroup } from 'pdf-lib';
 
 import { detectPdfFieldType } from './setup-model.js';
-import { ETB_SCAN_VERSION, detectedFieldsNeedRescan } from './pdf-scan';
+import { ETB_SCAN_VERSION } from './scan-meta';
 
-export { ETB_SCAN_VERSION, detectedFieldsNeedRescan };
+export { ETB_SCAN_VERSION, detectedFieldsNeedRescan } from './scan-meta';
 
 function humanizeFieldName(value: string): string {
   return String(value || '')

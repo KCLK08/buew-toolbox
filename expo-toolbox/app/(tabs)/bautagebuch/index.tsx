@@ -10,8 +10,17 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { EmptyState, Fab, PrimaryButton, Screen, TextField } from '../../../src/components/mobile';
-import { colors, typography } from '../../../src/constants/theme';
+import {
+  Card,
+  EmptyState,
+  Fab,
+  PrimaryButton,
+  Screen,
+  Section,
+  StatCard,
+  TextField
+} from '../../../src/components/mobile';
+import { colors, spacing, typography } from '../../../src/constants/theme';
 import { useToast } from '../../../src/contexts/ToastContext';
 import { BautagebuchRunCard } from '../../../src/native/bautagebuch/components/BautagebuchRunCard';
 import {
@@ -24,7 +33,10 @@ import {
 } from '../../../src/native/bautagebuch/db/database';
 import { applyRunDefaultsFromModel } from '../../../src/native/bautagebuch/lib/run-defaults';
 import { deleteCachedExport, shareCachedExport } from '../../../src/native/bautagebuch/services/exportService';
-import { exportBautagebuchBackupZip, pickAndRestoreBautagebuchBackup } from '../../../src/native/bautagebuch/services/backupExportService';
+import {
+  exportBautagebuchBackupZip,
+  pickAndRestoreBautagebuchBackup
+} from '../../../src/native/bautagebuch/services/backupExportService';
 import { ensureBuiltinTemplate } from '../../../src/native/bautagebuch/services/templateService';
 import type { BautagebuchExport, BautagebuchRun } from '../../../src/native/bautagebuch/types';
 
@@ -49,6 +61,14 @@ function getIsoWeek(dateString: string): number {
   return Math.ceil((((target.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
 
+function formatTodayLabel(): string {
+  return new Date().toLocaleDateString('de-DE', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long'
+  });
+}
+
 export default function BautagebuchHomeScreen() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -68,6 +88,7 @@ export default function BautagebuchHomeScreen() {
   const [renameTitle, setRenameTitle] = useState('');
   const [backupBusy, setBackupBusy] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -90,6 +111,7 @@ export default function BautagebuchHomeScreen() {
   }, [load]);
 
   const grouped = useMemo(() => groupRunsByWeek(runs), [runs]);
+  const openRuns = useMemo(() => runs.filter((run) => run.status !== 'completed').length, [runs]);
 
   useEffect(() => {
     setExpandedWeeks(new Set(grouped.map(([week]) => week)));
@@ -231,7 +253,10 @@ export default function BautagebuchHomeScreen() {
                 );
                 await load();
               } catch (err) {
-                Alert.alert('Wiederherstellung', err instanceof Error ? err.message : 'Wiederherstellung fehlgeschlagen.');
+                Alert.alert(
+                  'Wiederherstellung',
+                  err instanceof Error ? err.message : 'Wiederherstellung fehlgeschlagen.'
+                );
               } finally {
                 setRestoreBusy(false);
               }
@@ -256,7 +281,13 @@ export default function BautagebuchHomeScreen() {
   };
 
   return (
-    <Screen title="Bautagebuch" subtitle="Elektronisches Bautagebuch (eBTB)" scroll refreshing={loading} onRefresh={load}>
+    <Screen
+      title="Bautagebuch"
+      subtitle="Elektronisches Bautagebuch (eBTB)"
+      scroll
+      refreshing={loading}
+      onRefresh={load}
+    >
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />
@@ -264,127 +295,166 @@ export default function BautagebuchHomeScreen() {
         </View>
       ) : null}
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <View style={styles.newCard}>
-        <Text style={styles.cardTitle}>Neues BTB starten</Text>
-        <TextField
-          label="Bezeichnung"
-          hint="z. B. Strecke Nord"
-          value={newName}
-          onChangeText={setNewName}
-        />
-        <PrimaryButton
-          label={creating ? 'Wird erstellt…' : 'BTB starten'}
-          disabled={creating || !templateId}
-          onPress={() => void startRun()}
-        />
-        <PrimaryButton
-          label="Setup-Editor öffnen"
-          variant="secondary"
-          disabled={!templateId}
-          onPress={() => router.push('/bautagebuch/setup')}
-        />
-        <PrimaryButton
-          label={backupBusy ? 'Backup wird erstellt…' : 'Backup exportieren (ZIP)'}
-          variant="secondary"
-          disabled={backupBusy || restoreBusy || !templateId}
-          onPress={() => void exportBackup()}
-        />
-        <PrimaryButton
-          label={restoreBusy ? 'Wird wiederhergestellt…' : 'Backup wiederherstellen'}
-          variant="secondary"
-          disabled={backupBusy || restoreBusy}
-          onPress={restoreBackup}
-        />
-      </View>
-
-      {exportsList.length > 0 ? (
-        <View style={styles.exportsCard}>
-          <Text style={styles.cardTitle}>Exporte ({exportsList.length})</Text>
-          {exportsList.map((item) => (
-            <View key={item.exportId} style={styles.exportRow}>
-              <Text style={styles.exportName}>{item.fileName}</Text>
-              <View style={styles.exportActions}>
-                <PrimaryButton
-                  label={sharingExport === item.exportId ? 'Teilen…' : 'PDF teilen'}
-                  variant="secondary"
-                  disabled={Boolean(sharingExport)}
-                  onPress={() => void shareExport(item.exportId)}
-                />
-                <PrimaryButton label="Löschen" variant="ghost" onPress={() => removeExport(item.exportId)} />
-              </View>
-            </View>
-          ))}
-        </View>
+      {error ? (
+        <Card style={styles.errorCard}>
+          <Text style={styles.error}>{error}</Text>
+          <PrimaryButton label="Erneut versuchen" variant="secondary" onPress={() => void load()} />
+        </Card>
       ) : null}
 
-      <View style={styles.listHeader}>
-        <Text style={styles.cardTitle}>Bautagebücher</Text>
-        <View style={styles.listActions}>
-          {selectionMode ? (
-            <>
-              <PrimaryButton label="Abbrechen" variant="ghost" onPress={() => {
-                setSelectionMode(false);
-                setSelectedRunIds([]);
-              }} />
-              <PrimaryButton
-                label={`Löschen (${selectedRunIds.length})`}
-                variant="secondary"
-                disabled={selectedRunIds.length === 0}
-                onPress={deleteSelected}
-              />
-            </>
-          ) : (
-            <PrimaryButton
-              label="Auswahl"
-              variant="ghost"
-              disabled={runs.length === 0}
-              onPress={() => setSelectionMode(true)}
-            />
-          )}
-        </View>
-      </View>
-
-      {runs.length === 0 && !loading ? (
-        <EmptyState
-          title="Noch keine BTB-Läufe"
-          description="Starte ein neues elektronisches Bautagebuch mit der Vorlage-eBTB."
-        />
-      ) : null}
-
-      {grouped.map(([week, weekRuns]) => {
-        const expanded = expandedWeeks.has(week);
-        return (
-          <View key={week} style={styles.weekGroup}>
-            <Pressable style={styles.weekHeader} onPress={() => toggleWeek(week)}>
-              <Text style={styles.weekTitle}>{week}</Text>
-              <Text style={styles.weekToggle}>{expanded ? '▾' : '▸'} {weekRuns.length}</Text>
-            </Pressable>
-            {expanded
-              ? weekRuns.map((run) => (
-                  <BautagebuchRunCard
-                    key={run.runId}
-                    run={run}
-                    selectionMode={selectionMode}
-                    selected={selectedRunIds.includes(run.runId)}
-                    onPress={() => router.push(`/bautagebuch/run/${run.runId}`)}
-                    onToggleSelect={() => toggleSelection(run.runId)}
-                    onRename={() => openRename(run)}
-                    onDelete={() => deleteRun(run.runId)}
-                  />
-                ))
-              : null}
+      {!loading && !error ? (
+        <>
+          <View style={styles.statsRow}>
+            <StatCard title="Offen" value={String(openRuns)} icon="📝" />
+            <StatCard title="Gesamt" value={String(runs.length)} icon="📚" />
+            <StatCard title="Exporte" value={String(exportsList.length)} icon="📤" />
           </View>
-        );
-      })}
+
+          <Card>
+            <Text style={styles.heroDate}>{formatTodayLabel()}</Text>
+            <Text style={styles.heroTitle}>Neues Bautagebuch starten</Text>
+            <Text style={styles.heroHint}>
+              Gib der Baustelle einen kurzen Namen — Datum und Vorlage werden automatisch gesetzt.
+            </Text>
+            <TextField
+              label="Baustelle / Strecke"
+              hint="z. B. Strecke Nord, Tunnel Süd"
+              value={newName}
+              onChangeText={setNewName}
+            />
+            <PrimaryButton
+              label={creating ? 'Wird erstellt…' : 'BTB jetzt starten'}
+              disabled={creating || !templateId}
+              onPress={() => void startRun()}
+            />
+          </Card>
+
+          <Section
+            title="Deine Bautagebücher"
+            action={
+              selectionMode ? (
+                <View style={styles.listActions}>
+                  <PrimaryButton
+                    label="Abbrechen"
+                    variant="ghost"
+                    onPress={() => {
+                      setSelectionMode(false);
+                      setSelectedRunIds([]);
+                    }}
+                  />
+                  <PrimaryButton
+                    label={`Löschen (${selectedRunIds.length})`}
+                    variant="secondary"
+                    disabled={selectedRunIds.length === 0}
+                    onPress={deleteSelected}
+                  />
+                </View>
+              ) : (
+                <PrimaryButton
+                  label="Auswahl"
+                  variant="ghost"
+                  disabled={runs.length === 0}
+                  onPress={() => setSelectionMode(true)}
+                />
+              )
+            }
+          >
+            {runs.length === 0 ? (
+              <EmptyState
+                title="Noch keine BTB-Läufe"
+                description="Tippe oben auf „BTB jetzt starten“, um dein erstes elektronisches Bautagebuch zu erfassen."
+              />
+            ) : (
+              grouped.map(([week, weekRuns]) => {
+                const expanded = expandedWeeks.has(week);
+                return (
+                  <View key={week} style={styles.weekGroup}>
+                    <Pressable style={styles.weekHeader} onPress={() => toggleWeek(week)}>
+                      <Text style={styles.weekTitle}>{week}</Text>
+                      <Text style={styles.weekToggle}>
+                        {expanded ? '▾' : '▸'} {weekRuns.length}
+                      </Text>
+                    </Pressable>
+                    {expanded
+                      ? weekRuns.map((run) => (
+                          <BautagebuchRunCard
+                            key={run.runId}
+                            run={run}
+                            selectionMode={selectionMode}
+                            selected={selectedRunIds.includes(run.runId)}
+                            onPress={() => router.push(`/bautagebuch/run/${run.runId}`)}
+                            onToggleSelect={() => toggleSelection(run.runId)}
+                            onRename={() => openRename(run)}
+                            onDelete={() => deleteRun(run.runId)}
+                          />
+                        ))
+                      : null}
+                  </View>
+                );
+              })
+            )}
+          </Section>
+
+          {exportsList.length > 0 ? (
+            <Section title={`Letzte Exporte (${exportsList.length})`}>
+              {exportsList.slice(0, 5).map((item) => (
+                <Card key={item.exportId} padded style={styles.exportRow}>
+                  <Text style={styles.exportName} numberOfLines={2}>
+                    {item.fileName}
+                  </Text>
+                  <View style={styles.exportActions}>
+                    <PrimaryButton
+                      label={sharingExport === item.exportId ? 'Teilen…' : 'PDF teilen'}
+                      variant="secondary"
+                      disabled={Boolean(sharingExport)}
+                      onPress={() => void shareExport(item.exportId)}
+                    />
+                    <PrimaryButton label="Löschen" variant="ghost" onPress={() => removeExport(item.exportId)} />
+                  </View>
+                </Card>
+              ))}
+            </Section>
+          ) : null}
+
+          <Section title="Werkzeuge">
+            <Pressable style={styles.toolsToggle} onPress={() => setToolsOpen((value) => !value)}>
+              <Text style={styles.toolsToggleLabel}>
+                {toolsOpen ? 'Weniger anzeigen' : 'Setup, Backup & Wiederherstellung'}
+              </Text>
+              <Text style={styles.weekToggle}>{toolsOpen ? '▾' : '▸'}</Text>
+            </Pressable>
+            {toolsOpen ? (
+              <Card style={styles.toolsCard}>
+                <PrimaryButton
+                  label="Setup-Editor öffnen"
+                  variant="secondary"
+                  disabled={!templateId}
+                  onPress={() => router.push('/bautagebuch/setup')}
+                />
+                <PrimaryButton
+                  label={backupBusy ? 'Backup wird erstellt…' : 'Backup exportieren (ZIP)'}
+                  variant="secondary"
+                  disabled={backupBusy || restoreBusy || !templateId}
+                  onPress={() => void exportBackup()}
+                />
+                <PrimaryButton
+                  label={restoreBusy ? 'Wird wiederhergestellt…' : 'Backup wiederherstellen'}
+                  variant="secondary"
+                  disabled={backupBusy || restoreBusy}
+                  onPress={restoreBackup}
+                />
+              </Card>
+            ) : null}
+          </Section>
+        </>
+      ) : null}
 
       <Fab label="+" onPress={() => void startRun()} accessibilityLabel="Neues BTB" />
 
       <Modal visible={Boolean(renameRunId)} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.cardTitle}>BTB umbenennen</Text>
+            <Text style={styles.modalTitle}>BTB umbenennen</Text>
             <TextField label="Titel" value={renameTitle} onChangeText={setRenameTitle} />
             <View style={styles.modalActions}>
               <PrimaryButton label="Abbrechen" variant="ghost" onPress={() => setRenameRunId(null)} />
@@ -398,34 +468,51 @@ export default function BautagebuchHomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  center: { alignItems: 'center', gap: 8, paddingVertical: 24 },
+  center: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xl },
   muted: { ...typography.caption, color: colors.muted },
+  errorCard: { gap: spacing.sm, borderColor: colors.danger },
   error: { ...typography.body, color: colors.danger },
-  newCard: { gap: 12, marginBottom: 8 },
-  cardTitle: { ...typography.bodyStrong, color: colors.ink },
-  exportsCard: { gap: 12, marginBottom: 8 },
-  exportRow: { gap: 8, padding: 12, borderRadius: 12, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border },
-  exportName: { ...typography.body, color: colors.ink },
-  exportActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
-  listActions: { flexDirection: 'row', gap: 8 },
-  weekGroup: { gap: 8, marginTop: 8 },
-  weekHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  statsRow: { flexDirection: 'row', gap: spacing.sm },
+  heroDate: { ...typography.caption, color: colors.accent, textTransform: 'capitalize' },
+  heroTitle: { ...typography.subtitle, color: colors.ink },
+  heroHint: { ...typography.caption, color: colors.muted, marginBottom: spacing.xs },
+  listActions: { flexDirection: 'row', gap: spacing.xs },
+  weekGroup: { gap: spacing.sm },
+  weekHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    minHeight: spacing.touchMin,
+    paddingHorizontal: spacing.xxs
+  },
   weekTitle: { ...typography.label, color: colors.muted },
   weekToggle: { ...typography.caption, color: colors.muted },
+  exportRow: { gap: spacing.sm },
+  exportName: { ...typography.body, color: colors.ink },
+  exportActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  toolsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: spacing.touchMin,
+    paddingHorizontal: spacing.xxs
+  },
+  toolsToggleLabel: { ...typography.bodyStrong, color: colors.accent2 },
+  toolsCard: { gap: spacing.sm },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
-    padding: 24
+    padding: spacing.xl
   },
   modalCard: {
     backgroundColor: colors.panel,
-    borderRadius: 16,
-    padding: 16,
-    gap: 12,
+    borderRadius: spacing.cardRadius,
+    padding: spacing.md,
+    gap: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border
   },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }
+  modalTitle: { ...typography.subtitle, color: colors.ink },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.xs }
 });

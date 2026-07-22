@@ -7,7 +7,9 @@ import {
   ETB_TEMPLATE_NAME,
   buildEtbSetupModel
 } from '../lib/etb-template.js';
-import { scanTemplatePdf, detectedFieldsNeedRescan } from '../lib/pdf-scan';
+import { scanTemplatePdf } from '../lib/pdf-scan';
+import { scanTemplatePdfLite } from '../lib/pdf-scan-lite';
+import { detectedFieldsNeedRescan } from '../lib/scan-meta';
 import {
   getDetectedFields,
   getSetupModel,
@@ -21,6 +23,14 @@ import { appConfig } from '../../../lib/config';
 import { base64ToUint8Array, uint8ToBase64 } from '../../../lib/binary';
 
 const TEMPLATE_URL = `${appConfig.toolboxWebBaseUrl.replace(/\/$/, '')}/bautagebuch/templates/Vorlage-eBTB.pdf`;
+
+async function scanTemplateBytes(bytes: Uint8Array) {
+  try {
+    return await scanTemplatePdf(bytes);
+  } catch {
+    return scanTemplatePdfLite(bytes);
+  }
+}
 
 async function readTemplateBytes(pdfPath: string): Promise<Uint8Array> {
   const base64 = await FileSystem.readAsStringAsync(pdfPath, {
@@ -38,7 +48,7 @@ async function rescanExistingTemplate(
   }
 
   const bytes = await readTemplateBytes(existing.pdfPath);
-  const scanResult = await scanTemplatePdf(bytes);
+  const scanResult = await scanTemplateBytes(bytes);
 
   await putTemplate({
     ...existing,
@@ -94,7 +104,7 @@ export async function ensureBuiltinTemplate(): Promise<{
 
   const arrayBuffer = await response.arrayBuffer();
   const bytes = new Uint8Array(arrayBuffer);
-  const scanResult = await scanTemplatePdf(bytes);
+  const scanResult = await scanTemplateBytes(bytes);
 
   const pdfDir = `${FileSystem.documentDirectory}bautagebuch/templates/`;
   await FileSystem.makeDirectoryAsync(pdfDir, { intermediates: true });

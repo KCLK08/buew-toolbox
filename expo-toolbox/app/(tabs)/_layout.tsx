@@ -4,6 +4,18 @@ import { Image, StyleSheet, Text } from 'react-native';
 import { colors, spacing, typography } from '../../src/constants/theme';
 import { TOOLBOX_TOOLS } from '../../src/constants/tools';
 
+const appIcon = require('../../assets/icon.png');
+
+function HomeTabIcon({ focused }: { focused: boolean }) {
+  return (
+    <Image
+      source={appIcon}
+      style={[styles.homeIcon, focused ? styles.toolIconFocused : null]}
+      accessibilityLabel="BÜW-Toolbox Start"
+    />
+  );
+}
+
 function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   return (
     <Text style={[styles.icon, focused ? styles.iconFocused : null]} accessibilityElementsHidden>
@@ -36,7 +48,10 @@ export default function TabsLayout() {
         tabBarItemStyle: styles.tabItem
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: ({ focused }) => <TabIcon label="⌂" focused={focused} /> }} />
+      <Tabs.Screen
+        name="index"
+        options={{ title: 'Home', tabBarIcon: ({ focused }) => <HomeTabIcon focused={focused} /> }}
+      />
       <Tabs.Screen
         name="sitereport"
         options={{ title: 'SiteReport', tabBarIcon: ({ focused }) => <ToolTabIcon toolId="sitereport" focused={focused} /> }}
@@ -63,5 +78,6 @@ const styles = StyleSheet.create({
   icon: { fontSize: 18, color: colors.tabInactive },
   iconFocused: { color: colors.tabActive },
   toolIcon: { width: 22, height: 22, borderRadius: 6, opacity: 0.72 },
-  toolIconFocused: { opacity: 1 }
+  toolIconFocused: { opacity: 1 },
+  homeIcon: { width: 24, height: 24, borderRadius: 6, opacity: 0.8 }
 });

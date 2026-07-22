@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { PrimaryActionCard, ProtocolCard, SectionHeader } from '../../../src/components/sitereport';
-import { EmptyState, Screen, StatCard } from '../../../src/components/mobile';
+import { PrimaryActionCard, ProtocolCard } from '../../../src/components/sitereport';
+import { Card, EmptyState, Screen, Section, StatCard } from '../../../src/components/mobile';
 import { colors, spacing, typography } from '../../../src/constants/theme';
 import {
   initSiteReportDatabase,
@@ -49,39 +49,38 @@ export default function SiteReportDashboardScreen() {
 
   return (
     <Screen title="SiteReport" subtitle="Baustellen-Protokolle" scroll refreshing={loading} onRefresh={load}>
-      <View style={styles.statsRow}>
-        <StatCard title="Protokolle" value={String(stats.protocols)} icon="📋" />
-        <StatCard title="Einträge" value={String(stats.entries)} icon="✏️" />
-      </View>
-      <View style={styles.statsRow}>
-        <StatCard title="Fotos" value={String(stats.photos)} icon="📷" />
-        <StatCard
-          title="Exporte"
-          value={String(stats.exports)}
-          icon="📤"
-          tone="accent"
-          onPress={() => router.push('/sitereport/exports')}
-        />
-      </View>
-
       <PrimaryActionCard
         title="Neues Protokoll starten"
-        subtitle="Geführter Setup in 3 Schritten"
+        subtitle="In 3 Schritten: Projekt, Format und erste Einträge"
         onPress={() => router.push('/sitereport/new-protocol')}
       />
 
-      <Pressable style={styles.linkRow} onPress={() => router.push('/sitereport/protocols')}>
-        <Text style={styles.linkLabel}>Alle Protokolle anzeigen</Text>
-        <Text style={styles.linkChevron}>›</Text>
-      </Pressable>
+      <View style={styles.statsRow}>
+        <StatCard title="Protokolle" value={String(stats.protocols)} icon="📋" />
+        <StatCard title="Einträge" value={String(stats.entries)} icon="✏️" />
+        <StatCard title="Fotos" value={String(stats.photos)} icon="📷" />
+      </View>
+
+      <Card style={styles.linkCard}>
+        <Pressable style={styles.linkRow} onPress={() => router.push('/sitereport/protocols')}>
+          <Text style={styles.linkLabel}>Alle Protokolle anzeigen</Text>
+          <Text style={styles.linkChevron}>›</Text>
+        </Pressable>
+        <Pressable style={styles.linkRow} onPress={() => router.push('/sitereport/exports')}>
+          <Text style={styles.linkLabel}>Export-Verlauf ({stats.exports})</Text>
+          <Text style={styles.linkChevron}>›</Text>
+        </Pressable>
+      </Card>
 
       {recentProtocols.length > 0 ? (
-        <View style={styles.section}>
-          <SectionHeader
-            title="Zuletzt verwendet"
-            actionLabel="Alle"
-            onAction={() => router.push('/sitereport/protocols')}
-          />
+        <Section
+          title="Zuletzt verwendet"
+          action={
+            <Pressable onPress={() => router.push('/sitereport/protocols')}>
+              <Text style={styles.sectionAction}>Alle</Text>
+            </Pressable>
+          }
+        >
           {recentProtocols.map((protocol) => {
             const s = protocolStats(protocol);
             return (
@@ -96,7 +95,7 @@ export default function SiteReportDashboardScreen() {
               />
             );
           })}
-        </View>
+        </Section>
       ) : (
         <EmptyState
           icon="📋"
@@ -106,12 +105,7 @@ export default function SiteReportDashboardScreen() {
       )}
 
       {recentExports.length > 0 ? (
-        <View style={styles.section}>
-          <SectionHeader
-            title="Letzte Exporte"
-            actionLabel="Alle"
-            onAction={() => router.push('/sitereport/exports')}
-          />
+        <Section title="Letzte Exporte">
           {recentExports.map((item) => (
             <ProtocolCard
               key={item.id}
@@ -122,7 +116,7 @@ export default function SiteReportDashboardScreen() {
               onPress={() => router.push('/sitereport/exports')}
             />
           ))}
-        </View>
+        </Section>
       ) : null}
     </Screen>
   );
@@ -131,16 +125,15 @@ export default function SiteReportDashboardScreen() {
 const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.sm
+    gap: spacing.sm
   },
+  linkCard: { gap: 0, paddingVertical: 0 },
   linkRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    marginTop: spacing.sm,
-    marginBottom: spacing.md
+    paddingVertical: spacing.md,
+    minHeight: spacing.touchMin
   },
   linkLabel: {
     ...typography.bodyStrong,
@@ -150,7 +143,8 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: colors.accent
   },
-  section: {
-    marginBottom: spacing.lg
+  sectionAction: {
+    ...typography.label,
+    color: colors.accent
   }
 });
