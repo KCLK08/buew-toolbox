@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Alert } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Screen } from '../../src/components/mobile';
+import { PrimaryButton, Screen } from '../../src/components/mobile';
+import { colors, spacing, typography } from '../../src/constants/theme';
 import { SetupEditor } from '../../src/native/bautagebuch/components/SetupEditor';
 import { getDetectedFields, saveSetupModel } from '../../src/native/bautagebuch/db/database';
 import { useSetupAutosave } from '../../src/native/bautagebuch/hooks/useSetupAutosave';
-import { exportSetupPreviewPdf } from '../../src/native/bautagebuch/services/exportService';
 import { getActiveTemplateBundle } from '../../src/native/bautagebuch/services/templateService';
 import { validateSetupModel } from '../../src/native/bautagebuch/lib/setup-model.js';
 import type { DetectedField } from '../../src/native/bautagebuch/types';
@@ -22,7 +22,6 @@ export default function BautagebuchSetupScreen() {
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [previewBusy, setPreviewBusy] = useState(false);
   const { schedule, flush } = useSetupAutosave(templateId);
 
   const load = useCallback(async () => {
@@ -78,41 +77,44 @@ export default function BautagebuchSetupScreen() {
     }
   };
 
-  const handlePreview = async () => {
-    if (!templateId) return;
-    setPreviewBusy(true);
-    setError(null);
-    try {
-      await flush();
-      await exportSetupPreviewPdf(templateId);
-      setInfo('PDF-Vorschau wurde erstellt und kann geteilt werden.');
-    } catch (err) {
-      Alert.alert('Vorschau', err instanceof Error ? err.message : 'PDF-Vorschau fehlgeschlagen.');
-    } finally {
-      setPreviewBusy(false);
-    }
-  };
+  const validationIssues = useMemo(
+    () => (setupModel ? validateSetupModel(setupModel) : []),
+    [setupModel]
+  );
 
   return (
     <Screen
       title="Setup-Editor"
-      subtitle="eBTB-Vorlage anpassen"
+      subtitle={templateName || 'eBTB-Vorlage anpassen'}
       showBack
-      scroll
+      scroll={false}
+      contentStyle={styles.screenContent}
       refreshing={loading}
       onRefresh={load}
+      footer={
+        setupModel ? (
+          <PrimaryButton
+            label={saving ? 'Wird abgeschlossen…' : 'Setup abschließen'}
+            disabled={saving || validationIssues.length > 0}
+            onPress={() => void handleFinish()}
+          />
+        ) : null
+      }
     >
-      {setupModel ? (
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.accent} />
+          <Text style={styles.muted}>Setup wird geladen…</Text>
+        </View>
+      ) : null}
+
+      {!loading && setupModel ? (
         <SetupEditor
           templateName={templateName}
           templatePdfPath={templatePdfPath}
           detectedFields={detectedFields}
           setupModel={setupModel}
           onChange={handleChange}
-          onFinish={() => void handleFinish()}
-          onPreview={() => void handlePreview()}
-          saving={saving}
-          previewBusy={previewBusy}
           info={info}
           error={error}
         />
@@ -120,3 +122,22 @@ export default function BautagebuchSetupScreen() {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  screenContent: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    flex: 1
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    padding: spacing.xl
+  },
+  muted: {
+    ...typography.caption,
+    color: colors.muted
+  }
+});

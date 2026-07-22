@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Dimensions, StyleSheet, Text, View } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
@@ -14,7 +14,10 @@ type Props = {
   activeFieldId?: string | null;
   activeFieldLabel?: string | null;
   activeFieldPage?: number;
+  variant?: 'default' | 'pinned';
 };
+
+const PINNED_PREVIEW_HEIGHT = Math.max(220, Math.round(Dimensions.get('window').height * 0.34));
 
 type PreviewState = {
   page: number;
@@ -168,8 +171,10 @@ export function SetupPdfFieldPreview({
   detectedFields = [],
   activeFieldId,
   activeFieldLabel,
-  activeFieldPage = 1
+  activeFieldPage = 1,
+  variant = 'default'
 }: Props) {
+  const pinned = variant === 'pinned';
   const webViewRef = useRef<WebView>(null);
   const [html, setHtml] = useState<string | null>(null);
   const [readBusy, setReadBusy] = useState(false);
@@ -280,17 +285,21 @@ export function SetupPdfFieldPreview({
   }
 
   const banner = activeFieldLabel
-    ? `Aktives Feld: ${activeFieldLabel}${activeFieldPage ? ` · Seite ${activeFieldPage}` : ''}`
-    : 'Feld in der Liste antippen, um die zugehörige PDF-Seite zu sehen.';
+    ? `Aktiv: ${activeFieldLabel}${activeFieldPage ? ` · Seite ${activeFieldPage}` : ''}`
+    : pinned
+      ? 'Feld oder Spalte antippen — Markierung in der PDF zeigt die Position.'
+      : 'Feld in der Liste antippen, um die zugehörige PDF-Seite zu sehen.';
 
   return (
-    <View style={styles.root}>
-      <Text style={styles.banner}>{banner}</Text>
-      <View style={styles.panel}>
+    <View style={[styles.root, pinned ? styles.rootPinned : null]}>
+      <Text style={[styles.banner, pinned ? styles.bannerPinned : null]} numberOfLines={2}>
+        {banner}
+      </Text>
+      <View style={[styles.panel, pinned ? styles.panelPinned : null]}>
         <WebView
           ref={webViewRef}
           source={{ html }}
-          style={styles.webview}
+          style={[styles.webview, pinned ? styles.webviewPinned : null]}
           originWhitelist={['*']}
           scrollEnabled
           onMessage={onWebMessage}
@@ -315,10 +324,13 @@ export function SetupPdfFieldPreview({
           onPress={() => goToPage(previewState.page + 1)}
         />
       </View>
-      {highlights.length === 0 ? (
+      {highlights.length === 0 && !pinned ? (
         <Text style={styles.hint}>
           Feld-Overlays sind ohne Positionsdaten nicht verfügbar. Seitennavigation und Feld-Banner funktionieren weiterhin.
         </Text>
+      ) : null}
+      {pinned ? (
+        <Text style={styles.legend}>Markierung: aktives Feld · Seite mit Pfeilen wechseln</Text>
       ) : null}
     </View>
   );
@@ -326,7 +338,17 @@ export function SetupPdfFieldPreview({
 
 const styles = StyleSheet.create({
   root: { gap: spacing.sm },
+  rootPinned: {
+    gap: spacing.xs,
+    paddingHorizontal: spacing.pageX,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs
+  },
   banner: { ...typography.caption, color: colors.accent2 },
+  bannerPinned: {
+    ...typography.label,
+    color: colors.ink
+  },
   panel: {
     minHeight: 360,
     borderRadius: 12,
@@ -335,10 +357,19 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.panel
   },
+  panelPinned: {
+    minHeight: PINNED_PREVIEW_HEIGHT,
+    height: PINNED_PREVIEW_HEIGHT,
+    borderRadius: 10
+  },
   webview: {
     flex: 1,
     minHeight: 360,
     backgroundColor: colors.panel
+  },
+  webviewPinned: {
+    minHeight: PINNED_PREVIEW_HEIGHT - 2,
+    height: PINNED_PREVIEW_HEIGHT - 2
   },
   controls: {
     flexDirection: 'row',
@@ -348,6 +379,11 @@ const styles = StyleSheet.create({
   },
   pageLabel: { ...typography.caption, color: colors.muted, minWidth: 110, textAlign: 'center' },
   hint: { ...typography.caption, color: colors.muted },
+  legend: {
+    ...typography.caption,
+    color: colors.muted,
+    paddingBottom: spacing.xxs
+  },
   center: {
     minHeight: 200,
     alignItems: 'center',
