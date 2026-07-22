@@ -18,7 +18,8 @@ export async function buildFinalPdfBytes({ templateBlob, setupModel, runValues =
       applyPdfFieldValue(field, assignment.type, assignment.value, {
         fieldName: assignment.fieldName,
         tableId: assignment.tableId,
-        columnId: assignment.columnId
+        columnId: assignment.columnId,
+        multiline: assignment.multiline === true
       });
     } catch {
       // Keep export resilient even when individual form fields fail.
