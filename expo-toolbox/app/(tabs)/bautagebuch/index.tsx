@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,7 +8,7 @@ import {
   Text,
   View
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 
 import {
   Card,
@@ -51,7 +51,8 @@ function formatTodayLabel(): string {
 export default function BautagebuchHomeScreen() {
   const router = useRouter();
   const { showToast } = useToast();
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runs, setRuns] = useState<BautagebuchRun[]>([]);
   const [newName, setNewName] = useState('');
@@ -72,9 +73,12 @@ export default function BautagebuchHomeScreen() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const expansionInitialized = useRef(false);
+  const isFirstFocus = useRef(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
+    if (mode === 'initial') setInitialLoading(true);
+    else setRefreshing(true);
     setError(null);
     try {
       const bundle = await getActiveTemplateBundle();
@@ -87,13 +91,24 @@ export default function BautagebuchHomeScreen() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bautagebuch konnte nicht geladen werden.');
     } finally {
-      setLoading(false);
+      if (mode === 'initial') setInitialLoading(false);
+      else setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    void load();
+    void load('initial');
   }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (isFirstFocus.current) {
+        isFirstFocus.current = false;
+        return;
+      }
+      void load('refresh');
+    }, [load])
+  );
 
   const runTree = useMemo(
     () => groupRunsByCalendar(runs, { setupModel }),
@@ -101,6 +116,15 @@ export default function BautagebuchHomeScreen() {
   );
 
   useEffect(() => {
+    if (runs.length === 0) {
+      expansionInitialized.current = false;
+      setExpandedYears(new Set());
+      setExpandedWeeks(new Set());
+      setExpandedProjects(new Set());
+      return;
+    }
+    if (expansionInitialized.current) return;
+
     setExpandedYears(new Set(runTree.years.map((yearGroup) => yearGroup.year)));
     const weekKeys = runTree.years.flatMap((yearGroup) => yearGroup.weeks.map((week) => week.weekKey));
     setExpandedWeeks(new Set(weekKeys));
@@ -110,7 +134,8 @@ export default function BautagebuchHomeScreen() {
       )
     );
     setExpandedProjects(new Set(projectKeys));
-  }, [runTree]);
+    expansionInitialized.current = true;
+  }, [runTree, runs.length]);
 
   const startRun = async () => {
     if (!templateId || !setupModel || !templateReady) {
@@ -184,8 +209,9 @@ export default function BautagebuchHomeScreen() {
         style: 'destructive',
         onPress: () => {
           void deleteRunCascade(runId).then(() => {
+            setSelectedRunIds((current) => current.filter((id) => id !== runId));
             showToast('BTB gelöscht');
-            void load();
+            void load('refresh');
           });
         }
       }
@@ -207,7 +233,7 @@ export default function BautagebuchHomeScreen() {
               setSelectedRunIds([]);
               setSelectionMode(false);
               showToast('Auswahl gelöscht');
-              void load();
+              void load('refresh');
             });
           }
         }
@@ -230,7 +256,7 @@ export default function BautagebuchHomeScreen() {
     setRenameRunId(null);
     setRenameTitle('');
     showToast('BTB umbenannt');
-    void load();
+    void load('refresh');
   };
 
   const shareExport = async (exportId: string) => {
@@ -274,7 +300,7 @@ export default function BautagebuchHomeScreen() {
                 showToast(
                   `Backup wiederhergestellt (${result.photoFileCount} Fotos, ${result.exportFileCount} Exporte)`
                 );
-                await load();
+                await load('refresh');
               } catch (err) {
                 Alert.alert(
                   'Wiederherstellung',
@@ -297,7 +323,7 @@ export default function BautagebuchHomeScreen() {
         text: 'Löschen',
         style: 'destructive',
         onPress: () => {
-          void deleteCachedExport(exportId).then(load);
+          void deleteCachedExport(exportId).then(() => load('refresh'));
         }
       }
     ]);
@@ -308,10 +334,10 @@ export default function BautagebuchHomeScreen() {
       title="Bautagebuch"
       subtitle="Elektronisches Bautagebuch (eBTB)"
       scroll
-      refreshing={loading}
-      onRefresh={load}
+      refreshing={refreshing}
+      onRefresh={() => void load('refresh')}
     >
-      {loading ? (
+      {initialLoading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />
           <Text style={styles.muted}>Vorlage und Daten werden geladen…</Text>
@@ -321,11 +347,11 @@ export default function BautagebuchHomeScreen() {
       {error ? (
         <Card style={styles.errorCard}>
           <Text style={styles.error}>{error}</Text>
-          <PrimaryButton label="Erneut versuchen" variant="secondary" onPress={() => void load()} />
+          <PrimaryButton label="Erneut versuchen" variant="secondary" onPress={() => void load('initial')} />
         </Card>
       ) : null}
 
-      {!loading && !error ? (
+      {!initialLoading && !error ? (
         <>
           <Card>
             <Text style={styles.heroDate}>{formatTodayLabel()}</Text>
@@ -460,7 +486,9 @@ export default function BautagebuchHomeScreen() {
         </>
       ) : null}
 
-      <Fab label="+" onPress={() => void startRun()} accessibilityLabel="Neues BTB" />
+      {!initialLoading && !error && templateReady ? (
+        <Fab label="+" onPress={() => void startRun()} accessibilityLabel="Neues BTB" />
+      ) : null}
 
       <Modal visible={Boolean(renameRunId)} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
