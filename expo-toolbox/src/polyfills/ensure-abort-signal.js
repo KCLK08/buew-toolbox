@@ -1,6 +1,6 @@
 'use strict';
 
-const { AbortController, AbortSignal } = require('abort-controller/dist/abort-controller');
+const { AbortController, AbortSignal } = require('abort-controller/dist/abort-controller.js');
 
 // Always install concrete implementations before Expo winter boots.
 global.AbortController = AbortController;

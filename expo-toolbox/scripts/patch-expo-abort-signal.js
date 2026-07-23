@@ -17,14 +17,14 @@ function patchExpoWinterRuntime() {
   const runtimeReplacement = `installAbortSignalPatch(
   (globalThis as typeof globalThis & { AbortSignal?: typeof AbortSignal }).AbortSignal ??
     (global as typeof global & { AbortSignal?: typeof AbortSignal }).AbortSignal ??
-    require('abort-controller/dist/abort-controller').AbortSignal
+    require('abort-controller/dist/abort-controller.js').AbortSignal
 );`;
 
   if (runtimeSource.includes(runtimeNeedle)) {
     runtimeSource = runtimeSource.replace(runtimeNeedle, runtimeReplacement);
     fs.writeFileSync(runtimeFile, runtimeSource);
     console.log('[patch-expo-abort-signal] Patched expo/src/winter/runtime.native.ts');
-  } else if (runtimeSource.includes('abort-controller/dist/abort-controller')) {
+  } else if (runtimeSource.includes('abort-controller/dist/abort-controller.js')) {
     console.log('[patch-expo-abort-signal] runtime.native.ts already patched');
   } else {
     console.warn('[patch-expo-abort-signal] runtime.native.ts patch target not found');
@@ -39,7 +39,7 @@ function patchExpoWinterRuntime() {
     abortSignal =
       (globalThis as typeof globalThis & { AbortSignal?: AbortSignalConstructor }).AbortSignal ??
       (global as typeof global & { AbortSignal?: AbortSignalConstructor }).AbortSignal ??
-      require('abort-controller/dist/abort-controller').AbortSignal;
+      require('abort-controller/dist/abort-controller.js').AbortSignal;
     (globalThis as typeof globalThis & { AbortSignal?: AbortSignalConstructor }).AbortSignal =
       abortSignal;
   }`;

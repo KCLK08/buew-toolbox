@@ -21,7 +21,7 @@ function isExpoWinterModule(modulePath) {
 
 config.resolver = {
   ...config.resolver,
-  assetExts: [...(config.resolver.assetExts || []), 'mjs'],
+  // Keep .mjs as source only — treating it as an asset breaks abort-controller polyfills.
   sourceExts: [...(config.resolver.sourceExts || []), 'mjs'],
   nodeModulesPaths: [
     path.resolve(projectRoot, 'node_modules'),
