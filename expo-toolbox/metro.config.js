@@ -7,6 +7,20 @@ const workspaceRoot = path.resolve(projectRoot, '..');
 const sharedRoot = path.resolve(workspaceRoot, 'shared');
 const patchedWinterRuntime = path.resolve(projectRoot, 'src/polyfills/expo-winter-runtime.native.js');
 const patchedWinterIndex = path.resolve(projectRoot, 'src/polyfills/expo-winter-index.js');
+const abortControllerJs = path.resolve(
+  projectRoot,
+  'node_modules/abort-controller/dist/abort-controller.js'
+);
+
+function targetsAbortController(moduleName) {
+  return (
+    moduleName === 'abort-controller' ||
+    moduleName.startsWith('abort-controller/') ||
+    moduleName.endsWith('/abort-controller/dist/abort-controller') ||
+    moduleName.endsWith('/abort-controller/dist/abort-controller.js') ||
+    moduleName.endsWith('/abort-controller/dist/abort-controller.mjs')
+  );
+}
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(projectRoot);
@@ -21,7 +35,8 @@ function isExpoWinterModule(modulePath) {
 
 config.resolver = {
   ...config.resolver,
-  // Keep .mjs as source only — treating it as an asset breaks abort-controller polyfills.
+  // .mjs must stay an asset so pdfjs-dist is not fully bundled (Hermes rejects its Node imports).
+  assetExts: [...(config.resolver.assetExts || []), 'mjs'],
   sourceExts: [...(config.resolver.sourceExts || []), 'mjs'],
   nodeModulesPaths: [
     path.resolve(projectRoot, 'node_modules'),
@@ -54,6 +69,13 @@ config.resolver = {
     if (targetsWinterIndex || targetsRelativeWinter || targetsWinterRuntimeImport || targetsWinterRuntime) {
       return {
         filePath: targetsWinterIndex ? patchedWinterIndex : patchedWinterRuntime,
+        type: 'sourceFile'
+      };
+    }
+
+    if (targetsAbortController(moduleName)) {
+      return {
+        filePath: abortControllerJs,
         type: 'sourceFile'
       };
     }
