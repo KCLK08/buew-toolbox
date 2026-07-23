@@ -4,6 +4,7 @@ const { getDefaultConfig } = require('expo/metro-config');
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '..');
 const sharedRoot = path.resolve(workspaceRoot, 'shared');
+const abortSignalPolyfill = path.resolve(projectRoot, 'src/polyfills/ensure-abort-signal.js');
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(projectRoot);
@@ -21,6 +22,26 @@ config.resolver = {
   extraNodeModules: {
     ...(config.resolver?.extraNodeModules || {}),
     '@buew/shared': sharedRoot
+  }
+};
+
+const defaultGetModulesRunBeforeMainModule = config.serializer?.getModulesRunBeforeMainModule;
+
+config.serializer = {
+  ...config.serializer,
+  getModulesRunBeforeMainModule: () => {
+    const defaults = defaultGetModulesRunBeforeMainModule?.() ?? [];
+    const winterIndex = defaults.findIndex((modulePath) =>
+      modulePath.includes(`${path.sep}expo${path.sep}src${path.sep}winter`)
+    );
+
+    if (winterIndex >= 0) {
+      const ordered = [...defaults];
+      ordered.splice(winterIndex, 0, abortSignalPolyfill);
+      return ordered;
+    }
+
+    return [abortSignalPolyfill, ...defaults];
   }
 };
 

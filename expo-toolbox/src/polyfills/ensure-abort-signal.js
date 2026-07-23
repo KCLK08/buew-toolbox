@@ -1,20 +1,24 @@
-/**
- * Ensures AbortController/AbortSignal exist before Expo's winter runtime boots.
- * Without this, installAbortSignalPatch(AbortSignal) can crash with:
- * "Cannot read property 'timeout' of undefined"
- */
-require('react-native/Libraries/Core/InitializeCore');
+'use strict';
 
+/**
+ * Must run after InitializeCore and BEFORE expo/src/winter (see metro.config.js).
+ * Expo winter calls installAbortSignalPatch(AbortSignal) — if AbortSignal is still
+ * undefined, Android release builds crash with:
+ *   Cannot read property 'timeout' of undefined
+ */
 const { AbortController, AbortSignal } = require('abort-controller/dist/abort-controller');
 
-if (typeof globalThis.AbortController === 'undefined') {
-  globalThis.AbortController = AbortController;
+if (typeof global.AbortController === 'undefined') {
+  global.AbortController = AbortController;
 }
 
-if (typeof globalThis.AbortSignal === 'undefined') {
-  globalThis.AbortSignal = AbortSignal;
+if (typeof global.AbortSignal === 'undefined') {
+  global.AbortSignal = AbortSignal;
 }
 
-// Touch globals so lazy polyfills from InitializeCore are materialized.
-void globalThis.AbortController;
-void globalThis.AbortSignal;
+globalThis.AbortController = global.AbortController;
+globalThis.AbortSignal = global.AbortSignal;
+
+// Materialize lazy globals from InitializeCore if present.
+void global.AbortController;
+void global.AbortSignal;
