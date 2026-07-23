@@ -12,7 +12,7 @@ function resolveAbortSignalCtor(passed) {
     return fromGlobal;
   }
 
-  const { AbortController, AbortSignal } = require('abort-controller/dist/abort-controller');
+  const { AbortController, AbortSignal } = require('abort-controller/dist/abort-controller.js');
   global.AbortController = AbortController;
   global.AbortSignal = AbortSignal;
   globalThis.AbortController = AbortController;
