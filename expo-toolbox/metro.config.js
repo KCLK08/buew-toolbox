@@ -5,8 +5,8 @@ const { getDefaultConfig } = require('expo/metro-config');
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '..');
 const sharedRoot = path.resolve(workspaceRoot, 'shared');
-const abortSignalPolyfill = path.resolve(projectRoot, 'src/polyfills/ensure-abort-signal.js');
-const safeAbortSignalPatch = path.resolve(projectRoot, 'src/polyfills/safe-AbortSignal.js');
+const patchedWinterRuntime = path.resolve(projectRoot, 'src/polyfills/expo-winter-runtime.native.js');
+const patchedWinterIndex = path.resolve(projectRoot, 'src/polyfills/expo-winter-index.js');
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(projectRoot);
@@ -14,6 +14,10 @@ const config = getDefaultConfig(projectRoot);
 config.watchFolders = [...(config.watchFolders || []), workspaceRoot, sharedRoot];
 
 const defaultResolveRequest = config.resolver.resolveRequest;
+
+function isExpoWinterModule(modulePath) {
+  return modulePath.includes(`${path.sep}expo${path.sep}src${path.sep}winter`);
+}
 
 config.resolver = {
   ...config.resolver,
@@ -28,15 +32,28 @@ config.resolver = {
     '@buew/shared': sharedRoot
   },
   resolveRequest: (context, moduleName, platform) => {
-    const fromSafePatch = context.originModulePath?.includes('safe-AbortSignal.js');
-    const targetsAbortSignalPatch =
-      moduleName === 'expo/src/winter/AbortSignal' ||
-      moduleName.endsWith('/expo/src/winter/AbortSignal') ||
-      moduleName.endsWith('/expo/src/winter/AbortSignal.ts');
+    const fromExpoFx = context.originModulePath?.includes(`${path.sep}expo${path.sep}src${path.sep}Expo.fx`);
+    const targetsRelativeWinter = fromExpoFx && moduleName === './winter';
 
-    if (!fromSafePatch && targetsAbortSignalPatch) {
+    const targetsWinterIndex =
+      moduleName === 'expo/src/winter' ||
+      moduleName === 'expo/src/winter/index' ||
+      moduleName.endsWith('/expo/src/winter/index.ts') ||
+      moduleName.endsWith('/expo/src/winter/index.js');
+
+    const fromWinterIndex = context.originModulePath?.includes(
+      `${path.sep}expo${path.sep}src${path.sep}winter${path.sep}index`
+    );
+    const targetsWinterRuntimeImport = fromWinterIndex && moduleName === './runtime' && platform !== 'web';
+
+    const targetsWinterRuntime =
+      moduleName.endsWith('/expo/src/winter/runtime.native') ||
+      moduleName.endsWith('/expo/src/winter/runtime.native.ts') ||
+      moduleName.endsWith('/expo/src/winter/runtime.native.js');
+
+    if (targetsWinterIndex || targetsRelativeWinter || targetsWinterRuntimeImport || targetsWinterRuntime) {
       return {
-        filePath: safeAbortSignalPatch,
+        filePath: targetsWinterIndex ? patchedWinterIndex : patchedWinterRuntime,
         type: 'sourceFile'
       };
     }
@@ -55,17 +72,10 @@ config.serializer = {
   ...config.serializer,
   getModulesRunBeforeMainModule: () => {
     const defaults = defaultGetModulesRunBeforeMainModule?.() ?? [];
-    const winterIndex = defaults.findIndex((modulePath) =>
-      modulePath.includes(`${path.sep}expo${path.sep}src${path.sep}winter`)
+    const replaced = defaults.map((modulePath) =>
+      isExpoWinterModule(modulePath) ? patchedWinterRuntime : modulePath
     );
-
-    if (winterIndex >= 0) {
-      const ordered = [...defaults];
-      ordered.splice(winterIndex, 0, abortSignalPolyfill);
-      return ordered;
-    }
-
-    return [abortSignalPolyfill, ...defaults];
+    return [...new Set(replaced)];
   }
 };
 
