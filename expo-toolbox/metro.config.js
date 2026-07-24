@@ -5,22 +5,12 @@ const { getDefaultConfig } = require('expo/metro-config');
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '..');
 const sharedRoot = path.resolve(workspaceRoot, 'shared');
-const patchedWinterRuntime = path.resolve(projectRoot, 'src/polyfills/expo-winter-runtime.native.js');
-const patchedWinterIndex = path.resolve(projectRoot, 'src/polyfills/expo-winter-index.js');
 const abortControllerJs = path.resolve(
   projectRoot,
   'node_modules/abort-controller/dist/abort-controller.js'
 );
-
-function targetsAbortController(moduleName) {
-  return (
-    moduleName === 'abort-controller' ||
-    moduleName.startsWith('abort-controller/') ||
-    moduleName.endsWith('/abort-controller/dist/abort-controller') ||
-    moduleName.endsWith('/abort-controller/dist/abort-controller.js') ||
-    moduleName.endsWith('/abort-controller/dist/abort-controller.mjs')
-  );
-}
+const patchedWinterRuntime = path.resolve(projectRoot, 'src/polyfills/expo-winter-runtime.native.js');
+const patchedWinterIndex = path.resolve(projectRoot, 'src/polyfills/expo-winter-index.js');
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(projectRoot);
@@ -33,9 +23,19 @@ function isExpoWinterModule(modulePath) {
   return modulePath.includes(`${path.sep}expo${path.sep}src${path.sep}winter`);
 }
 
+function targetsAbortController(moduleName) {
+  return (
+    moduleName === 'abort-controller' ||
+    moduleName.startsWith('abort-controller/') ||
+    moduleName.endsWith('/abort-controller/dist/abort-controller') ||
+    moduleName.endsWith('/abort-controller/dist/abort-controller.js') ||
+    moduleName.endsWith('/abort-controller/dist/abort-controller.mjs')
+  );
+}
+
 config.resolver = {
   ...config.resolver,
-  // .mjs must stay an asset so pdfjs-dist is not fully bundled (Hermes rejects its Node imports).
+  // pdfjs-dist must stay an asset — bundling its .mjs source breaks Hermes (Node imports).
   assetExts: [...(config.resolver.assetExts || []), 'mjs'],
   sourceExts: [...(config.resolver.sourceExts || []), 'mjs'],
   nodeModulesPaths: [
@@ -47,6 +47,13 @@ config.resolver = {
     '@buew/shared': sharedRoot
   },
   resolveRequest: (context, moduleName, platform) => {
+    if (targetsAbortController(moduleName)) {
+      return {
+        filePath: abortControllerJs,
+        type: 'sourceFile'
+      };
+    }
+
     const fromExpoFx = context.originModulePath?.includes(`${path.sep}expo${path.sep}src${path.sep}Expo.fx`);
     const targetsRelativeWinter = fromExpoFx && moduleName === './winter';
 
@@ -69,13 +76,6 @@ config.resolver = {
     if (targetsWinterIndex || targetsRelativeWinter || targetsWinterRuntimeImport || targetsWinterRuntime) {
       return {
         filePath: targetsWinterIndex ? patchedWinterIndex : patchedWinterRuntime,
-        type: 'sourceFile'
-      };
-    }
-
-    if (targetsAbortController(moduleName)) {
-      return {
-        filePath: abortControllerJs,
         type: 'sourceFile'
       };
     }

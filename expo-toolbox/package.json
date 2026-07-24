@@ -1,9 +1,8 @@
 {
   "name": "expo-toolbox",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "expo-router/entry",
   "scripts": {
-    "postinstall": "node scripts/patch-expo-abort-signal.js",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
