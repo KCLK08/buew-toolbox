@@ -1,11 +1,11 @@
 'use strict';
 
-// Patched copy of expo/src/winter/runtime.native.ts — resolves AbortSignal safely before patching.
+// Minimal patch of expo/src/winter/runtime.native.ts for Android release builds.
 require('react-native/Libraries/Core/InitializeCore');
 
 require('expo/types');
 
-const { installAbortSignalPatch } = require('./safe-AbortSignal');
+const { installAbortSignalPatch } = require('expo/src/winter/AbortSignal');
 const { installFormDataPatch } = require('expo/src/winter/FormData');
 const { installGlobal: install } = require('expo/src/winter/installGlobal');
 
