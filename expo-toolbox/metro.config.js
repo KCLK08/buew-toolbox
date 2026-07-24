@@ -9,8 +9,7 @@ const abortControllerJs = path.resolve(
   projectRoot,
   'node_modules/abort-controller/dist/abort-controller.js'
 );
-const patchedWinterRuntime = path.resolve(projectRoot, 'src/polyfills/expo-winter-runtime.native.js');
-const patchedWinterIndex = path.resolve(projectRoot, 'src/polyfills/expo-winter-index.js');
+const patchedAbortSignal = path.resolve(projectRoot, 'src/polyfills/expo-winter-AbortSignal.js');
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(projectRoot);
@@ -18,10 +17,6 @@ const config = getDefaultConfig(projectRoot);
 config.watchFolders = [...(config.watchFolders || []), workspaceRoot, sharedRoot];
 
 const defaultResolveRequest = config.resolver.resolveRequest;
-
-function isExpoWinterModule(modulePath) {
-  return modulePath.includes(`${path.sep}expo${path.sep}src${path.sep}winter`);
-}
 
 function targetsAbortController(moduleName) {
   return (
@@ -33,11 +28,24 @@ function targetsAbortController(moduleName) {
   );
 }
 
+function targetsExpoAbortSignal(context, moduleName) {
+  const fromExpoWinter = context.originModulePath?.includes(`${path.sep}expo${path.sep}src${path.sep}winter`);
+  return (
+    moduleName === 'expo/src/winter/AbortSignal' ||
+    moduleName.endsWith('/expo/src/winter/AbortSignal.ts') ||
+    moduleName.endsWith('/expo/src/winter/AbortSignal.js') ||
+    (fromExpoWinter && (moduleName === './AbortSignal' || moduleName === '../AbortSignal'))
+  );
+}
+
+function targetsPdfJsMjs(moduleName) {
+  return moduleName.includes('pdfjs-dist') && moduleName.endsWith('.mjs');
+}
+
 config.resolver = {
   ...config.resolver,
-  // pdfjs-dist must stay an asset — bundling its .mjs source breaks Hermes (Node imports).
+  // Keep local pdf.js worker assets addressable; do not treat every .mjs as source.
   assetExts: [...(config.resolver.assetExts || []), 'mjs'],
-  sourceExts: [...(config.resolver.sourceExts || []), 'mjs'],
   nodeModulesPaths: [
     path.resolve(projectRoot, 'node_modules'),
     path.resolve(workspaceRoot, 'node_modules')
@@ -54,30 +62,26 @@ config.resolver = {
       };
     }
 
-    const fromExpoFx = context.originModulePath?.includes(`${path.sep}expo${path.sep}src${path.sep}Expo.fx`);
-    const targetsRelativeWinter = fromExpoFx && moduleName === './winter';
-
-    const targetsWinterIndex =
-      moduleName === 'expo/src/winter' ||
-      moduleName === 'expo/src/winter/index' ||
-      moduleName.endsWith('/expo/src/winter/index.ts') ||
-      moduleName.endsWith('/expo/src/winter/index.js');
-
-    const fromWinterIndex = context.originModulePath?.includes(
-      `${path.sep}expo${path.sep}src${path.sep}winter${path.sep}index`
-    );
-    const targetsWinterRuntimeImport = fromWinterIndex && moduleName === './runtime' && platform !== 'web';
-
-    const targetsWinterRuntime =
-      moduleName.endsWith('/expo/src/winter/runtime.native') ||
-      moduleName.endsWith('/expo/src/winter/runtime.native.ts') ||
-      moduleName.endsWith('/expo/src/winter/runtime.native.js');
-
-    if (targetsWinterIndex || targetsRelativeWinter || targetsWinterRuntimeImport || targetsWinterRuntime) {
+    if (targetsExpoAbortSignal(context, moduleName)) {
       return {
-        filePath: targetsWinterIndex ? patchedWinterIndex : patchedWinterRuntime,
+        filePath: patchedAbortSignal,
         type: 'sourceFile'
       };
+    }
+
+    if (targetsPdfJsMjs(moduleName)) {
+      const resolved = defaultResolveRequest
+        ? defaultResolveRequest(context, moduleName, platform)
+        : resolve(context, moduleName, platform);
+
+      if (resolved?.type === 'sourceFile') {
+        return {
+          type: 'assetFiles',
+          filePaths: [resolved.filePath]
+        };
+      }
+
+      return resolved;
     }
 
     if (defaultResolveRequest) {
@@ -85,19 +89,6 @@ config.resolver = {
     }
 
     return resolve(context, moduleName, platform);
-  }
-};
-
-const defaultGetModulesRunBeforeMainModule = config.serializer?.getModulesRunBeforeMainModule;
-
-config.serializer = {
-  ...config.serializer,
-  getModulesRunBeforeMainModule: () => {
-    const defaults = defaultGetModulesRunBeforeMainModule?.() ?? [];
-    const replaced = defaults.map((modulePath) =>
-      isExpoWinterModule(modulePath) ? patchedWinterRuntime : modulePath
-    );
-    return [...new Set(replaced)];
   }
 };
 
