@@ -4,10 +4,11 @@ const { getDefaultConfig } = require('expo/metro-config');
 
 const projectRoot = __dirname;
 const sharedRoot = path.resolve(projectRoot, '../shared');
-const abortControllerJs = path.resolve(
+const edgeToEdgeJs = path.resolve(
   projectRoot,
-  'node_modules/abort-controller/dist/abort-controller.js'
+  'node_modules/react-native-is-edge-to-edge/dist/index.js'
 );
+const pdfWorkerAsset = path.resolve(projectRoot, 'assets/pdf.worker.min.mjs');
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(projectRoot);
@@ -16,23 +17,26 @@ config.watchFolders = [...(config.watchFolders || []), sharedRoot];
 
 const defaultResolveRequest = config.resolver.resolveRequest;
 
-function targetsAbortController(moduleName) {
+function targetsPdfWorkerAsset(moduleName) {
   return (
-    moduleName === 'abort-controller' ||
-    moduleName.startsWith('abort-controller/') ||
-    moduleName.endsWith('/abort-controller/dist/abort-controller') ||
-    moduleName.endsWith('/abort-controller/dist/abort-controller.js') ||
-    moduleName.endsWith('/abort-controller/dist/abort-controller.mjs')
+    moduleName.endsWith('/assets/pdf.worker.min.mjs') ||
+    moduleName.endsWith('assets/pdf.worker.min.mjs') ||
+    (moduleName.includes('pdfjs-dist') && moduleName.includes('worker') && moduleName.endsWith('.mjs'))
   );
 }
 
-function targetsPdfJsMjs(moduleName) {
-  return moduleName.includes('pdfjs-dist') && moduleName.endsWith('.mjs');
+function targetsEdgeToEdge(moduleName) {
+  return (
+    moduleName === 'react-native-is-edge-to-edge' ||
+    moduleName.startsWith('react-native-is-edge-to-edge/') ||
+    moduleName.endsWith('/react-native-is-edge-to-edge/dist/index') ||
+    moduleName.endsWith('/react-native-is-edge-to-edge/dist/index.js') ||
+    moduleName.endsWith('/react-native-is-edge-to-edge/dist/index.mjs')
+  );
 }
 
 config.resolver = {
   ...config.resolver,
-  assetExts: [...(config.resolver.assetExts || []), 'mjs'],
   nodeModulesPaths: [path.resolve(projectRoot, 'node_modules')],
   extraNodeModules: {
     ...(config.resolver?.extraNodeModules || {}),
@@ -42,22 +46,29 @@ config.resolver = {
     'react-native': path.resolve(projectRoot, 'node_modules/react-native')
   },
   resolveRequest: (context, moduleName, platform) => {
-    if (targetsAbortController(moduleName)) {
+    if (targetsEdgeToEdge(moduleName)) {
       return {
-        filePath: abortControllerJs,
+        filePath: edgeToEdgeJs,
         type: 'sourceFile'
       };
     }
 
-    if (targetsPdfJsMjs(moduleName)) {
+    if (targetsPdfWorkerAsset(moduleName)) {
       const resolved = defaultResolveRequest
         ? defaultResolveRequest(context, moduleName, platform)
         : resolve(context, moduleName, platform);
 
-      if (resolved?.type === 'sourceFile') {
+      const filePath =
+        resolved?.type === 'sourceFile'
+          ? resolved.filePath
+          : moduleName.includes('pdf.worker.min.mjs')
+            ? pdfWorkerAsset
+            : null;
+
+      if (filePath) {
         return {
           type: 'assetFiles',
-          filePaths: [resolved.filePath]
+          filePaths: [filePath]
         };
       }
 

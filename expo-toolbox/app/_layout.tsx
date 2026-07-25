@@ -1,3 +1,4 @@
+import 'react-native-gesture-handler';
 import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -37,7 +38,9 @@ function RootLayoutContent() {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const { ready: offlineReady, report, error, restoreBusy, acceptRestore, rejectRestore } =
     useOfflineBootstrap();
-  const showBanner = report?.pendingRestore || report?.restoredFromBackup || (!bannerDismissed && (error || (report && !report.ok)));
+  const showBanner =
+    offlineReady &&
+    (report?.pendingRestore || report?.restoredFromBackup || (!bannerDismissed && (error || (report && !report.ok))));
 
   useEffect(() => {
     Promise.all([initBautagebuchDatabase(), initSiteReportDatabase()])
@@ -45,22 +48,19 @@ function RootLayoutContent() {
       .catch(() => setNativeReady(true));
   }, []);
 
-  const appReady = fontsLoaded && nativeReady && offlineReady;
-
-  if (!appReady) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, gap: 12, paddingTop: insets.top }}>
-        <ActivityIndicator color={colors.accent} size="large" />
-        <Text style={{ color: colors.muted, fontFamily: fontsLoaded ? 'SpaceGrotesk_400Regular' : undefined }}>
-          App wird geladen…
-        </Text>
-      </View>
-    );
-  }
+  const appReady = fontsLoaded && nativeReady;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ToastProvider>
+      {!appReady ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, gap: 12, paddingTop: insets.top }}>
+          <ActivityIndicator color={colors.accent} size="large" />
+          <Text style={{ color: colors.muted, fontFamily: fontsLoaded ? 'SpaceGrotesk_400Regular' : undefined }}>
+            App wird geladen…
+          </Text>
+        </View>
+      ) : (
+        <ToastProvider>
       <StatusBar style="dark" />
       <View style={{ flex: 1 }}>
         {showBanner ? (
@@ -93,6 +93,7 @@ function RootLayoutContent() {
         </Stack>
       </View>
       </ToastProvider>
+      )}
     </GestureHandlerRootView>
   );
 }

@@ -100,7 +100,7 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
           updatedAt TEXT NOT NULL
         );
       `);
-      await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}bautagebuch/`, {
+      await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory || ''}bautagebuch/`, {
         intermediates: true
       }).catch(() => undefined);
       return db;

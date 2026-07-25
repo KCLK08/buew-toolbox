@@ -163,14 +163,20 @@ export async function requestDatabaseBackup(reason: BackupReason): Promise<strin
   }
 
   backupInFlight = createSafeDatabaseBackup()
-    .catch(() => null)
-    .finally(() => {
-      backupInFlight = null;
+    .then((result) => {
       const pending = deferredReason;
       deferredReason = null;
-      if (pending && !isDatabaseWriteInProgress()) {
+      if (result && pending && !isDatabaseWriteInProgress()) {
         void requestDatabaseBackup(pending);
       }
+      return result;
+    })
+    .catch(() => {
+      deferredReason = null;
+      return null;
+    })
+    .finally(() => {
+      backupInFlight = null;
     });
 
   return backupInFlight;

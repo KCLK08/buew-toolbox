@@ -1,5 +1,3 @@
-import ExcelJS from 'exceljs';
-
 import { getImageSizeFromDataUrl } from './native-image';
 
 export async function exportToXlsxData({
@@ -37,6 +35,7 @@ async function buildWorkbook({
   columns,
   entries
 }) {
+  const { default: ExcelJS } = await import('exceljs');
   const workbook = new ExcelJS.Workbook();
   const issues = [];
   const addIssue = (message) => {

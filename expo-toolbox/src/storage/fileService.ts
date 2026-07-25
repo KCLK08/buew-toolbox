@@ -12,9 +12,15 @@ function requireDocumentDirectory(): string {
 }
 
 async function ensureDir(path: string): Promise<void> {
-  const info = await FileSystem.getInfoAsync(path);
-  if (!info.exists) {
-    await FileSystem.makeDirectoryAsync(path, { intermediates: true });
+  try {
+    const info = await FileSystem.getInfoAsync(path);
+    if (!info.exists) {
+      await FileSystem.makeDirectoryAsync(path, { intermediates: true });
+    }
+  } catch (error) {
+    throw new Error(
+      `Verzeichnis ${path} konnte nicht angelegt werden: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
@@ -98,5 +104,3 @@ export function resolveDocumentUri(relativePath: string): string {
   if (relativePath.startsWith(root)) return relativePath;
   return `${root}${relativePath.replace(/^\//, '')}`;
 }
-
-export { FileSystem };
