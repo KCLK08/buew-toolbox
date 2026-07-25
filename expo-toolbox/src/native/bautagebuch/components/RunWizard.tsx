@@ -8,11 +8,13 @@ import { normalizeClockTime } from '../lib/time-format.js';
 import { buildRunSections, inputKeyForField, requiredMissingCount, sectionProgressState } from '../lib/setup-model.js';
 import {
   buildRunSectionsWithPhotoDoc,
+  runSectionMissingCount,
   isPhotoDocRequiredMissing,
   sectionRunOptions,
   visibleRowCountForSection
 } from '../lib/run-validation';
 import { RunValuesPreview } from './RunValuesPreview';
+import { RunSectionNav } from './RunSectionNav';
 
 type RunSection = ReturnType<typeof buildRunSections>[number];
 
@@ -183,8 +185,9 @@ export function RunWizard({
       <View style={styles.sectionBody}>
         {otherFields.map(renderSingleField)}
         {gewerkFieldIds.length > 0 ? (
-          <View style={[styles.choiceBlock, gewerkMissing ? styles.missingField : null]}>
-            <Text style={styles.label}>Gewerk *</Text>
+          <View style={[styles.groupPanel, gewerkMissing ? styles.missingField : null]}>
+            <Text style={styles.groupTitle}>Gewerk</Text>
+            <Text style={styles.groupHint}>Bitte genau ein Gewerk auswählen.</Text>
             <View style={styles.chipRow}>
               {section.fields
                 .filter((field) => gewerkFieldIds.includes(field.fieldId))
@@ -212,29 +215,34 @@ export function RunWizard({
           </View>
         ) : null}
         {shiftFieldIds.length > 0 ? (
-          <View style={styles.choiceBlock}>
-            <Text style={styles.label}>Schicht *</Text>
-            {section.fields
-              .filter((field) => shiftFieldIds.includes(field.fieldId))
-              .map((field) => {
-                const checked = values[fieldKey(field.fieldId)] === true;
-                return (
-                  <Pressable
-                    key={field.fieldId}
-                    style={[styles.checkboxRow, !checked && gewerkMissing ? null : null]}
-                    onPress={() => {
-                      const next = { ...values };
-                      for (const id of shiftFieldIds) {
-                        next[fieldKey(id)] = id === field.fieldId ? !checked : false;
-                      }
-                      onChange(next);
-                    }}
-                  >
-                    <View style={[styles.checkbox, checked ? styles.checkboxOn : null]} />
-                    <Text style={styles.checkboxLabel}>{field.label}</Text>
-                  </Pressable>
-                );
-              })}
+          <View style={styles.groupPanel}>
+            <Text style={styles.groupTitle}>Schicht</Text>
+            <Text style={styles.groupHint}>Bitte genau eine Schicht auswählen.</Text>
+            <View style={styles.groupChoices}>
+              {section.fields
+                .filter((field) => shiftFieldIds.includes(field.fieldId))
+                .map((field) => {
+                  const checked = values[fieldKey(field.fieldId)] === true;
+                  return (
+                    <Pressable
+                      key={field.fieldId}
+                      style={[styles.shiftChip, checked ? styles.shiftChipActive : null]}
+                      onPress={() => {
+                        const next = { ...values };
+                        for (const id of shiftFieldIds) {
+                          next[fieldKey(id)] = id === field.fieldId ? !checked : false;
+                        }
+                        onChange(next);
+                      }}
+                    >
+                      <View style={[styles.checkbox, checked ? styles.checkboxOn : null]} />
+                      <Text style={[styles.shiftChipLabel, checked ? styles.shiftChipLabelActive : null]}>
+                        {field.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+            </View>
           </View>
         ) : null}
       </View>
@@ -398,55 +406,52 @@ export function RunWizard({
   const isLastSection = safeSectionIndex >= sections.length - 1;
   const exportBlocked = totalMissingRequired > 0;
 
+  const sectionNavItems = sections.map((entry) => {
+    const options = entry.kind === 'photo-doc' ? {} : sectionRunOptions(entry, values);
+    const progress =
+      entry.kind === 'photo-doc'
+        ? isPhotoDocRequiredMissing(photoDoc?.enabled ?? null)
+          ? 'todo'
+          : photoDoc?.enabled === true && (photoDoc.entries || []).length === 0
+            ? 'progress'
+            : 'done'
+        : sectionProgressState(entry, values, options);
+    const missingCount =
+      entry.kind === 'photo-doc'
+        ? isPhotoDocRequiredMissing(photoDoc?.enabled ?? null)
+          ? 1
+          : 0
+        : runSectionMissingCount(entry, values);
+
+    return {
+      sectionId: entry.sectionId,
+      label: entry.label,
+      progress,
+      missingCount
+    };
+  });
+
   return (
     <View style={styles.root}>
-      <View style={styles.progressBar}>
-        <Text style={styles.progressText}>
-          Schritt {safeSectionIndex + 1} von {sections.length}
-        </Text>
-        {exportBlocked ? (
-          <Text style={styles.missingSummary}>
-            {totalMissingRequired} Pflichtfeld{totalMissingRequired === 1 ? '' : 'er'} offen
-          </Text>
-        ) : (
-          <Text style={styles.readySummary}>Bereit zum Export</Text>
-        )}
-      </View>
-
-      <View style={styles.navRow}>
-        {sections.map((entry, index) => {
-          const options =
-            entry.kind === 'photo-doc'
-              ? {}
-              : sectionRunOptions(entry, values);
-          const progress =
-            entry.kind === 'photo-doc'
-              ? isPhotoDocRequiredMissing(photoDoc?.enabled ?? null)
-                ? 'todo'
-                : photoDoc?.enabled === true && (photoDoc.entries || []).length === 0
-                  ? 'progress'
-                  : 'done'
-              : sectionProgressState(entry, values, options);
-          return (
-            <Pressable key={entry.sectionId} style={styles.navDotWrap} onPress={() => onSectionChange(index)}>
-              <View
-                style={[
-                  styles.navDot,
-                  index === safeSectionIndex ? styles.navDotActive : null,
-                  progress === 'done' ? styles.navDotDone : null,
-                  progress === 'progress' ? styles.navDotProgress : null
-                ]}
-              />
-              <Text style={styles.navLabel} numberOfLines={1}>
-                {entry.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <RunSectionNav
+        sections={sectionNavItems}
+        activeIndex={safeSectionIndex}
+        totalMissingRequired={totalMissingRequired}
+        onSelect={onSectionChange}
+      />
 
       <Card>
-        <Text style={styles.sectionTitle}>{section?.label}</Text>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionStepBadge}>
+            <Text style={styles.sectionStepText}>{safeSectionIndex + 1}</Text>
+          </View>
+          <View style={styles.sectionHeaderText}>
+            <Text style={styles.sectionEyebrow}>
+              Abschnitt {safeSectionIndex + 1} von {sections.length}
+            </Text>
+            <Text style={styles.sectionTitle}>{section?.label}</Text>
+          </View>
+        </View>
         {renderSectionContent()}
       </Card>
 
@@ -478,28 +483,50 @@ export function RunWizard({
 
 const styles = StyleSheet.create({
   root: { gap: spacing.md },
-  progressBar: {
-    gap: 4,
-    paddingHorizontal: 2
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
   },
-  progressText: { ...typography.label, color: colors.muted },
-  missingSummary: { ...typography.caption, color: colors.danger },
-  readySummary: { ...typography.caption, color: colors.success },
-  navRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  navDotWrap: { alignItems: 'center', width: 72 },
-  navDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: colors.border,
-    marginBottom: 4
+  sectionStepBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.badgeBg,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  navDotActive: { backgroundColor: colors.accent, transform: [{ scale: 1.15 }] },
-  navDotDone: { backgroundColor: colors.success },
-  navDotProgress: { backgroundColor: colors.warning },
-  navLabel: { ...typography.caption, color: colors.muted, textAlign: 'center' },
-  sectionTitle: { ...typography.subtitle, color: colors.ink, marginBottom: spacing.sm },
+  sectionStepText: {
+    ...typography.bodyStrong,
+    color: colors.accent
+  },
+  sectionHeaderText: {
+    flex: 1,
+    gap: 2
+  },
+  sectionEyebrow: {
+    ...typography.caption,
+    color: colors.muted
+  },
+  sectionTitle: { ...typography.subtitle, color: colors.ink },
   sectionBody: { gap: spacing.sm },
+  groupPanel: {
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: spacing.inputRadius,
+    backgroundColor: colors.bg,
+    padding: spacing.sm
+  },
+  groupTitle: { ...typography.bodyStrong, color: colors.ink },
+  groupHint: { ...typography.caption, color: colors.muted },
+  groupChoices: { gap: spacing.xs },
   label: { ...typography.label, color: colors.muted },
   hint: { ...typography.caption, color: colors.muted },
   choiceBlock: { gap: spacing.xs },
@@ -517,6 +544,24 @@ const styles = StyleSheet.create({
   chipActive: { borderColor: colors.accent, backgroundColor: colors.badgeBg },
   chipText: { ...typography.caption, color: colors.ink },
   chipTextActive: { color: colors.accent, fontFamily: 'SpaceGrotesk_600SemiBold' },
+  shiftChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: spacing.inputRadius,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.panelElevated
+  },
+  shiftChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.badgeBg
+  },
+  shiftChipLabel: { ...typography.body, color: colors.ink, flex: 1 },
+  shiftChipLabelActive: { color: colors.accent, fontFamily: 'SpaceGrotesk_600SemiBold' },
   checkboxRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 48 },
   checkbox: {
     width: 24,
