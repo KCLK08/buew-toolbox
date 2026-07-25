@@ -1,0 +1,39 @@
+name: Expo Toolbox PR checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+    paths:
+      - 'expo-toolbox/**'
+      - 'shared/**'
+      - '.github/workflows/expo-toolbox-pr.yml'
+
+concurrency:
+  group: expo-toolbox-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: expo-toolbox/package-lock.json
+
+      - name: Install npm dependencies
+        working-directory: expo-toolbox
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: expo-toolbox
+        run: npm run typecheck
