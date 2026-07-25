@@ -81,7 +81,27 @@ export async function runStartupIntegrityCheck(): Promise<IntegrityReport> {
   if (inFlight) return inFlight;
 
   inFlight = (async () => {
-    await ensureStorageLayout();
+    try {
+      await ensureStorageLayout();
+    } catch (layoutError) {
+      const message =
+        layoutError instanceof Error ? layoutError.message : 'Speicherlayout konnte nicht initialisiert werden.';
+      cachedReport = {
+        ok: false,
+        restoredFromBackup: false,
+        pendingRestore: null,
+        issues: [
+          {
+            code: 'storage_layout_failed',
+            message,
+            severity: 'warning'
+          }
+        ],
+        orphanFiles: []
+      };
+      return cachedReport;
+    }
+
     let migrationFailed = false;
     let migrationErrorMessage = '';
 

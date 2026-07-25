@@ -38,7 +38,9 @@ function RootLayoutContent() {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const { ready: offlineReady, report, error, restoreBusy, acceptRestore, rejectRestore } =
     useOfflineBootstrap();
-  const showBanner = report?.pendingRestore || report?.restoredFromBackup || (!bannerDismissed && (error || (report && !report.ok)));
+  const showBanner =
+    offlineReady &&
+    (report?.pendingRestore || report?.restoredFromBackup || (!bannerDismissed && (error || (report && !report.ok))));
 
   useEffect(() => {
     Promise.all([initBautagebuchDatabase(), initSiteReportDatabase()])
@@ -46,7 +48,7 @@ function RootLayoutContent() {
       .catch(() => setNativeReady(true));
   }, []);
 
-  const appReady = fontsLoaded && nativeReady && offlineReady;
+  const appReady = fontsLoaded && nativeReady;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

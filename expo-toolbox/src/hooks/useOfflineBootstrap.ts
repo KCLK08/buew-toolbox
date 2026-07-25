@@ -9,6 +9,26 @@ import {
 import { requestDatabaseBackup } from '../storage/backupService';
 import type { IntegrityReport } from '../types/offline';
 
+const STARTUP_CHECK_TIMEOUT_MS = 12_000;
+const BACKUP_WARMUP_MS = 30_000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Offline-Start Zeitüberschreitung'));
+    }, timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
 export function useOfflineBootstrap() {
   const [ready, setReady] = useState(false);
   const [report, setReport] = useState<IntegrityReport | null>(null);
@@ -17,7 +37,7 @@ export function useOfflineBootstrap() {
 
   useEffect(() => {
     let active = true;
-    runStartupIntegrityCheck()
+    withTimeout(runStartupIntegrityCheck(), STARTUP_CHECK_TIMEOUT_MS)
       .then((result) => {
         if (!active) return;
         setReport(result);
@@ -40,14 +60,17 @@ export function useOfflineBootstrap() {
   }, []);
 
   useEffect(() => {
+    if (!ready) return;
+
+    const startedAt = Date.now();
     const onChange = (state: AppStateStatus) => {
-      if (state === 'background' || state === 'inactive') {
-        void requestDatabaseBackup('app_background');
-      }
+      if (state !== 'background') return;
+      if (Date.now() - startedAt < BACKUP_WARMUP_MS) return;
+      void requestDatabaseBackup('app_background');
     };
     const sub = AppState.addEventListener('change', onChange);
     return () => sub.remove();
-  }, []);
+  }, [ready]);
 
   const acceptRestore = useCallback(async () => {
     if (!report?.pendingRestore) return;
