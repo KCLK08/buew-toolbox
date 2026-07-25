@@ -8,6 +8,10 @@ const abortControllerJs = path.resolve(
   projectRoot,
   'node_modules/abort-controller/dist/abort-controller.js'
 );
+const edgeToEdgeJs = path.resolve(
+  projectRoot,
+  'node_modules/react-native-is-edge-to-edge/dist/index.js'
+);
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(projectRoot);
@@ -30,6 +34,16 @@ function targetsPdfJsMjs(moduleName) {
   return moduleName.includes('pdfjs-dist') && moduleName.endsWith('.mjs');
 }
 
+function targetsEdgeToEdge(moduleName) {
+  return (
+    moduleName === 'react-native-is-edge-to-edge' ||
+    moduleName.startsWith('react-native-is-edge-to-edge/') ||
+    moduleName.endsWith('/react-native-is-edge-to-edge/dist/index') ||
+    moduleName.endsWith('/react-native-is-edge-to-edge/dist/index.js') ||
+    moduleName.endsWith('/react-native-is-edge-to-edge/dist/index.mjs')
+  );
+}
+
 config.resolver = {
   ...config.resolver,
   assetExts: [...(config.resolver.assetExts || []), 'mjs'],
@@ -45,6 +59,13 @@ config.resolver = {
     if (targetsAbortController(moduleName)) {
       return {
         filePath: abortControllerJs,
+        type: 'sourceFile'
+      };
+    }
+
+    if (targetsEdgeToEdge(moduleName)) {
+      return {
+        filePath: edgeToEdgeJs,
         type: 'sourceFile'
       };
     }
