@@ -7,12 +7,6 @@ on:
       - 'expo-toolbox/**'
       - 'shared/**'
       - '.github/workflows/android-apk.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'expo-toolbox/**'
-      - 'shared/**'
-      - '.github/workflows/android-apk.yml'
   workflow_dispatch:
 
 concurrency:
@@ -23,34 +17,8 @@ permissions:
   contents: write
 
 jobs:
-  validate:
-    name: Typecheck (PR)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: expo-toolbox/package-lock.json
-
-      - name: Install npm dependencies
-        working-directory: expo-toolbox
-        run: npm ci
-
-      - name: Typecheck
-        working-directory: expo-toolbox
-        run: npm run typecheck
-
   build-apk:
     name: Expo Android APK
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -98,16 +66,27 @@ jobs:
       - name: Prepare APK file
         id: apk
         working-directory: expo-toolbox
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
           SHORT_SHA="${GITHUB_SHA::7}"
-          RUN_NUMBER="${GITHUB_RUN_NUMBER}"
           SRC="$GITHUB_WORKSPACE/expo-toolbox/android/app/build/outputs/apk/release/app-release.apk"
           OUT_DIR="$GITHUB_WORKSPACE/expo-toolbox/dist-apk"
           APK_NAME="buew-toolbox-${VERSION}-${SHORT_SHA}.apk"
           APK_ABS="${OUT_DIR}/${APK_NAME}"
-          TAG="apk-v${VERSION}.${RUN_NUMBER}"
+
+          LAST_BUILD="$(
+            gh release list --limit 200 --json tagName -q '.[].tagName' \
+              | grep -E "^apk-v${VERSION//./\\.}\\.[0-9]+$" \
+              | sed "s/^apk-v${VERSION//./\\.}\\.//" \
+              | sort -n \
+              | tail -1 \
+              || true
+          )"
+          BUILD_NUM=$(( ${LAST_BUILD:-0} + 1 ))
+          TAG="apk-v${VERSION}.${BUILD_NUM}"
 
           test -f "$SRC"
           mkdir -p "$OUT_DIR"
@@ -131,6 +110,7 @@ jobs:
             echo "apk_name=${APK_NAME}"
             echo "apk_abs=${APK_ABS}"
             echo "tag=${TAG}"
+            echo "build_num=${BUILD_NUM}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Publish APK to GitHub Releases
@@ -142,6 +122,7 @@ jobs:
           SHORT_SHA: ${{ steps.apk.outputs.short_sha }}
           APK_ABS: ${{ steps.apk.outputs.apk_abs }}
           APK_NAME: ${{ steps.apk.outputs.apk_name }}
+          BUILD_NUM: ${{ steps.apk.outputs.build_num }}
         run: |
           set -euo pipefail
           test -f "$APK_ABS"
@@ -152,6 +133,7 @@ jobs:
           Automatisch erzeugte **Release-APK** mit eingebettetem JS-Bundle (ohne Metro, direkt installierbar).
 
           - Version: \`${VERSION}\`
+          - Build: \`${BUILD_NUM}\`
           - Commit: \`${SHORT_SHA}\`
           - Workflow: [#${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})
 
@@ -163,7 +145,7 @@ jobs:
             gh release upload "$TAG" "$APK_ABS" --clobber
           else
             gh release create "$TAG" "$APK_ABS" \
-              --title "BÜW-Toolbox Android ${VERSION} (#${GITHUB_RUN_NUMBER})" \
+              --title "BÜW-Toolbox Android ${VERSION} (#${BUILD_NUM})" \
               --notes-file "$NOTES" \
               --prerelease
           fi

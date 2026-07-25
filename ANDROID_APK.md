@@ -7,7 +7,7 @@ Bei relevanten Änderungen erzeugt GitHub automatisch eine **standalone Release-
 | Quelle | Dateityp | Hinweis |
 |--------|----------|---------|
 | **Releases** | `.apk` | Richtiger Download für die Installation |
-| **PR-Checks** | — | Nur Typecheck, keine APK |
+| **PR-Checks** | — | Nur Typecheck (`expo-toolbox-pr.yml`), keine APK |
 
 Für die Installation immer unter **Releases** die `.apk` herunterladen.
 
@@ -19,13 +19,13 @@ Die CI baut deshalb `assembleRelease`. Dabei wird das JS-Bundle per `export:embe
 
 ## Trigger
 
-- **Push auf `main`** mit Änderungen in `expo-toolbox/**` oder `shared/**` → voller APK-Build + Release
-- **Pull Request** gegen `main` → nur Typecheck (kein Gradle/Android-Build, spart ~20 Min. pro PR)
+- **Push auf `main`** mit Änderungen in `expo-toolbox/**` oder `shared/**` → APK-Build + Release (ein Workflow-Lauf, keine übersprungenen Jobs)
+- **Pull Request** gegen `main` → separater Typecheck-Workflow (`expo-toolbox-pr.yml`), ohne APK-Build
 - Manuell: **Actions → Build Android APK → Run workflow** (voller Build + Release auf `main`)
 
 ## Ergebnis auf `main`
 
-- GitHub Release mit Tag `apk-v<version>.<run_number>`
+- GitHub Release mit Tag `apk-v<version>.<build_num>` (fortlaufende Build-Nummer pro App-Version, unabhängig von der Workflow-Run-ID)
 - Asset: `buew-toolbox-<version>-<sha>.apk`
 - Pre-Release / Latest
 
