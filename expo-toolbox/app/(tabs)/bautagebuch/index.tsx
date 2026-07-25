@@ -25,15 +25,13 @@ import { groupRunsByCalendar, projectGroupKey } from '../../../src/native/bautag
 import {
   createRun,
   deleteRunCascade,
-  listExports,
   listRuns,
   renameRun,
   updateRun
 } from '../../../src/native/bautagebuch/db/database';
 import { applyRunDefaultsFromModel } from '../../../src/native/bautagebuch/lib/run-defaults';
-import { deleteCachedExport, shareCachedExport } from '../../../src/native/bautagebuch/services/exportService';
 import { getActiveTemplateBundle } from '../../../src/native/bautagebuch/services/templateService';
-import type { BautagebuchExport, BautagebuchRun } from '../../../src/native/bautagebuch/types';
+import type { BautagebuchRun } from '../../../src/native/bautagebuch/types';
 
 function formatGreeting(): string {
   const hour = new Date().getHours();
@@ -69,8 +67,6 @@ export default function BautagebuchHomeScreen() {
   const [templateReady, setTemplateReady] = useState(false);
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = useState(false);
-  const [exportsList, setExportsList] = useState<BautagebuchExport[]>([]);
-  const [sharingExport, setSharingExport] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
@@ -94,7 +90,6 @@ export default function BautagebuchHomeScreen() {
       setTemplateReady(bundle.template.status === 'ready');
       setSetupModel(bundle.setupModel);
       setRuns(await listRuns());
-      setExportsList(await listExports());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bautagebuch konnte nicht geladen werden.');
     } finally {
@@ -265,30 +260,6 @@ export default function BautagebuchHomeScreen() {
     void load('refresh');
   };
 
-  const shareExport = async (exportId: string) => {
-    setSharingExport(exportId);
-    try {
-      await shareCachedExport(exportId);
-    } catch (err) {
-      Alert.alert('Export', err instanceof Error ? err.message : 'Teilen fehlgeschlagen.');
-    } finally {
-      setSharingExport(null);
-    }
-  };
-
-  const removeExport = (exportId: string) => {
-    Alert.alert('Export löschen', 'Gespeicherten Export wirklich entfernen?', [
-      { text: 'Abbrechen', style: 'cancel' },
-      {
-        text: 'Löschen',
-        style: 'destructive',
-        onPress: () => {
-          void deleteCachedExport(exportId).then(() => load('refresh'));
-        }
-      }
-    ]);
-  };
-
   return (
     <Screen
       title={formatGreeting()}
@@ -398,27 +369,6 @@ export default function BautagebuchHomeScreen() {
             )}
           </Section>
 
-          {exportsList.length > 0 ? (
-            <Section title={`Letzte Exporte (${exportsList.length})`}>
-              {exportsList.slice(0, 5).map((item) => (
-                <Card key={item.exportId} padded style={styles.exportRow}>
-                  <Text style={styles.exportName} numberOfLines={2}>
-                    {item.fileName}
-                  </Text>
-                  <View style={styles.exportActions}>
-                    <PrimaryButton
-                      label={sharingExport === item.exportId ? 'Teilen…' : 'PDF teilen'}
-                      variant="secondary"
-                      disabled={Boolean(sharingExport)}
-                      onPress={() => void shareExport(item.exportId)}
-                    />
-                    <PrimaryButton label="Löschen" variant="ghost" onPress={() => removeExport(item.exportId)} />
-                  </View>
-                </Card>
-              ))}
-            </Section>
-          ) : null}
-
           <Section title="Vorlage">
             <Card style={styles.toolsCard}>
               <PrimaryButton
@@ -473,9 +423,6 @@ const styles = StyleSheet.create({
   previewLabel: { ...typography.label, color: colors.muted },
   previewTitle: { ...typography.bodyStrong, color: colors.accent },
   listActions: { flexDirection: 'row', gap: spacing.xs },
-  exportRow: { gap: spacing.sm },
-  exportName: { ...typography.body, color: colors.ink },
-  exportActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   toolsCard: { gap: spacing.sm },
   modalBackdrop: {
     flex: 1,

@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Card } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
 import {
   formatRunCount,
@@ -89,22 +90,27 @@ function ProjectBlock({
 
   return (
     <View style={styles.projectGroup}>
-      <Pressable style={styles.projectHeader} onPress={() => onToggleProject(groupKey)}>
+      <Pressable
+        style={[styles.projectHeader, expanded ? styles.projectHeaderExpanded : null]}
+        onPress={() => onToggleProject(groupKey)}
+      >
         <Text style={styles.projectTitle}>{project.projectLabel}</Text>
         <Text style={styles.projectMeta}>
           {expanded ? '▾' : '▸'} {formatRunCount(project.runs.length)}
         </Text>
       </Pressable>
       {expanded ? (
-        <RunStack
-          runs={project.runs}
-          selectionMode={selectionMode}
-          selectedRunIds={selectedRunIds}
-          onOpenRun={onOpenRun}
-          onToggleSelect={onToggleSelect}
-          onRename={onRename}
-          onDelete={onDelete}
-        />
+        <View style={styles.projectBody}>
+          <RunStack
+            runs={project.runs}
+            selectionMode={selectionMode}
+            selectedRunIds={selectedRunIds}
+            onOpenRun={onOpenRun}
+            onToggleSelect={onToggleSelect}
+            onRename={onRename}
+            onDelete={onDelete}
+          />
+        </View>
       ) : null}
     </View>
   );
@@ -136,8 +142,11 @@ function WeekBlock({
   onDelete: (runId: string) => void;
 }) {
   return (
-    <View style={styles.weekGroup}>
-      <Pressable style={styles.weekHeader} onPress={() => onToggleWeek(week.weekKey)}>
+    <Card style={styles.weekGroup} padded={false}>
+      <Pressable
+        style={[styles.weekHeader, expanded ? styles.weekHeaderExpanded : null]}
+        onPress={() => onToggleWeek(week.weekKey)}
+      >
         <View style={styles.weekHeaderMain}>
           <Text style={styles.weekTitle}>{week.weekLabel}</Text>
           <Text style={styles.weekRange}>{week.dateRangeLabel}</Text>
@@ -146,8 +155,9 @@ function WeekBlock({
           {expanded ? '▾' : '▸'} {formatRunCount(week.runCount)}
         </Text>
       </Pressable>
-      {expanded
-        ? week.projects.map((project) => (
+      {expanded ? (
+        <View style={styles.weekBody}>
+          {week.projects.map((project) => (
             <ProjectBlock
               key={projectGroupKey(week.weekKey, project.projectKey)}
               weekKey={week.weekKey}
@@ -161,9 +171,10 @@ function WeekBlock({
               onRename={onRename}
               onDelete={onDelete}
             />
-          ))
-        : null}
-    </View>
+          ))}
+        </View>
+      ) : null}
+    </Card>
   );
 }
 
@@ -206,8 +217,11 @@ export function BautagebuchRunList({
         {tree.years.map((yearGroup) => {
           const yearExpanded = expandedYears.has(yearGroup.year);
           return (
-            <View key={yearGroup.year} style={styles.yearGroup}>
-              <Pressable style={styles.yearHeader} onPress={() => onToggleYear(yearGroup.year)}>
+            <Card key={yearGroup.year} style={styles.yearGroup} padded={false}>
+              <Pressable
+                style={[styles.yearHeader, yearExpanded ? styles.yearHeaderExpanded : null]}
+                onPress={() => onToggleYear(yearGroup.year)}
+              >
                 <Text style={styles.yearTitle}>
                   {yearGroup.year > 0 ? String(yearGroup.year) : 'Ohne Jahr'}
                 </Text>
@@ -215,8 +229,8 @@ export function BautagebuchRunList({
                   {yearExpanded ? '▾' : '▸'} {formatRunCount(yearGroup.runCount)}
                 </Text>
               </Pressable>
-              {yearExpanded ? renderWeeks(yearGroup.weeks) : null}
-            </View>
+              {yearExpanded ? <View style={styles.yearBody}>{renderWeeks(yearGroup.weeks)}</View> : null}
+            </Card>
           );
         })}
       </View>
@@ -230,14 +244,22 @@ export function BautagebuchRunList({
 
 const styles = StyleSheet.create({
   root: { gap: spacing.md },
-  yearGroup: { gap: spacing.sm },
+  yearGroup: { overflow: 'hidden' },
   yearHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: spacing.touchMin,
-    paddingHorizontal: spacing.xxs,
-    paddingTop: spacing.xs
+    paddingHorizontal: spacing.cardPadding,
+    paddingVertical: spacing.sm
+  },
+  yearHeaderExpanded: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  yearBody: {
+    gap: spacing.sm,
+    padding: spacing.sm
   },
   yearTitle: {
     ...typography.subtitle,
@@ -247,25 +269,31 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.muted
   },
-  weekGroup: {
-    gap: spacing.sm,
-    marginLeft: spacing.xs
-  },
+  weekGroup: { overflow: 'hidden' },
   weekHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: spacing.sm,
     minHeight: spacing.touchMin,
-    paddingHorizontal: spacing.xxs,
-    paddingVertical: spacing.xxs
+    paddingHorizontal: spacing.cardPadding,
+    paddingVertical: spacing.sm
+  },
+  weekHeaderExpanded: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  weekBody: {
+    gap: spacing.sm,
+    padding: spacing.sm,
+    backgroundColor: colors.bg
   },
   weekHeaderMain: {
     flex: 1,
     gap: 2
   },
   weekTitle: {
-    ...typography.bodyStrong,
+    ...typography.subtitle,
     color: colors.ink
   },
   weekRange: {
@@ -279,8 +307,11 @@ const styles = StyleSheet.create({
     paddingTop: 2
   },
   projectGroup: {
-    gap: spacing.sm,
-    marginLeft: spacing.sm
+    overflow: 'hidden',
+    borderRadius: spacing.inputRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.panelElevated
   },
   projectHeader: {
     flexDirection: 'row',
@@ -288,8 +319,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
     minHeight: spacing.touchMin,
-    paddingHorizontal: spacing.xxs,
-    paddingVertical: spacing.xxs
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs
+  },
+  projectHeaderExpanded: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  projectBody: {
+    padding: spacing.sm,
+    gap: spacing.sm
   },
   projectTitle: {
     ...typography.label,
