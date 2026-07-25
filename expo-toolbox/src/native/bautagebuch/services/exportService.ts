@@ -3,6 +3,7 @@ import * as Sharing from 'expo-sharing';
 
 import { base64ToUint8Array, bytesToArrayBuffer, uint8ToBase64 } from '../../../lib/binary';
 import { nowIso } from '../../../lib/ids';
+import { fotodokuTitleFromBtbTitle } from '../lib/btb-naming';
 import { buildFinalPdfBytes } from '../lib/pdf-export.js';
 import { buildPhotoDocPdfBytes, mergeBtbWithPhotoDoc } from '../lib/photo-doc.js';
 import { deleteExport, getExport, getRun, getSetupModel, getTemplate, upsertExportByRun } from '../db/database';
@@ -46,7 +47,8 @@ async function buildRunPdfBytes(runId: string, mode: BautagebuchExportMode): Pro
     encoding: FileSystem.EncodingType.Base64
   });
   const pdfBytes = base64ToUint8Array(base64);
-  const safeTitle = run.title.replace(/[^\w\-äöüÄÖÜß]+/g, '_').slice(0, 80);
+  const exportTitle = mode === 'photo' ? fotodokuTitleFromBtbTitle(run.title) : run.title;
+  const safeTitle = exportTitle.replace(/[^\w\-äöüÄÖÜß]+/g, '_').slice(0, 80);
 
   if (mode === 'photo') {
     const photoEntries = await buildPhotoEntries(run);
@@ -54,10 +56,10 @@ async function buildRunPdfBytes(runId: string, mode: BautagebuchExportMode): Pro
       title: string;
       entries: Array<{ photoBlob: { bytes: Uint8Array; mimeType: string } }>;
     }) => Promise<Uint8Array>)({
-      title: run.title,
+      title: exportTitle,
       entries: photoEntries
     });
-    return { bytes, safeTitle, suffix: '_Fotodoku' };
+    return { bytes, safeTitle, suffix: '' };
   }
 
   const filled = await buildFinalPdfBytes({

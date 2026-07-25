@@ -29,6 +29,7 @@ import {
   renameRun,
   updateRun
 } from '../../../src/native/bautagebuch/db/database';
+import { buildBtbTitle } from '../../../src/native/bautagebuch/lib/btb-naming';
 import { applyRunDefaultsFromModel } from '../../../src/native/bautagebuch/lib/run-defaults';
 import { getActiveTemplateBundle } from '../../../src/native/bautagebuch/services/templateService';
 import type { BautagebuchRun } from '../../../src/native/bautagebuch/types';
@@ -47,11 +48,6 @@ function formatTodayLabel(): string {
     month: 'long',
     year: 'numeric'
   });
-}
-
-function buildBtbTitle(siteName: string): string {
-  const today = new Date().toISOString().slice(0, 10);
-  return `BTB ${today} - ${siteName.trim() || 'Baustelle'}`;
 }
 
 export default function BautagebuchHomeScreen() {

@@ -1,3 +1,4 @@
+import { parseBtbTitle } from './btb-naming';
 import { inputKeyForField } from './setup-model.js';
 import type { BautagebuchRun } from '../types';
 
@@ -70,9 +71,10 @@ export function resolveProjectLabel(
     if (fromValues) return fromValues;
   }
 
+  const parsed = parseBtbTitle(String(run.title || ''));
+  if (parsed?.input) return parsed.input;
+
   const title = String(run.title || '').trim();
-  const match = title.match(/^BTB\s+\d{4}-\d{2}-\d{2}\s*-\s*(.+)$/i);
-  if (match?.[1]?.trim()) return match[1].trim();
   if (title) return title;
   return 'Ohne Projekt';
 }

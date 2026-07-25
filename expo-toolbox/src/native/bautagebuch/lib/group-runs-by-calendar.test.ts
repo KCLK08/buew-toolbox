@@ -38,7 +38,7 @@ function test(name: string, fn: () => void) {
 
 test('resolveProjectLabel reads project name from BTB title', () => {
   const label = resolveProjectLabel(
-    run('r1', 'BTB 2025-06-12 - Tunnel Süd', '2025-06-12T10:00:00Z'),
+    run('r1', 'BTB_Tunnel_Süd_2025-06-12', '2025-06-12T10:00:00Z'),
     null
   );
   assert.equal(label, 'Tunnel Süd');
@@ -46,8 +46,8 @@ test('resolveProjectLabel reads project name from BTB title', () => {
 
 test('groupRunsByCalendar sorts same-day runs by updatedAt descending', () => {
   const tree = groupRunsByCalendar([
-    run('older', 'BTB 2025-06-12 - Projekt A', '2025-06-12T08:00:00Z'),
-    run('newer', 'BTB 2025-06-12 - Projekt A', '2025-06-12T18:00:00Z')
+    run('older', 'BTB_Projekt_A_2025-06-12', '2025-06-12T08:00:00Z'),
+    run('newer', 'BTB_Projekt_A_2025-06-12', '2025-06-12T18:00:00Z')
   ]);
 
   const projectRuns = tree.years[0]?.weeks[0]?.projects[0]?.runs || [];
@@ -57,8 +57,8 @@ test('groupRunsByCalendar sorts same-day runs by updatedAt descending', () => {
 
 test('groupRunsByCalendar groups runs by calendar week and project', () => {
   const tree = groupRunsByCalendar([
-    run('r1', 'BTB 2025-06-12 - Nord', '2025-06-12T10:00:00Z'),
-    run('r2', 'BTB 2025-06-13 - Süd', '2025-06-13T10:00:00Z')
+    run('r1', 'BTB_Nord_2025-06-12', '2025-06-12T10:00:00Z'),
+    run('r2', 'BTB_Süd_2025-06-13', '2025-06-13T10:00:00Z')
   ]);
 
   const week = tree.years[0]?.weeks[0];
