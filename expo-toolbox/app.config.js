@@ -45,6 +45,7 @@ module.exports = ({ config }) => ({
     'expo-font',
     'expo-web-browser',
     'expo-sqlite',
+    'expo-sharing',
     [
       'expo-image-picker',
       {
