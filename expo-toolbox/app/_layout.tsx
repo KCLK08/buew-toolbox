@@ -1,3 +1,4 @@
+import 'react-native-gesture-handler';
 import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -47,20 +48,17 @@ function RootLayoutContent() {
 
   const appReady = fontsLoaded && nativeReady && offlineReady;
 
-  if (!appReady) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, gap: 12, paddingTop: insets.top }}>
-        <ActivityIndicator color={colors.accent} size="large" />
-        <Text style={{ color: colors.muted, fontFamily: fontsLoaded ? 'SpaceGrotesk_400Regular' : undefined }}>
-          App wird geladen…
-        </Text>
-      </View>
-    );
-  }
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ToastProvider>
+      {!appReady ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, gap: 12, paddingTop: insets.top }}>
+          <ActivityIndicator color={colors.accent} size="large" />
+          <Text style={{ color: colors.muted, fontFamily: fontsLoaded ? 'SpaceGrotesk_400Regular' : undefined }}>
+            App wird geladen…
+          </Text>
+        </View>
+      ) : (
+        <ToastProvider>
       <StatusBar style="dark" />
       <View style={{ flex: 1 }}>
         {showBanner ? (
@@ -93,6 +91,7 @@ function RootLayoutContent() {
         </Stack>
       </View>
       </ToastProvider>
+      )}
     </GestureHandlerRootView>
   );
 }
