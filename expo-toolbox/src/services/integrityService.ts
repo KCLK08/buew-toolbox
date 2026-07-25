@@ -1,10 +1,9 @@
 import { TABLES } from '../database/schema/constants';
 import { getDatabase, runMigrations, tableExists } from '../database/sqlite';
-import { getLatestBackupInfo, restoreDatabaseFromBackup } from '../storage/backupService';
 import { ensureStorageLayout, fileExists, resolveDocumentUri } from '../storage/fileService';
 import { findOrphanFiles } from './orphanCleanupService';
 import { prepareSoftDeletePurgePlan } from './softDeletePurgeService';
-import type { IntegrityIssue, IntegrityReport, PendingRestoreOffer } from '../types/offline';
+import type { IntegrityIssue, IntegrityReport } from '../types/offline';
 
 let cachedReport: IntegrityReport | null = null;
 let inFlight: Promise<IntegrityReport> | null = null;
@@ -123,23 +122,6 @@ export async function runStartupIntegrityCheck(): Promise<IntegrityReport> {
       : await collectIssues();
 
     const hasFatal = issues.some((issue) => issue.severity === 'error');
-    let pendingRestore: PendingRestoreOffer | null = null;
-
-    if (hasFatal) {
-      const latest = await getLatestBackupInfo();
-      if (latest) {
-        pendingRestore = {
-          backupUri: latest.uri,
-          backupDate: latest.createdAtIso,
-          backupName: latest.name
-        };
-        issues.push({
-          code: 'restore_available',
-          message: `Backup vom ${new Date(latest.createdAtIso).toLocaleString('de-DE')} zur Wiederherstellung verfügbar.`,
-          severity: 'info'
-        });
-      }
-    }
 
     const orphans = migrationFailed ? [] : await findOrphanFiles().catch(() => []);
     if (orphans.length > 0) {
@@ -157,7 +139,7 @@ export async function runStartupIntegrityCheck(): Promise<IntegrityReport> {
     const report: IntegrityReport = {
       ok: !hasFatal,
       restoredFromBackup: false,
-      pendingRestore,
+      pendingRestore: null,
       issues,
       orphanFiles: orphans.map((item) => item.uri)
     };
@@ -168,29 +150,4 @@ export async function runStartupIntegrityCheck(): Promise<IntegrityReport> {
   });
 
   return inFlight;
-}
-
-export async function confirmPendingRestore(backupUri: string): Promise<IntegrityReport> {
-  await restoreDatabaseFromBackup(backupUri);
-  cachedReport = null;
-  await runMigrations();
-  const issues = await collectIssues();
-  const orphans = await findOrphanFiles().catch(() => []);
-  const report: IntegrityReport = {
-    ok: !issues.some((issue) => issue.severity === 'error'),
-    restoredFromBackup: true,
-    pendingRestore: null,
-    issues,
-    orphanFiles: orphans.map((item) => item.uri)
-  };
-  cachedReport = report;
-  return report;
-}
-
-export function declinePendingRestore(): void {
-  if (!cachedReport) return;
-  cachedReport = {
-    ...cachedReport,
-    pendingRestore: null
-  };
 }

@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
-  Pressable,
   StyleSheet,
   Text,
   View
@@ -26,26 +25,33 @@ import { groupRunsByCalendar, projectGroupKey } from '../../../src/native/bautag
 import {
   createRun,
   deleteRunCascade,
-  listExports,
   listRuns,
   renameRun,
   updateRun
 } from '../../../src/native/bautagebuch/db/database';
 import { applyRunDefaultsFromModel } from '../../../src/native/bautagebuch/lib/run-defaults';
-import { deleteCachedExport, shareCachedExport } from '../../../src/native/bautagebuch/services/exportService';
-import {
-  exportBautagebuchBackupZip,
-  pickAndRestoreBautagebuchBackup
-} from '../../../src/native/bautagebuch/services/backupExportService';
 import { getActiveTemplateBundle } from '../../../src/native/bautagebuch/services/templateService';
-import type { BautagebuchExport, BautagebuchRun } from '../../../src/native/bautagebuch/types';
+import type { BautagebuchRun } from '../../../src/native/bautagebuch/types';
+
+function formatGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 11) return 'Guten Morgen';
+  if (hour < 18) return 'Guten Tag';
+  return 'Guten Abend';
+}
 
 function formatTodayLabel(): string {
   return new Date().toLocaleDateString('de-DE', {
     weekday: 'long',
     day: 'numeric',
-    month: 'long'
+    month: 'long',
+    year: 'numeric'
   });
+}
+
+function buildBtbTitle(siteName: string): string {
+  const today = new Date().toISOString().slice(0, 10);
+  return `BTB ${today} - ${siteName.trim() || 'Baustelle'}`;
 }
 
 export default function BautagebuchHomeScreen() {
@@ -61,8 +67,6 @@ export default function BautagebuchHomeScreen() {
   const [templateReady, setTemplateReady] = useState(false);
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = useState(false);
-  const [exportsList, setExportsList] = useState<BautagebuchExport[]>([]);
-  const [sharingExport, setSharingExport] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
@@ -70,9 +74,8 @@ export default function BautagebuchHomeScreen() {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [renameRunId, setRenameRunId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
-  const [backupBusy, setBackupBusy] = useState(false);
-  const [restoreBusy, setRestoreBusy] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
+
+  const btbPreviewTitle = useMemo(() => (newName.trim() ? buildBtbTitle(newName) : ''), [newName]);
   const expansionInitialized = useRef(false);
   const isFirstFocus = useRef(true);
 
@@ -87,7 +90,6 @@ export default function BautagebuchHomeScreen() {
       setTemplateReady(bundle.template.status === 'ready');
       setSetupModel(bundle.setupModel);
       setRuns(await listRuns());
-      setExportsList(await listExports());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bautagebuch konnte nicht geladen werden.');
     } finally {
@@ -147,8 +149,7 @@ export default function BautagebuchHomeScreen() {
     }
     setCreating(true);
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const title = `BTB ${today} - ${newName.trim() || 'Baustelle'}`;
+      const title = buildBtbTitle(newName);
       let run = await createRun({
         templateId,
         title,
@@ -259,80 +260,10 @@ export default function BautagebuchHomeScreen() {
     void load('refresh');
   };
 
-  const shareExport = async (exportId: string) => {
-    setSharingExport(exportId);
-    try {
-      await shareCachedExport(exportId);
-    } catch (err) {
-      Alert.alert('Export', err instanceof Error ? err.message : 'Teilen fehlgeschlagen.');
-    } finally {
-      setSharingExport(null);
-    }
-  };
-
-  const exportBackup = async () => {
-    setBackupBusy(true);
-    try {
-      await exportBautagebuchBackupZip();
-      showToast('Backup erstellt');
-    } catch (err) {
-      Alert.alert('Backup', err instanceof Error ? err.message : 'Backup fehlgeschlagen.');
-    } finally {
-      setBackupBusy(false);
-    }
-  };
-
-  const restoreBackup = () => {
-    Alert.alert(
-      'Backup wiederherstellen',
-      'Das aktuelle Bautagebuch wird durch das ZIP-Backup ersetzt (Datenbank, Vorlagen, Fotos, Exporte). Fortfahren?',
-      [
-        { text: 'Abbrechen', style: 'cancel' },
-        {
-          text: 'Wiederherstellen',
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              setRestoreBusy(true);
-              try {
-                const result = await pickAndRestoreBautagebuchBackup();
-                if (!result) return;
-                showToast(
-                  `Backup wiederhergestellt (${result.photoFileCount} Fotos, ${result.exportFileCount} Exporte)`
-                );
-                await load('refresh');
-              } catch (err) {
-                Alert.alert(
-                  'Wiederherstellung',
-                  err instanceof Error ? err.message : 'Wiederherstellung fehlgeschlagen.'
-                );
-              } finally {
-                setRestoreBusy(false);
-              }
-            })();
-          }
-        }
-      ]
-    );
-  };
-
-  const removeExport = (exportId: string) => {
-    Alert.alert('Export löschen', 'Gespeicherten Export wirklich entfernen?', [
-      { text: 'Abbrechen', style: 'cancel' },
-      {
-        text: 'Löschen',
-        style: 'destructive',
-        onPress: () => {
-          void deleteCachedExport(exportId).then(() => load('refresh'));
-        }
-      }
-    ]);
-  };
-
   return (
     <Screen
-      title="Bautagebuch"
-      subtitle="Elektronisches Bautagebuch (eBTB)"
+      title={formatGreeting()}
+      subtitle={formatTodayLabel()}
       scroll
       refreshing={refreshing}
       onRefresh={() => void load('refresh')}
@@ -353,15 +284,14 @@ export default function BautagebuchHomeScreen() {
 
       {!initialLoading && !error ? (
         <>
-          <Card>
-            <Text style={styles.heroDate}>{formatTodayLabel()}</Text>
-            <Text style={styles.heroTitle}>Neues Bautagebuch starten</Text>
-            <Text style={styles.heroHint}>
-              Gib der Baustelle einen kurzen Namen — Datum und Vorlage werden automatisch gesetzt.
+          <Card style={styles.startCard}>
+            <Text style={styles.startCardTitle}>Neues Bautagebuch</Text>
+            <Text style={styles.startCardHint}>
+              Kurzen Namen für die Baustelle eingeben — Datum und Vorlage werden automatisch gesetzt.
             </Text>
             {templateName ? (
               <Text style={styles.activeTemplate}>
-                Aktive Vorlage: {templateName}
+                Vorlage: {templateName}
                 {!templateReady ? ' · Setup offen' : ''}
               </Text>
             ) : null}
@@ -370,10 +300,17 @@ export default function BautagebuchHomeScreen() {
               hint="z. B. Strecke Nord, Tunnel Süd"
               value={newName}
               onChangeText={setNewName}
+              autoCapitalize="sentences"
             />
+            {btbPreviewTitle ? (
+              <View style={styles.previewBox}>
+                <Text style={styles.previewLabel}>Name des Bautagebuchs</Text>
+                <Text style={styles.previewTitle}>{btbPreviewTitle}</Text>
+              </View>
+            ) : null}
             <PrimaryButton
-              label={creating ? 'Wird erstellt…' : 'BTB jetzt starten'}
-              disabled={creating || !templateId || !templateReady}
+              label={creating ? 'Wird erstellt…' : 'BTB starten'}
+              disabled={creating || !templateId || !templateReady || !newName.trim()}
               onPress={() => void startRun()}
             />
           </Card>
@@ -432,61 +369,20 @@ export default function BautagebuchHomeScreen() {
             )}
           </Section>
 
-          {exportsList.length > 0 ? (
-            <Section title={`Letzte Exporte (${exportsList.length})`}>
-              {exportsList.slice(0, 5).map((item) => (
-                <Card key={item.exportId} padded style={styles.exportRow}>
-                  <Text style={styles.exportName} numberOfLines={2}>
-                    {item.fileName}
-                  </Text>
-                  <View style={styles.exportActions}>
-                    <PrimaryButton
-                      label={sharingExport === item.exportId ? 'Teilen…' : 'PDF teilen'}
-                      variant="secondary"
-                      disabled={Boolean(sharingExport)}
-                      onPress={() => void shareExport(item.exportId)}
-                    />
-                    <PrimaryButton label="Löschen" variant="ghost" onPress={() => removeExport(item.exportId)} />
-                  </View>
-                </Card>
-              ))}
-            </Section>
-          ) : null}
-
-          <Section title="Werkzeuge">
-            <Pressable style={styles.toolsToggle} onPress={() => setToolsOpen((value) => !value)}>
-              <Text style={styles.toolsToggleLabel}>
-                {toolsOpen ? 'Weniger anzeigen' : 'Setup, Backup & Wiederherstellung'}
-              </Text>
-              <Text style={styles.weekToggle}>{toolsOpen ? '▾' : '▸'}</Text>
-            </Pressable>
-            {toolsOpen ? (
-              <Card style={styles.toolsCard}>
-                <PrimaryButton
-                  label="Setup-Editor öffnen"
-                  variant="secondary"
-                  disabled={!templateId}
-                  onPress={() => router.push('/bautagebuch/setup')}
-                />
-                <PrimaryButton
-                  label={backupBusy ? 'Backup wird erstellt…' : 'Backup exportieren (ZIP)'}
-                  variant="secondary"
-                  disabled={backupBusy || restoreBusy || !templateId}
-                  onPress={() => void exportBackup()}
-                />
-                <PrimaryButton
-                  label={restoreBusy ? 'Wird wiederhergestellt…' : 'Backup wiederherstellen'}
-                  variant="secondary"
-                  disabled={backupBusy || restoreBusy}
-                  onPress={restoreBackup}
-                />
-              </Card>
-            ) : null}
+          <Section title="Vorlage">
+            <Card style={styles.toolsCard}>
+              <PrimaryButton
+                label="Setup-Editor öffnen"
+                variant="secondary"
+                disabled={!templateId}
+                onPress={() => router.push('/bautagebuch/setup')}
+              />
+            </Card>
           </Section>
         </>
       ) : null}
 
-      {!initialLoading && !error && templateReady ? (
+      {!initialLoading && !error && templateReady && newName.trim() ? (
         <Fab label="+" onPress={() => void startRun()} accessibilityLabel="Neues BTB" />
       ) : null}
 
@@ -511,23 +407,22 @@ const styles = StyleSheet.create({
   muted: { ...typography.caption, color: colors.muted },
   errorCard: { gap: spacing.sm, borderColor: colors.danger },
   error: { ...typography.body, color: colors.danger },
-  heroDate: { ...typography.caption, color: colors.accent, textTransform: 'capitalize' },
-  heroTitle: { ...typography.subtitle, color: colors.ink },
-  heroHint: { ...typography.caption, color: colors.muted, marginBottom: spacing.xs },
-  activeTemplate: { ...typography.caption, color: colors.accent2, marginBottom: spacing.xs },
-  listActions: { flexDirection: 'row', gap: spacing.xs },
-  weekToggle: { ...typography.caption, color: colors.muted },
-  exportRow: { gap: spacing.sm },
-  exportName: { ...typography.body, color: colors.ink },
-  exportActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  toolsToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: spacing.touchMin,
-    paddingHorizontal: spacing.xxs
+  startCard: { gap: spacing.sm },
+  startCardTitle: { ...typography.subtitle, color: colors.ink },
+  startCardHint: { ...typography.caption, color: colors.muted },
+  activeTemplate: { ...typography.caption, color: colors.accent2 },
+  previewBox: {
+    backgroundColor: colors.bg,
+    borderRadius: spacing.inputRadius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    gap: spacing.xxs
   },
-  toolsToggleLabel: { ...typography.bodyStrong, color: colors.accent2 },
+  previewLabel: { ...typography.label, color: colors.muted },
+  previewTitle: { ...typography.bodyStrong, color: colors.accent },
+  listActions: { flexDirection: 'row', gap: spacing.xs },
   toolsCard: { gap: spacing.sm },
   modalBackdrop: {
     flex: 1,

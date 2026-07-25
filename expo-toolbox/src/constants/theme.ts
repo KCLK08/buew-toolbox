@@ -77,6 +77,7 @@ export const spacing = {
   buttonRadius: 14,
   touchMin: 44,
   fabSize: 56,
+  tabBarBody: 56,
   iconSize: 28,
   heroGap: 16,
   iconRadius: 12

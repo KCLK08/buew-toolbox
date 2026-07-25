@@ -7,10 +7,12 @@ type Props = {
   label?: string;
   onPress: () => void;
   accessibilityLabel?: string;
+  bottomOffset?: number;
 };
 
-export function Fab({ label = '+', onPress, accessibilityLabel }: Props) {
+export function Fab({ label = '+', onPress, accessibilityLabel, bottomOffset }: Props) {
   const insets = useSafeAreaInsets();
+  const bottom = bottomOffset ?? spacing.tabBarBody + insets.bottom + spacing.md;
   return (
     <Pressable
       accessibilityRole="button"
@@ -19,7 +21,7 @@ export function Fab({ label = '+', onPress, accessibilityLabel }: Props) {
       style={({ pressed }) => [
         styles.fab,
         shadows.fab,
-        { bottom: Math.max(insets.bottom, 12) + 64 },
+        { bottom },
         pressed ? styles.pressed : null
       ]}
     >

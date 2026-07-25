@@ -48,7 +48,7 @@ export function Screen({
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={[
         styles.content,
-        { paddingBottom: Math.max(spacing.pageBottom, insets.bottom + 24) },
+        { paddingBottom: Math.max(spacing.pageBottom, insets.bottom + spacing.tabBarBody + spacing.lg) },
         contentStyle
       ]}
       showsVerticalScrollIndicator={false}

@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Image, StyleSheet, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../src/constants/theme';
 import { TOOLBOX_TOOLS } from '../../src/constants/tools';
@@ -37,6 +38,9 @@ function ToolTabIcon({ toolId, focused }: { toolId: 'sitereport' | 'bautagebuch'
 }
 
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = spacing.tabBarBody + insets.bottom;
+
   return (
     <Tabs
       screenOptions={{
@@ -44,7 +48,12 @@ export default function TabsLayout() {
         tabBarActiveTintColor: colors.tabActive,
         tabBarInactiveTintColor: colors.tabInactive,
         tabBarLabelStyle: styles.tabLabel,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: {
+          ...styles.tabBar,
+          height: tabBarHeight,
+          paddingBottom: Math.max(insets.bottom, spacing.xs),
+          paddingTop: spacing.xs
+        },
         tabBarItemStyle: styles.tabItem
       }}
     >
@@ -68,10 +77,7 @@ const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: colors.panel,
     borderTopColor: colors.border,
-    borderTopWidth: 1,
-    height: 64,
-    paddingBottom: 6,
-    paddingTop: 6
+    borderTopWidth: 1
   },
   tabItem: { minHeight: spacing.touchMin },
   tabLabel: { ...typography.caption, fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 11 },
