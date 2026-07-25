@@ -26,7 +26,7 @@ export default function ToolboxHomeScreen() {
       <ScrollView
         contentContainerStyle={{
           paddingTop: Math.max(spacing.pageTop, insets.top + 16),
-          paddingBottom: Math.max(spacing.pageBottom, insets.bottom + 24),
+          paddingBottom: Math.max(spacing.pageBottom, insets.bottom + spacing.tabBarBody + spacing.lg),
           paddingHorizontal: spacing.pageX,
           gap: spacing.md
         }}
