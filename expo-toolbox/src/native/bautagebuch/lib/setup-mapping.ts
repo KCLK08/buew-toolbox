@@ -1,3 +1,5 @@
+import type { Href } from 'expo-router';
+
 import type { DetectedField, SetupFieldConfig, SetupWizardGroup, SetupWizardState } from '../types';
 
 export const DEFAULT_SETUP_GROUPS: SetupWizardGroup[] = [
@@ -367,13 +369,13 @@ export function resolveSetupEntryPath(
   templateId: string,
   setupModel: Record<string, unknown>,
   templateKind = ''
-): string {
+): Href {
   if (templateKind === 'builtin-etb' || hasTableSections(setupModel)) {
-    return `/bautagebuch/setup/${templateId}/fields`;
+    return `/bautagebuch/setup/${templateId}/fields` as Href;
   }
   const wizard = getWizardState(setupModel);
   if (wizard.step === 'fields') {
-    return `/bautagebuch/setup/${templateId}/fields`;
+    return `/bautagebuch/setup/${templateId}/fields` as Href;
   }
-  return `/bautagebuch/setup/${templateId}/mapping`;
+  return `/bautagebuch/setup/${templateId}/mapping` as Href;
 }

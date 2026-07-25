@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg
   },
   loading: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.bg
