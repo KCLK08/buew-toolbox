@@ -10,6 +10,9 @@ const abortControllerJs = path.resolve(
   'node_modules/abort-controller/dist/abort-controller.js'
 );
 const patchedAbortSignal = path.resolve(projectRoot, 'src/polyfills/expo-winter-AbortSignal.js');
+const patchedWinterRuntime = path.resolve(projectRoot, 'src/polyfills/expo-winter-runtime.native.js');
+const patchedWinterIndex = path.resolve(projectRoot, 'src/polyfills/expo-winter-index.js');
+const abortSignalGuard = path.resolve(projectRoot, 'src/startup/abort-signal-guard.js');
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(projectRoot);
@@ -17,6 +20,11 @@ const config = getDefaultConfig(projectRoot);
 config.watchFolders = [...(config.watchFolders || []), workspaceRoot, sharedRoot];
 
 const defaultResolveRequest = config.resolver.resolveRequest;
+const defaultGetModulesRunBeforeMainModule = config.serializer?.getModulesRunBeforeMainModule;
+
+function isExpoWinterModule(modulePath) {
+  return modulePath.includes(`${path.sep}expo${path.sep}src${path.sep}winter`);
+}
 
 function targetsAbortController(moduleName) {
   return (
@@ -42,9 +50,33 @@ function targetsPdfJsMjs(moduleName) {
   return moduleName.includes('pdfjs-dist') && moduleName.endsWith('.mjs');
 }
 
+function targetsWinterReplacement(context, moduleName, platform) {
+  const fromExpoFx = context.originModulePath?.includes(`${path.sep}expo${path.sep}src${path.sep}Expo.fx`);
+  const targetsRelativeWinter = fromExpoFx && moduleName === './winter';
+  const targetsWinterIndex =
+    moduleName === 'expo/src/winter' ||
+    moduleName === 'expo/src/winter/index' ||
+    moduleName.endsWith('/expo/src/winter/index.ts') ||
+    moduleName.endsWith('/expo/src/winter/index.js');
+  const fromWinterIndex = context.originModulePath?.includes(
+    `${path.sep}expo${path.sep}src${path.sep}winter${path.sep}index`
+  );
+  const targetsWinterRuntimeImport = fromWinterIndex && moduleName === './runtime' && platform !== 'web';
+  const targetsWinterRuntime =
+    moduleName.endsWith('/expo/src/winter/runtime.native') ||
+    moduleName.endsWith('/expo/src/winter/runtime.native.ts') ||
+    moduleName.endsWith('/expo/src/winter/runtime.native.js');
+
+  return (
+    targetsWinterIndex ||
+    targetsRelativeWinter ||
+    targetsWinterRuntimeImport ||
+    targetsWinterRuntime
+  );
+}
+
 config.resolver = {
   ...config.resolver,
-  // Keep local pdf.js worker assets addressable; do not treat every .mjs as source.
   assetExts: [...(config.resolver.assetExts || []), 'mjs'],
   nodeModulesPaths: [
     path.resolve(projectRoot, 'node_modules'),
@@ -69,6 +101,20 @@ config.resolver = {
       };
     }
 
+    if (targetsWinterReplacement(context, moduleName, platform)) {
+      const isIndex =
+        moduleName === 'expo/src/winter' ||
+        moduleName === 'expo/src/winter/index' ||
+        moduleName.endsWith('/expo/src/winter/index.ts') ||
+        moduleName.endsWith('/expo/src/winter/index.js') ||
+        (context.originModulePath?.includes(`${path.sep}expo${path.sep}src${path.sep}Expo.fx`) &&
+          moduleName === './winter');
+      return {
+        filePath: isIndex ? patchedWinterIndex : patchedWinterRuntime,
+        type: 'sourceFile'
+      };
+    }
+
     if (targetsPdfJsMjs(moduleName)) {
       const resolved = defaultResolveRequest
         ? defaultResolveRequest(context, moduleName, platform)
@@ -89,6 +135,17 @@ config.resolver = {
     }
 
     return resolve(context, moduleName, platform);
+  }
+};
+
+config.serializer = {
+  ...config.serializer,
+  getModulesRunBeforeMainModule: () => {
+    const defaults = defaultGetModulesRunBeforeMainModule?.() ?? [];
+    const replaced = defaults.map((modulePath) =>
+      isExpoWinterModule(modulePath) ? patchedWinterRuntime : modulePath
+    );
+    return [...new Set([abortSignalGuard, ...replaced])];
   }
 };
 
