@@ -16,6 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../../constants/theme';
 import { KeyboardScrollProvider, useKeyboardScroll } from '../../contexts/KeyboardScrollContext';
 
+function bottomInset(insets: { bottom: number }) {
+  return Math.max(insets.bottom, Platform.OS === 'android' ? 20 : spacing.xs);
+}
+
 type Props = {
   title: string;
   children: ReactNode;
@@ -48,6 +52,7 @@ function ScreenScrollBody({
 }) {
   const keyboardScroll = useKeyboardScroll();
   const scrollRef = useRef<ScrollView>(null);
+  const safeBottom = bottomInset(insets);
 
   if (!scroll) {
     return <View style={[styles.content, styles.flex, contentStyle]}>{children}</View>;
@@ -68,7 +73,7 @@ function ScreenScrollBody({
       scrollEventThrottle={16}
       contentContainerStyle={[
         styles.content,
-        { paddingBottom: Math.max(spacing.pageBottom, insets.bottom + spacing.tabBarBody + spacing.lg) },
+        { paddingBottom: Math.max(spacing.pageBottom, safeBottom + spacing.tabBarBody + spacing.lg) },
         contentStyle
       ]}
       showsVerticalScrollIndicator={false}
@@ -100,8 +105,9 @@ export function Screen({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const headerHeight = spacing.touchMin + 8 + spacing.xs;
+  const safeBottom = bottomInset(insets);
   const footerBarHeight = compactFooter ? 52 : spacing.touchMin + 8;
-  const footerInset = footer ? footerBarHeight + spacing.sm + insets.bottom : insets.bottom;
+  const footerInset = footer ? footerBarHeight + spacing.sm + safeBottom : safeBottom;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -157,7 +163,7 @@ export function Screen({
               style={[
                 styles.footer,
                 compactFooter ? styles.footerCompact : null,
-                { paddingBottom: Math.max(insets.bottom, compactFooter ? spacing.xs : spacing.sm) }
+                { paddingBottom: safeBottom + (compactFooter ? spacing.sm : spacing.md) }
               ]}
             >
               {footer}

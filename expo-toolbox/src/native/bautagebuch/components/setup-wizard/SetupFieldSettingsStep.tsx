@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { colors, spacing, typography } from '../../../../constants/theme';
 import { listSetupSections, updateSetupField } from '../../lib/setup-mapping';
 import type { DetectedField, SetupFieldConfig } from '../../types';
+import { PreviewOverlayPanel } from '../PreviewOverlayPanel';
 import { SetupPdfFieldPreview } from '../SetupPdfFieldPreview';
 import { SetupFieldCard } from './SetupFieldCard';
 import { SetupGroupNav } from './SetupGroupNav';
@@ -15,6 +18,7 @@ type Props = {
   validationIssues: string[];
   readOnly?: boolean;
   showPreview?: boolean;
+  onClosePreview?: () => void;
   onChange: (next: Record<string, unknown>) => void;
 };
 
@@ -25,8 +29,10 @@ export function SetupFieldSettingsStep({
   validationIssues,
   readOnly = false,
   showPreview = false,
+  onClosePreview,
   onChange
 }: Props) {
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isTablet = width >= 900;
   const sections = useMemo(() => listSetupSections(setupModel), [setupModel]);
@@ -56,21 +62,13 @@ export function SetupFieldSettingsStep({
     }
   }, [sections, activeSectionId]);
 
+  const handleFieldChange = (field: SetupFieldConfig, patch: Partial<SetupFieldConfig>) => {
+    setActiveFieldId(field.fieldId);
+    onChange(updateSetupField(setupModel, activeSection?.sectionId || '', field.fieldId, patch));
+  };
+
   return (
     <View style={styles.root}>
-      {showPreview ? (
-        <View style={styles.preview}>
-          <SetupPdfFieldPreview
-            pdfPath={pdfPath}
-            detectedFields={detectedFields}
-            activeFieldId={activeField?.fieldId || null}
-            activeFieldLabel={activeField?.label || null}
-            activeFieldPage={activeField?.page || 1}
-            variant="default"
-          />
-        </View>
-      ) : null}
-
       <View style={[styles.body, isTablet ? styles.bodyTablet : null]}>
         <View style={isTablet ? styles.sideNav : null}>
           <SetupGroupNav
@@ -87,27 +85,30 @@ export function SetupFieldSettingsStep({
 
         <ScrollView
           style={styles.fieldScroll}
-          contentContainerStyle={styles.fieldScrollContent}
+          contentContainerStyle={[
+            styles.fieldScrollContent,
+            { paddingBottom: Math.max(insets.bottom + spacing.xl, spacing.xxl) }
+          ]}
           keyboardShouldPersistTaps="handled"
         >
           {activeSection ? (
             <Text style={styles.sectionTitle}>{activeSection.label}</Text>
           ) : null}
 
-          {(activeSection?.fields || []).map((field) => (
-            <View key={field.fieldId} style={styles.fieldWrap}>
+          {(activeSection?.fields || []).map((field) => {
+            const expanded = activeFieldId === field.fieldId;
+            return (
               <SetupFieldCard
+                key={field.fieldId}
                 field={field}
+                detectedFields={detectedFields}
+                expanded={expanded}
                 readOnly={readOnly}
-                onChange={(patch) => {
-                  setActiveFieldId(field.fieldId);
-                  onChange(
-                    updateSetupField(setupModel, activeSection?.sectionId || '', field.fieldId, patch)
-                  );
-                }}
+                onPress={() => setActiveFieldId(expanded ? null : field.fieldId)}
+                onChange={(patch) => handleFieldChange(field, patch)}
               />
-            </View>
-          ))}
+            );
+          })}
 
           <SetupValidationList
             issues={validationIssues}
@@ -117,18 +118,28 @@ export function SetupFieldSettingsStep({
           />
         </ScrollView>
       </View>
+
+      {showPreview && pdfPath ? (
+        <PreviewOverlayPanel title="PDF-Vorschau" onClose={onClosePreview}>
+          <SetupPdfFieldPreview
+            variant="overlay"
+            emphasizeActiveHighlight
+            pdfPath={pdfPath}
+            detectedFields={detectedFields}
+            activeFieldId={activeField?.fieldId || null}
+            activeFieldLabel={activeField?.label || activeField?.fieldName || null}
+            activeFieldPage={activeField?.page || 1}
+          />
+        </PreviewOverlayPanel>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
-    flex: 1
-  },
-  preview: {
-    paddingHorizontal: spacing.pageX,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm
+    flex: 1,
+    position: 'relative'
   },
   body: {
     flex: 1
@@ -145,15 +156,11 @@ const styles = StyleSheet.create({
     flex: 1
   },
   fieldScrollContent: {
-    gap: spacing.md,
-    padding: spacing.pageX,
-    paddingBottom: spacing.xxl
+    gap: spacing.sm,
+    padding: spacing.pageX
   },
   sectionTitle: {
     ...typography.subtitle,
     color: colors.ink
-  },
-  fieldWrap: {
-    gap: spacing.sm
   }
 });

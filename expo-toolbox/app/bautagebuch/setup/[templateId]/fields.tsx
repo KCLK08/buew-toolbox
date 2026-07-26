@@ -170,6 +170,7 @@ export default function SetupFieldsScreen() {
           validationIssues={validationIssues}
           readOnly={readOnly}
           showPreview={showPreview}
+          onClosePreview={() => setShowPreview(false)}
           onChange={handleChange}
         />
       ) : null}

@@ -6,6 +6,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryButton, TextField } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
 import { validateSetupModel, syncSectionOrder } from '../lib/setup-model.js';
+import {
+  checkboxBehaviorHint,
+  isCheckboxField,
+  readCheckboxDefault,
+  resolveSetupFieldType,
+  writeCheckboxDefault
+} from '../lib/setup-field-hints.js';
 import { mutateSetupModel } from '../hooks/useSetupAutosave';
 import type { BautagebuchTemplate, DetectedField } from '../types';
 import { SetupPdfFieldPreview } from './SetupPdfFieldPreview';
@@ -16,6 +23,8 @@ type SetupField = {
   fieldId: string;
   fieldName?: string;
   label?: string;
+  type?: string;
+  defaultValue?: string;
   required?: boolean;
   skipped?: boolean;
   multiline?: boolean;
@@ -168,6 +177,7 @@ export function SetupEditor({
   const [activeTableId, setActiveTableId] = useState(tableSections[0]?.tableId || '');
   const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
+  const [orderExpanded, setOrderExpanded] = useState(false);
 
   const activeSingle = singleSections.find((section) => section.sectionId === activeSingleId) || singleSections[0];
   const activeTable = tableSections.find((table) => table.tableId === activeTableId) || tableSections[0];
@@ -334,7 +344,10 @@ export function SetupEditor({
     <View style={styles.root}>
       <ScrollView
         style={styles.editorScroll}
-        contentContainerStyle={[styles.editorContent, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
+        contentContainerStyle={[
+          styles.editorContent,
+          { paddingBottom: Math.max(insets.bottom + spacing.xl, spacing.xxl) }
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -366,12 +379,23 @@ export function SetupEditor({
         ) : null}
 
         {orderedSections.length > 1 ? (
-          <>
-            <Text style={styles.sectionLabel}>Reihenfolge im Bautagebuch</Text>
-            <Text style={styles.muted}>
-              Gruppen und Tabellen frei anordnen — die Reihenfolge gilt im Assistenten und in der PDF-Vorschau.
-            </Text>
-            {orderedSections.map((entry, index) => {
+          <View style={styles.orderSection}>
+            <Pressable
+              style={styles.orderToggleHeader}
+              onPress={() => setOrderExpanded((value) => !value)}
+            >
+              <View style={styles.orderToggleCopy}>
+                <Text style={styles.sectionLabel}>Reihenfolge im Bautagebuch</Text>
+                <Text style={styles.muted}>{orderedSections.length} Abschnitte</Text>
+              </View>
+              <Text style={styles.orderToggleIcon}>{orderExpanded ? '▲' : '▼'}</Text>
+            </Pressable>
+            {orderExpanded ? (
+              <>
+                <Text style={styles.muted}>
+                  Gruppen und Tabellen frei anordnen — die Reihenfolge gilt im Assistenten.
+                </Text>
+                {orderedSections.map((entry, index) => {
               const selected =
                 entry.kind === 'single'
                   ? mode === 'single' && activeSingle?.sectionId === entry.id
@@ -413,7 +437,9 @@ export function SetupEditor({
               </Pressable>
             );
             })}
-          </>
+              </>
+            ) : null}
+          </View>
         ) : null}
 
         <View style={styles.modeRow}>
@@ -470,31 +496,37 @@ export function SetupEditor({
                 <Text style={styles.sectionLabel}>Felder in „{activeSingle.label || activeSingle.sectionId}“</Text>
                 {(activeSingle.fields || []).map((field) => {
                   const active = activeFieldId === field.fieldId;
+                  const fieldType = resolveSetupFieldType(field, detectedFields);
+                  const checkboxField = isCheckboxField(field, detectedFields);
                   return (
-                    <View key={field.fieldId} style={styles.fieldBlock}>
-                      <Pressable
-                        style={[styles.selectorCard, active ? styles.selectorCardActive : null]}
-                        onPress={() => setActiveFieldId(field.fieldId)}
-                      >
-                        <Text style={styles.selectorTitle} numberOfLines={2}>
-                          {field.label || field.fieldName || field.fieldId}
-                        </Text>
-                        <Text style={styles.selectorMeta}>{field.fieldName || field.fieldId}</Text>
+                    <Pressable
+                      key={field.fieldId}
+                      style={[styles.fieldCard, active ? styles.fieldCardActive : null]}
+                      onPress={() => setActiveFieldId(active ? null : field.fieldId)}
+                    >
+                      <View style={styles.fieldCardHeader}>
+                        <View style={styles.fieldCardHeading}>
+                          <Text style={styles.selectorTitle} numberOfLines={2}>
+                            {field.label || field.fieldName || field.fieldId}
+                          </Text>
+                          <Text style={styles.selectorMeta}>{field.fieldName || field.fieldId}</Text>
+                        </View>
+                        <Text style={styles.fieldCardChevron}>{active ? '▲' : '▼'}</Text>
+                      </View>
+                      {!active ? (
                         <StatusPills
                           items={[
                             field.required ? 'Pflicht' : null,
                             field.skipped ? 'Ausgeblendet' : null,
-                            field.multiline ? 'Mehrzeilig' : null
+                            field.multiline ? 'Mehrzeilig' : null,
+                            field.defaultValue ? 'Standardwert' : null
                           ].filter(Boolean)}
                         />
-                      </Pressable>
-
-                      {active ? (
-                        <View style={styles.detailCard}>
-                          <Text style={styles.detailTitle}>{field.label || field.fieldName}</Text>
+                      ) : (
+                        <View style={styles.fieldCardBody}>
                           <Text style={styles.fieldMeta}>
                             PDF-Feld: {field.fieldName || field.fieldId}
-                            {field.page ? ` · Seite ${field.page}` : ''}
+                            {field.page ? ` · Seite ${field.page}` : ''} · Typ: {fieldType}
                           </Text>
                           <TextField
                             label="Anzeigename im Assistenten"
@@ -504,6 +536,28 @@ export function SetupEditor({
                             }
                             onFocus={() => setActiveFieldId(field.fieldId)}
                           />
+                          {checkboxField ? (
+                            <SettingRow
+                              title="Standard: aktiviert (Ja)"
+                              hint={checkboxBehaviorHint(field.fieldName)}
+                              value={readCheckboxDefault(field)}
+                              onValueChange={(value) =>
+                                updateSingleField(activeSingle.sectionId, field.fieldId, {
+                                  defaultValue: writeCheckboxDefault(value)
+                                })
+                              }
+                            />
+                          ) : (
+                            <TextField
+                              label="Standardtext zum Vorausfüllen"
+                              value={field.defaultValue || ''}
+                              onChangeText={(value) =>
+                                updateSingleField(activeSingle.sectionId, field.fieldId, { defaultValue: value })
+                              }
+                              onFocus={() => setActiveFieldId(field.fieldId)}
+                              placeholder="Optional — wird beim Start des BTB gesetzt"
+                            />
+                          )}
                           <SettingRow
                             title="Pflichtfeld"
                             hint="Muss vor dem Export ausgefüllt sein"
@@ -520,14 +574,16 @@ export function SetupEditor({
                               updateSingleField(activeSingle.sectionId, field.fieldId, { skipped: value })
                             }
                           />
-                          <SettingRow
-                            title="Mehrzeiliges Eingabefeld"
-                            hint="Größeres Textfeld für längere Einträge"
-                            value={field.multiline === true}
-                            onValueChange={(value) =>
-                              updateSingleField(activeSingle.sectionId, field.fieldId, { multiline: value })
-                            }
-                          />
+                          {!checkboxField ? (
+                            <SettingRow
+                              title="Mehrzeiliges Eingabefeld"
+                              hint="Größeres Textfeld für längere Einträge"
+                              value={field.multiline === true}
+                              onValueChange={(value) =>
+                                updateSingleField(activeSingle.sectionId, field.fieldId, { multiline: value })
+                              }
+                            />
+                          ) : null}
                           <Text style={styles.sectionLabel}>Reihenfolge in der Gruppe</Text>
                           <View style={styles.row}>
                             <PrimaryButton
@@ -548,14 +604,14 @@ export function SetupEditor({
                               onPress={() => moveFieldWithinSection(activeSingle.sectionId, field.fieldId, 1)}
                             />
                             <PrimaryButton
-                              label="Verschieben"
+                              label="In andere Gruppe"
                               variant="secondary"
                               onPress={() => moveFieldToSection(activeSingle.sectionId, field.fieldId)}
                             />
                           </View>
                         </View>
-                      ) : null}
-                    </View>
+                      )}
+                    </Pressable>
                   );
                 })}
               </>
@@ -602,18 +658,24 @@ export function SetupEditor({
                   const active = activeColumnId === column.columnId;
                   const previewCell = activeTable.rows?.[0]?.cells?.find((cell) => cell.columnId === column.columnId);
                   return (
-                    <View key={column.columnId} style={styles.fieldBlock}>
-                      <Pressable
-                        style={[styles.selectorCard, active ? styles.selectorCardActive : null]}
-                        onPress={() => setActiveColumnId(column.columnId)}
-                      >
-                        <Text style={styles.selectorTitle} numberOfLines={2}>
-                          {column.label || column.columnId}
-                        </Text>
-                        <Text style={styles.selectorMeta}>
-                          {column.columnId}
-                          {previewCell?.fieldName ? ` · ${previewCell.fieldName}` : ''}
-                        </Text>
+                    <Pressable
+                      key={column.columnId}
+                      style={[styles.fieldCard, active ? styles.fieldCardActive : null]}
+                      onPress={() => setActiveColumnId(active ? null : column.columnId)}
+                    >
+                      <View style={styles.fieldCardHeader}>
+                        <View style={styles.fieldCardHeading}>
+                          <Text style={styles.selectorTitle} numberOfLines={2}>
+                            {column.label || column.columnId}
+                          </Text>
+                          <Text style={styles.selectorMeta}>
+                            {column.columnId}
+                            {previewCell?.fieldName ? ` · ${previewCell.fieldName}` : ''}
+                          </Text>
+                        </View>
+                        <Text style={styles.fieldCardChevron}>{active ? '▲' : '▼'}</Text>
+                      </View>
+                      {!active ? (
                         <StatusPills
                           items={[
                             column.required ? 'Pflicht' : null,
@@ -621,11 +683,8 @@ export function SetupEditor({
                             column.multiline ? 'Mehrzeilig' : null
                           ].filter(Boolean)}
                         />
-                      </Pressable>
-
-                      {active ? (
-                        <View style={styles.detailCard}>
-                          <Text style={styles.detailTitle}>{column.label || column.columnId}</Text>
+                      ) : (
+                        <View style={styles.fieldCardBody}>
                           <Text style={styles.fieldMeta}>Spalten-ID: {column.columnId}</Text>
                           <TextField
                             label="Anzeigename im Assistenten"
@@ -660,8 +719,8 @@ export function SetupEditor({
                             }
                           />
                         </View>
-                      ) : null}
-                    </View>
+                      )}
+                    </Pressable>
                   );
                 })}
               </>
@@ -674,7 +733,8 @@ export function SetupEditor({
       {showPreview && templatePdfPath ? (
         <PreviewOverlayPanel title="PDF-Vorschau" onClose={onClosePreview}>
           <SetupPdfFieldPreview
-            variant="default"
+            variant="overlay"
+            emphasizeActiveHighlight
             pdfPath={templatePdfPath}
             detectedFields={detectedFields}
             activeFieldId={activeField?.fieldId || null}
@@ -777,6 +837,57 @@ const styles = StyleSheet.create({
   },
   fieldBlock: {
     gap: spacing.xs
+  },
+  fieldCard: {
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.panel
+  },
+  fieldCardActive: {
+    borderColor: colors.accent,
+    backgroundColor: 'rgba(47, 111, 237, 0.06)'
+  },
+  fieldCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm
+  },
+  fieldCardHeading: {
+    flex: 1,
+    gap: 4
+  },
+  fieldCardChevron: {
+    ...typography.caption,
+    color: colors.muted,
+    marginTop: 2
+  },
+  fieldCardBody: {
+    gap: spacing.xs,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.border
+  },
+  orderSection: {
+    gap: spacing.xs
+  },
+  orderToggleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs
+  },
+  orderToggleCopy: {
+    flex: 1,
+    gap: 2
+  },
+  orderToggleIcon: {
+    ...typography.bodyStrong,
+    color: colors.muted
   },
   selectorCard: {
     gap: 4,
