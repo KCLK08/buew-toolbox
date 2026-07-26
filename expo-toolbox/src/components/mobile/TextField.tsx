@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { forwardRef, useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 
 import { colors, spacing, typography } from '../../constants/theme';
@@ -12,7 +12,10 @@ type Props = TextInputProps & {
 const MULTILINE_MIN_HEIGHT = 132;
 const MULTILINE_MAX_HEIGHT = 320;
 
-export function TextField({ label, hint, style, multiline, autoGrow, value, onContentSizeChange, ...rest }: Props) {
+export const TextField = forwardRef<TextInput, Props>(function TextField(
+  { label, hint, style, multiline, autoGrow, value, onContentSizeChange, ...rest },
+  ref
+) {
   const [inputHeight, setInputHeight] = useState<number | undefined>(undefined);
 
   useEffect(() => {
@@ -27,6 +30,7 @@ export function TextField({ label, hint, style, multiline, autoGrow, value, onCo
     <View style={styles.wrap}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        ref={ref}
         placeholderTextColor={colors.muted}
         multiline={multiline}
         textAlignVertical={multiline ? 'top' : 'center'}
@@ -53,7 +57,7 @@ export function TextField({ label, hint, style, multiline, autoGrow, value, onCo
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: {
