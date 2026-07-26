@@ -88,6 +88,16 @@ export default function BautagebuchRunScreen() {
     return computeTotalMissingRequired(setupModel, run.values, run.photoDoc?.enabled ?? null);
   }, [run, setupModel]);
 
+  const sections = useMemo(() => {
+    if (!setupModel) return [];
+    return buildRunSectionsWithPhotoDoc(setupModel);
+  }, [setupModel]);
+
+  const safeSectionIndex =
+    sections.length > 0 ? Math.min(run?.sectionIndex ?? 0, sections.length - 1) : 0;
+  const isLastSection = safeSectionIndex >= sections.length - 1;
+  const exportBlocked = totalMissingRequired > 0;
+
   const refreshPreview = useCallback(async () => {
     if (!run || !showPreview) return;
     setPreviewLoading(true);
@@ -293,12 +303,38 @@ export default function BautagebuchRunScreen() {
       title={run.title}
       subtitle="Guided Flow · PDF-Export"
       showBack
+      compactFooter
       footer={
-        <PrimaryButton
-          label={showPreview ? 'Vorschau ausblenden' : 'Vorschau einblenden'}
-          variant="secondary"
-          onPress={() => setShowPreview((value) => !value)}
-        />
+        <View style={styles.runFooter}>
+          <PrimaryButton
+            compact
+            label="Zurück"
+            variant="secondary"
+            disabled={safeSectionIndex <= 0}
+            onPress={() => persist({ sectionIndex: Math.max(0, safeSectionIndex - 1) })}
+            style={styles.runFooterSide}
+          />
+          <PrimaryButton
+            compact
+            label={showPreview ? 'Vorschau aus' : 'Vorschau ein'}
+            variant="ghost"
+            onPress={() => setShowPreview((value) => !value)}
+            style={styles.runFooterCenter}
+          />
+          <PrimaryButton
+            compact
+            label={isLastSection ? 'Abschließen' : 'Weiter'}
+            disabled={isLastSection && exportBlocked}
+            onPress={() => {
+              if (isLastSection) {
+                handleExport();
+                return;
+              }
+              persist({ sectionIndex: Math.min(sections.length - 1, safeSectionIndex + 1) });
+            }}
+            style={styles.runFooterSide}
+          />
+        </View>
       }
     >
       <RunWizard
@@ -320,7 +356,6 @@ export default function BautagebuchRunScreen() {
         onWeatherSync={handleWeatherSync}
         onSectionChange={(sectionIndex) => persist({ sectionIndex })}
         onChange={(values) => persist({ values })}
-        onRequestExport={handleExport}
       />
       <ExportFinishSheet
         visible={exportSheetOpen}
@@ -336,5 +371,16 @@ export default function BautagebuchRunScreen() {
 
 const styles = StyleSheet.create({
   error: { ...typography.body, color: colors.danger },
-  muted: { ...typography.caption, color: colors.muted }
+  muted: { ...typography.caption, color: colors.muted },
+  runFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
+  runFooterSide: {
+    flex: 1
+  },
+  runFooterCenter: {
+    flex: 1.2
+  }
 });

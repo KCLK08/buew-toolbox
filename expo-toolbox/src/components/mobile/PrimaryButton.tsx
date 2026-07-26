@@ -10,6 +10,7 @@ type Props = {
   variant?: Variant;
   disabled?: boolean;
   loading?: boolean;
+  compact?: boolean;
   style?: ViewStyle;
 };
 
@@ -19,6 +20,7 @@ export function PrimaryButton({
   variant = 'primary',
   disabled,
   loading,
+  compact = false,
   style
 }: Props) {
   const isDisabled = disabled || loading;
@@ -29,6 +31,7 @@ export function PrimaryButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
+        compact ? styles.baseCompact : null,
         styles[variant],
         pressed && !isDisabled ? styles.pressed : null,
         isDisabled ? styles.disabled : null,
@@ -41,8 +44,11 @@ export function PrimaryButton({
         <Text
           style={[
             styles.label,
+            compact ? styles.labelCompact : null,
             variant === 'primary' || variant === 'danger' ? styles.labelOnAccent : styles.labelMuted
           ]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
         >
           {label}
         </Text>
@@ -59,6 +65,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm
+  },
+  baseCompact: {
+    minHeight: 36,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+    borderRadius: 10
   },
   primary: {
     backgroundColor: colors.accent
@@ -83,6 +95,10 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.button
+  },
+  labelCompact: {
+    ...typography.caption,
+    fontFamily: 'SpaceGrotesk_600SemiBold'
   },
   labelOnAccent: {
     color: colors.white

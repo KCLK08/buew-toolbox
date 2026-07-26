@@ -24,6 +24,7 @@ type Props = {
   showBack?: boolean;
   rightAction?: ReactNode;
   footer?: ReactNode;
+  compactFooter?: boolean;
   contentStyle?: ViewStyle;
   refreshing?: boolean;
   onRefresh?: () => void;
@@ -89,6 +90,7 @@ export function Screen({
   showBack = false,
   rightAction,
   footer,
+  compactFooter = false,
   contentStyle,
   refreshing,
   onRefresh
@@ -96,7 +98,8 @@ export function Screen({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const headerHeight = spacing.touchMin + 8 + spacing.xs;
-  const footerInset = footer ? spacing.touchMin + spacing.lg + insets.bottom : insets.bottom;
+  const footerBarHeight = compactFooter ? 44 : spacing.touchMin + 8;
+  const footerInset = footer ? footerBarHeight + spacing.sm + insets.bottom : insets.bottom;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -145,7 +148,13 @@ export function Screen({
             {children}
           </ScreenScrollBody>
           {footer ? (
-            <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+            <View
+              style={[
+                styles.footer,
+                compactFooter ? styles.footerCompact : null,
+                { paddingBottom: Math.max(insets.bottom, compactFooter ? spacing.xxs : spacing.sm) }
+              ]}
+            >
               {footer}
             </View>
           ) : null}
@@ -215,5 +224,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.pageX,
     paddingTop: spacing.sm,
     gap: spacing.xs
+  },
+  footerCompact: {
+    paddingTop: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+    gap: spacing.xxs
   }
 });
