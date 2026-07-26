@@ -32,8 +32,6 @@ type Props = {
   onRemovePhoto?: (entryId: string) => void;
   photoBusy?: boolean;
   totalMissingRequired?: number;
-  showPreview?: boolean;
-  previewPanel?: React.ReactNode;
 };
 
 const GEWERK_FIELDS = ['Text3', 'Text5', 'Text6', 'Text7', 'Text8'];
@@ -117,9 +115,7 @@ export function RunWizard({
   onPickPhotos,
   onRemovePhoto,
   photoBusy = false,
-  totalMissingRequired = 0,
-  showPreview = false,
-  previewPanel = null
+  totalMissingRequired = 0
 }: Props) {
   const sections = useMemo(() => buildRunSectionsWithPhotoDoc(setupModel), [setupModel]);
   const section = sections[sectionIndex] || sections[0];
@@ -512,8 +508,6 @@ export function RunWizard({
         </View>
         {renderSectionContent()}
       </Card>
-
-      {showPreview && previewPanel ? <View style={styles.previewBlock}>{previewPanel}</View> : null}
     </View>
   );
 }
@@ -623,6 +617,5 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 6,
     backgroundColor: 'rgba(161, 44, 36, 0.05)'
-  },
-  previewBlock: { gap: spacing.sm }
+  }
 });

@@ -67,9 +67,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm
   },
   baseCompact: {
-    minHeight: 36,
+    minHeight: 42,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
+    paddingVertical: spacing.xs,
     borderRadius: 10
   },
   primary: {
@@ -97,8 +97,8 @@ const styles = StyleSheet.create({
     ...typography.button
   },
   labelCompact: {
-    ...typography.caption,
-    fontFamily: 'SpaceGrotesk_600SemiBold'
+    ...typography.button,
+    fontSize: 14
   },
   labelOnAccent: {
     color: colors.white
