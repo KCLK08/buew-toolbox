@@ -11,27 +11,36 @@ export function normalizeClockTime(value) {
     return '';
   }
 
-  if (/^\d{1,2}$/.test(normalized)) {
-    return formatTime(Number(normalized), 0) || normalized;
+  if (/^\d{4}$/.test(normalized)) {
+    const hours = Number(normalized.slice(0, 2));
+    const minutes = Number(normalized.slice(2));
+    return formatTime(hours, minutes) || normalized;
   }
   if (/^\d{3}$/.test(normalized)) {
     const hours = Number(normalized.slice(0, 1));
     const minutes = Number(normalized.slice(1));
     return formatTime(hours, minutes) || normalized;
   }
-  if (/^\d{4}$/.test(normalized)) {
-    const hours = Number(normalized.slice(0, 2));
-    const minutes = Number(normalized.slice(2));
+  if (/^\d{1,2}$/.test(normalized)) {
+    return formatTime(Number(normalized), 0) || normalized;
+  }
+
+  const match = normalized.match(/^(\d{1,2})\s*[:.,]\s*(\d{1,2})$/);
+  if (match) {
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
     return formatTime(hours, minutes) || normalized;
   }
 
-  const match = normalized.match(/^(\d{1,2})\s*[:.,]\s*(\d{0,2})$/);
-  if (match) {
-    const hours = Number(match[1]);
-    const rawMinutes = String(match[2] || '');
-    const minutes = rawMinutes ? Number(rawMinutes.padStart(2, '0')) : 0;
-    return formatTime(hours, minutes) || normalized;
+  const hoursOnly = normalized.match(/^(\d{1,2})\s*[:.,]\s*$/);
+  if (hoursOnly) {
+    return formatTime(Number(hoursOnly[1]), 0) || normalized;
   }
 
   return normalized;
+}
+
+export function isClockTimeLabel(label) {
+  const lower = String(label || '').toLowerCase();
+  return lower.includes('beginn') || lower.includes('ende') || lower.includes('uhrzeit');
 }

@@ -123,15 +123,9 @@ export default function BautagebuchHomeScreen() {
     }
     if (expansionInitialized.current) return;
 
-    setExpandedYears(new Set(runTree.years.map((yearGroup) => yearGroup.year)));
-    const weekKeys = runTree.years.flatMap((yearGroup) => yearGroup.weeks.map((week) => week.weekKey));
-    setExpandedWeeks(new Set(weekKeys));
-    const projectKeys = runTree.years.flatMap((yearGroup) =>
-      yearGroup.weeks.flatMap((week) =>
-        week.projects.map((project) => projectGroupKey(week.weekKey, project.projectKey))
-      )
-    );
-    setExpandedProjects(new Set(projectKeys));
+    setExpandedYears(new Set());
+    setExpandedWeeks(new Set());
+    setExpandedProjects(new Set());
     expansionInitialized.current = true;
   }, [runTree, runs.length]);
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 
 import { PrimaryButton, Screen, StatusBadge } from '../../../src/components/mobile';
@@ -112,7 +112,7 @@ export default function BautagebuchRunScreen() {
     return () => {
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
     };
-  }, [run?.values, run?.photoDoc, showPreview, refreshPreview]);
+  }, [run?.runId, run?.values, run?.photoDoc, showPreview, refreshPreview]);
 
   const persist = (patch: Partial<BautagebuchRun>) => {
     setRun((current) => {
@@ -298,11 +298,6 @@ export default function BautagebuchRunScreen() {
           ) : (
             <StatusBadge label="Bereit zum Export" tone="success" />
           )}
-          <Pressable onPress={() => setShowPreview((value) => !value)}>
-            <Text style={styles.previewToggle}>
-              {showPreview ? 'Vorschau ausblenden' : 'Live-PDF-Vorschau anzeigen'}
-            </Text>
-          </Pressable>
           <View style={styles.footerRow}>
             <PrimaryButton
               label={exporting ? 'PDF…' : 'PDF exportieren'}
@@ -321,6 +316,7 @@ export default function BautagebuchRunScreen() {
         photoDoc={run.photoDoc}
         totalMissingRequired={totalMissingRequired}
         showPreview={showPreview}
+        onTogglePreview={() => setShowPreview((value) => !value)}
         previewPanel={
           <PdfPreviewPanel pdfPath={previewPath} loading={previewLoading} error={previewError} />
         }
@@ -350,6 +346,5 @@ const styles = StyleSheet.create({
   error: { ...typography.body, color: colors.danger },
   muted: { ...typography.caption, color: colors.muted },
   footerCol: { gap: 8 },
-  footerRow: { flexDirection: 'row', gap: 8 },
-  previewToggle: { ...typography.caption, color: colors.accent, textAlign: 'center' }
+  footerRow: { flexDirection: 'row', gap: 8 }
 });

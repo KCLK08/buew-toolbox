@@ -1,10 +1,10 @@
 // @ts-nocheck
-import { useEffect, useMemo } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef } from 'react';
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card, PrimaryButton, TextField } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
-import { normalizeClockTime } from '../lib/time-format.js';
+import { isClockTimeLabel, normalizeClockTime } from '../lib/time-format.js';
 import { buildRunSections, inputKeyForField, requiredMissingCount, sectionProgressState } from '../lib/setup-model.js';
 import {
   buildRunSectionsWithPhotoDoc,
@@ -13,7 +13,6 @@ import {
   sectionRunOptions,
   visibleRowCountForSection
 } from '../lib/run-validation';
-import { RunValuesPreview } from './RunValuesPreview';
 import { RunSectionNav } from './RunSectionNav';
 
 type RunSection = ReturnType<typeof buildRunSections>[number];
@@ -35,6 +34,7 @@ type Props = {
   totalMissingRequired?: number;
   onRequestExport?: () => void;
   showPreview?: boolean;
+  onTogglePreview?: () => void;
   previewPanel?: React.ReactNode;
 };
 
@@ -72,6 +72,39 @@ function isMainPersonalTable(section: RunSection) {
   return label.includes('firmen') || label.includes('personal') || label.includes('besetzung');
 }
 
+function computeFocusKeys(section: RunSection, values: Record<string, unknown>): string[] {
+  if (!section) return [];
+
+  if (section.kind === 'single') {
+    const gewerkFieldIds = GEWERK_FIELDS.map((name) => findFieldIdByName(section, name)).filter(Boolean);
+    const shiftFieldIds = SHIFT_FIELDS.map((name) => findFieldIdByName(section, name)).filter(Boolean);
+    return section.fields
+      .filter(
+        (field) =>
+          !gewerkFieldIds.includes(field.fieldId) &&
+          !shiftFieldIds.includes(field.fieldId) &&
+          field.type !== 'checkbox' &&
+          !(field.type === 'dropdown' && field.options.length > 0)
+      )
+      .map((field) => fieldKey(field.fieldId));
+  }
+
+  if (section.kind === 'table') {
+    const visibleCount = visibleRowCountForSection(section, values);
+    const rows = section.rows.slice(0, Math.max(1, visibleCount));
+    return rows.flatMap((row) =>
+      row.cells
+        .filter((cell) => {
+          const column = section.columns.find((entry) => entry.columnId === cell.columnId);
+          return column?.type !== 'checkbox' && !(column?.type === 'dropdown' && (column.options || []).length > 0);
+        })
+        .map((cell) => cellKey(cell.cellId))
+    );
+  }
+
+  return [];
+}
+
 export function RunWizard({
   setupModel,
   values,
@@ -88,12 +121,32 @@ export function RunWizard({
   photoBusy = false,
   totalMissingRequired = 0,
   onRequestExport,
-  showPreview = false,
+  showPreview = true,
+  onTogglePreview,
   previewPanel = null
 }: Props) {
   const sections = useMemo(() => buildRunSectionsWithPhotoDoc(setupModel), [setupModel]);
   const section = sections[sectionIndex] || sections[0];
   const safeSectionIndex = sections.length > 0 ? Math.min(sectionIndex, sections.length - 1) : 0;
+  const inputRefs = useRef(new Map<string, TextInput | null>());
+  const focusKeys = useMemo(() => computeFocusKeys(section, values), [section, values]);
+
+  const getFocusProps = (focusKey: string, multiline = false) => {
+    const index = focusKeys.indexOf(focusKey);
+    if (index < 0 || multiline) {
+      return {};
+    }
+    const isLast = index === focusKeys.length - 1;
+    return {
+      returnKeyType: isLast ? 'done' : 'next',
+      blurOnSubmit: isLast,
+      onSubmitEditing: () => {
+        if (!isLast) {
+          inputRefs.current.get(focusKeys[index + 1])?.focus();
+        }
+      }
+    };
+  };
 
   useEffect(() => {
     if (sections.length === 0) return;
@@ -156,17 +209,22 @@ export function RunWizard({
     return (
       <View key={field.fieldId} style={missing ? styles.missingField : null}>
         <TextField
+          ref={(node) => {
+            if (node) inputRefs.current.set(fieldKey(field.fieldId), node);
+            else inputRefs.current.delete(fieldKey(field.fieldId));
+          }}
           label={`${label}${field.required ? ' *' : ''}`}
           value={String(current ?? '')}
-          onChangeText={(text) => {
-            const normalized =
-              label.toLowerCase().includes('beginn') || label.toLowerCase().includes('ende')
-                ? normalizeClockTime(text)
-                : text;
-            setFieldValue(field.fieldId, normalized);
+          onChangeText={(text) => setFieldValue(field.fieldId, text)}
+          onEndEditing={(event) => {
+            if (isClockTimeLabel(label)) {
+              setFieldValue(field.fieldId, normalizeClockTime(event.nativeEvent.text));
+            }
           }}
+          keyboardType={isClockTimeLabel(label) ? 'numbers-and-punctuation' : 'default'}
           multiline={field.multiline === true}
           autoGrow={field.multiline === true}
+          {...getFocusProps(fieldKey(field.fieldId), field.multiline === true)}
         />
       </View>
     );
@@ -280,10 +338,9 @@ export function RunWizard({
             <Text style={styles.tableRowTitle}>Zeile {row.rowId.replace('r', '')}</Text>
             {row.cells.map((cell) => {
               const label = cell.label;
-              const labelLower = label.toLowerCase();
-              const isTime = personal && (labelLower.includes('beginn') || labelLower.includes('ende'));
               const column = section.columns.find((entry) => entry.columnId === cell.columnId);
               const multiline = column?.multiline === true || cell.multiline === true;
+              const isTime = personal && isClockTimeLabel(label);
               const missing =
                 cell.required &&
                 String(values[cellKey(cell.cellId)] ?? '').trim().length === 0 &&
@@ -292,14 +349,22 @@ export function RunWizard({
               return (
                 <View key={cell.cellId} style={missing ? styles.missingField : null}>
                   <TextField
+                    ref={(node) => {
+                      if (node) inputRefs.current.set(cellKey(cell.cellId), node);
+                      else inputRefs.current.delete(cellKey(cell.cellId));
+                    }}
                     label={`${label}${cell.required ? ' *' : ''}`}
                     value={String(values[cellKey(cell.cellId)] ?? '')}
-                    onChangeText={(text) => {
-                      const normalized = isTime ? normalizeClockTime(text) : text;
-                      setCellValue(cell.cellId, normalized);
+                    onChangeText={(text) => setCellValue(cell.cellId, text)}
+                    onEndEditing={(event) => {
+                      if (isTime) {
+                        setCellValue(cell.cellId, normalizeClockTime(event.nativeEvent.text));
+                      }
                     }}
+                    keyboardType={isTime ? 'numbers-and-punctuation' : 'default'}
                     multiline={multiline}
                     autoGrow={multiline}
+                    {...getFocusProps(cellKey(cell.cellId), multiline)}
                   />
                 </View>
               );
@@ -455,8 +520,16 @@ export function RunWizard({
         {renderSectionContent()}
       </Card>
 
-      {!showPreview ? <RunValuesPreview setupModel={setupModel} values={values} sectionIndex={sectionIndex} /> : null}
-      {showPreview ? previewPanel : null}
+      {previewPanel ? (
+        <View style={styles.previewBlock}>
+          <PrimaryButton
+            label={showPreview ? 'Live-Vorschau ausblenden' : 'Live-Vorschau anzeigen'}
+            variant="secondary"
+            onPress={() => onTogglePreview?.()}
+          />
+          {showPreview ? previewPanel : null}
+        </View>
+      ) : null}
 
       <View style={styles.footerRow}>
         <PrimaryButton
@@ -587,5 +660,6 @@ const styles = StyleSheet.create({
     padding: 6,
     backgroundColor: 'rgba(161, 44, 36, 0.05)'
   },
-  footerRow: { flexDirection: 'row', gap: spacing.sm }
+  footerRow: { flexDirection: 'row', gap: spacing.sm },
+  previewBlock: { gap: spacing.sm }
 });

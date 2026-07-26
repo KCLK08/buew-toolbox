@@ -25,6 +25,7 @@ module.exports = ({ config }) => ({
   },
   android: {
     icon: './assets/icon.png',
+    softwareKeyboardLayoutMode: 'resize',
     adaptiveIcon: {
       backgroundColor: '#F2F0EB',
       foregroundImage: './assets/android-icon-foreground.png',

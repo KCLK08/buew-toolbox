@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useRef } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../constants/theme';
+import { KeyboardScrollProvider, useKeyboardScroll } from '../../contexts/KeyboardScrollContext';
 
 type Props = {
   title: string;
@@ -27,6 +28,58 @@ type Props = {
   refreshing?: boolean;
   onRefresh?: () => void;
 };
+
+function ScreenScrollBody({
+  children,
+  scroll,
+  contentStyle,
+  refreshing,
+  onRefresh,
+  insets
+}: {
+  children: ReactNode;
+  scroll: boolean;
+  contentStyle?: ViewStyle;
+  refreshing?: boolean;
+  onRefresh?: () => void;
+  insets: { bottom: number };
+}) {
+  const keyboardScroll = useKeyboardScroll();
+  const scrollRef = useRef<ScrollView>(null);
+
+  if (!scroll) {
+    return <View style={[styles.content, styles.flex, contentStyle]}>{children}</View>;
+  }
+
+  return (
+    <ScrollView
+      ref={(node) => {
+        scrollRef.current = node;
+        keyboardScroll?.attachScrollView(node);
+      }}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+      onScroll={(event) => {
+        keyboardScroll?.reportScrollY(event.nativeEvent.contentOffset.y);
+      }}
+      scrollEventThrottle={16}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: Math.max(spacing.pageBottom, insets.bottom + spacing.tabBarBody + spacing.lg) },
+        contentStyle
+      ]}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={colors.accent} />
+        ) : undefined
+      }
+    >
+      {children}
+    </ScrollView>
+  );
+}
 
 export function Screen({
   title,
@@ -42,27 +95,8 @@ export function Screen({
 }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-
-  const body = scroll ? (
-    <ScrollView
-      keyboardShouldPersistTaps="handled"
-      contentContainerStyle={[
-        styles.content,
-        { paddingBottom: Math.max(spacing.pageBottom, insets.bottom + spacing.tabBarBody + spacing.lg) },
-        contentStyle
-      ]}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        onRefresh ? (
-          <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={colors.accent} />
-        ) : undefined
-      }
-    >
-      {children}
-    </ScrollView>
-  ) : (
-    <View style={[styles.content, styles.flex, contentStyle]}>{children}</View>
-  );
+  const headerHeight = spacing.touchMin + 8 + spacing.xs;
+  const footerInset = footer ? spacing.touchMin + spacing.lg + insets.bottom : insets.bottom;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -95,18 +129,28 @@ export function Screen({
         <View style={[styles.headerSide, styles.headerRight]}>{rightAction}</View>
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={8}
-      >
-        {body}
-        {footer ? (
-          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
-            {footer}
-          </View>
-        ) : null}
-      </KeyboardAvoidingView>
+      <KeyboardScrollProvider footerInset={footerInset}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + headerHeight : 0}
+        >
+          <ScreenScrollBody
+            scroll={scroll}
+            contentStyle={contentStyle}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            insets={insets}
+          >
+            {children}
+          </ScreenScrollBody>
+          {footer ? (
+            <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+              {footer}
+            </View>
+          ) : null}
+        </KeyboardAvoidingView>
+      </KeyboardScrollProvider>
     </View>
   );
 }
