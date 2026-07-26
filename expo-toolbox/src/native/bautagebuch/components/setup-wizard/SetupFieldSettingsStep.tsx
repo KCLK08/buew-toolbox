@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useWindowDimensions } from 'react-native';
-
-import { PrimaryButton } from '../../../../components/mobile';
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { colors, spacing, typography } from '../../../../constants/theme';
 import { listSetupSections, updateSetupField } from '../../lib/setup-mapping';
 import type { DetectedField, SetupFieldConfig } from '../../types';
@@ -17,9 +14,8 @@ type Props = {
   setupModel: Record<string, unknown>;
   validationIssues: string[];
   readOnly?: boolean;
+  showPreview?: boolean;
   onChange: (next: Record<string, unknown>) => void;
-  onFinish: () => void;
-  finishing?: boolean;
 };
 
 export function SetupFieldSettingsStep({
@@ -28,14 +24,12 @@ export function SetupFieldSettingsStep({
   setupModel,
   validationIssues,
   readOnly = false,
-  onChange,
-  onFinish,
-  finishing = false
+  showPreview = false,
+  onChange
 }: Props) {
   const { width } = useWindowDimensions();
   const isTablet = width >= 900;
   const sections = useMemo(() => listSetupSections(setupModel), [setupModel]);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [activeSectionId, setActiveSectionId] = useState(sections[0]?.sectionId || '');
   const [activeFieldId, setActiveFieldId] = useState<string | null>(
     sections[0]?.fields[0]?.fieldId || null
@@ -64,15 +58,7 @@ export function SetupFieldSettingsStep({
 
   return (
     <View style={styles.root}>
-      <View style={styles.previewToggleWrap}>
-        <PrimaryButton
-          label={previewOpen ? '▲ PDF-Vorschau ausblenden' : '▼ PDF-Vorschau anzeigen'}
-          variant="ghost"
-          onPress={() => setPreviewOpen((value) => !value)}
-        />
-      </View>
-
-      {previewOpen ? (
+      {showPreview ? (
         <View style={styles.preview}>
           <SetupPdfFieldPreview
             pdfPath={pdfPath}
@@ -80,7 +66,7 @@ export function SetupFieldSettingsStep({
             activeFieldId={activeField?.fieldId || null}
             activeFieldLabel={activeField?.label || null}
             activeFieldPage={activeField?.page || 1}
-            variant="pinned"
+            variant="default"
           />
         </View>
       ) : null}
@@ -131,16 +117,6 @@ export function SetupFieldSettingsStep({
           />
         </ScrollView>
       </View>
-
-      {!readOnly ? (
-        <View style={styles.footer}>
-          <PrimaryButton
-            label={finishing ? 'Wird abgeschlossen…' : 'Setup abschließen'}
-            disabled={finishing || validationIssues.length > 0}
-            onPress={onFinish}
-          />
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -149,11 +125,9 @@ const styles = StyleSheet.create({
   root: {
     flex: 1
   },
-  previewToggleWrap: {
-    paddingHorizontal: spacing.pageX,
-    paddingTop: spacing.sm
-  },
   preview: {
+    paddingHorizontal: spacing.pageX,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.sm
   },
   body: {
@@ -181,12 +155,5 @@ const styles = StyleSheet.create({
   },
   fieldWrap: {
     gap: spacing.sm
-  },
-  footer: {
-    paddingHorizontal: spacing.pageX,
-    paddingVertical: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.panel
   }
 });

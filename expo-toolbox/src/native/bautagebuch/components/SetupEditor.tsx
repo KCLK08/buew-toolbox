@@ -1,9 +1,9 @@
 // @ts-nocheck
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ListItem, PrimaryButton, TextField } from '../../../components/mobile';
+import { PrimaryButton, TextField } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
 import { validateSetupModel, syncSectionOrder } from '../lib/setup-model.js';
 import { mutateSetupModel } from '../hooks/useSetupAutosave';
@@ -65,22 +65,53 @@ type Props = {
   info?: string | null;
   error?: string | null;
   embedded?: boolean;
+  showPreview?: boolean;
 };
 
-function fieldBadges(field: SetupField) {
-  const badges = [];
-  if (field.required) badges.push('Pflicht');
-  if (field.skipped) badges.push('Ausgeblendet');
-  if (field.multiline) badges.push('Mehrzeilig');
-  return badges.join(' · ') || 'Standard';
+
+function SettingRow({
+  title,
+  hint,
+  value,
+  onValueChange,
+  disabled = false
+}: {
+  title: string;
+  hint: string;
+  value: boolean;
+  onValueChange: (next: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View style={styles.settingRow}>
+      <View style={styles.settingCopy}>
+        <Text style={styles.settingTitle}>{title}</Text>
+        <Text style={styles.settingHint}>{hint}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        disabled={disabled}
+        trackColor={{ false: colors.border, true: colors.accent }}
+        thumbColor={colors.panel}
+      />
+    </View>
+  );
 }
 
-function columnBadges(column: SetupTableColumn) {
-  const badges = [];
-  if (column.required) badges.push('Pflicht');
-  if (column.skipped) badges.push('Ausgeblendet');
-  if (column.multiline) badges.push('Mehrzeilig');
-  return badges.join(' · ') || 'Standard';
+function StatusPills({ items }: { items: string[] }) {
+  if (items.length === 0) {
+    return <Text style={styles.pillNeutral}>Standard</Text>;
+  }
+  return (
+    <View style={styles.pillRow}>
+      {items.map((item) => (
+        <View key={item} style={styles.pill}>
+          <Text style={styles.pillText}>{item}</Text>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 export function SetupEditor({
@@ -98,7 +129,8 @@ export function SetupEditor({
   onChange,
   info,
   error,
-  embedded = false
+  embedded = false,
+  showPreview = false
 }: Props) {
   const insets = useSafeAreaInsets();
   const singleSections = (setupModel.single_sections || []) as SetupSingleSection[];
@@ -306,19 +338,6 @@ export function SetupEditor({
 
   return (
     <View style={styles.root}>
-      {templatePdfPath ? (
-        <View style={styles.previewPane}>
-          <SetupPdfFieldPreview
-            variant="pinned"
-            pdfPath={templatePdfPath}
-            detectedFields={detectedFields}
-            activeFieldId={activeField?.fieldId || null}
-            activeFieldLabel={activeFieldLabel}
-            activeFieldPage={activeFieldPage}
-          />
-        </View>
-      ) : null}
-
       <ScrollView
         style={styles.editorScroll}
         contentContainerStyle={[styles.editorContent, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
@@ -326,13 +345,24 @@ export function SetupEditor({
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.intro}>
-          <Text style={styles.templateName}>Setup: {templateName}</Text>
-          {!embedded ? (
-            <Text style={styles.muted}>
-              Feld antippen — die Markierung in der PDF-Vorschau zeigt die Position im Formular.
-            </Text>
-          ) : null}
+          <Text style={styles.templateName}>{templateName}</Text>
+          <Text style={styles.muted}>
+            Abschnitt wählen, Feld antippen und Einstellungen direkt darunter anpassen.
+          </Text>
         </View>
+
+        {showPreview && templatePdfPath ? (
+          <View style={styles.inlinePreview}>
+            <SetupPdfFieldPreview
+              variant="default"
+              pdfPath={templatePdfPath}
+              detectedFields={detectedFields}
+              activeFieldId={activeField?.fieldId || null}
+              activeFieldLabel={activeFieldLabel}
+              activeFieldPage={activeFieldPage}
+            />
+          </View>
+        ) : null}
 
         {!embedded ? (
           <SetupTemplateManager
@@ -360,8 +390,25 @@ export function SetupEditor({
             <Text style={styles.muted}>
               Gruppen und Tabellen frei anordnen — die Reihenfolge gilt im Assistenten und in der PDF-Vorschau.
             </Text>
-            {orderedSections.map((entry, index) => (
-              <View key={`${entry.kind}:${entry.id}`} style={styles.orderRow}>
+            {orderedSections.map((entry, index) => {
+              const selected =
+                entry.kind === 'single'
+                  ? mode === 'single' && activeSingle?.sectionId === entry.id
+                  : mode === 'table' && activeTable?.tableId === entry.id;
+              return (
+              <Pressable
+                key={`${entry.kind}:${entry.id}`}
+                style={[styles.orderRow, selected ? styles.orderRowActive : null]}
+                onPress={() => {
+                  if (entry.kind === 'single') {
+                    setMode('single');
+                    setActiveSingleId(entry.id);
+                  } else {
+                    setMode('table');
+                    setActiveTableId(entry.id);
+                  }
+                }}
+              >
                 <View style={styles.orderMeta}>
                   <Text style={styles.orderTitle} numberOfLines={1}>
                     {entry.label}
@@ -382,8 +429,9 @@ export function SetupEditor({
                     onPress={() => moveSectionInOrder(index, 1)}
                   />
                 </View>
-              </View>
-            ))}
+              </Pressable>
+            );
+            })}
           </>
         ) : null}
 
@@ -450,55 +498,58 @@ export function SetupEditor({
                       <Text style={styles.selectorTitle} numberOfLines={2}>
                         {field.label || field.fieldName || field.fieldId}
                       </Text>
-                      <Text style={styles.selectorMeta}>
-                        {field.fieldName || field.fieldId} · {fieldBadges(field)}
-                      </Text>
+                      <Text style={styles.selectorMeta}>{field.fieldName || field.fieldId}</Text>
+                      <StatusPills
+                        items={[
+                          field.required ? 'Pflicht' : null,
+                          field.skipped ? 'Ausgeblendet' : null,
+                          field.multiline ? 'Mehrzeilig' : null
+                        ].filter(Boolean)}
+                      />
                     </Pressable>
                   );
                 })}
 
                 {selectedSingleField ? (
                   <View style={styles.detailCard}>
-                    <Text style={styles.detailTitle}>Feld bearbeiten</Text>
+                    <Text style={styles.detailTitle}>{selectedSingleField.label || selectedSingleField.fieldName}</Text>
                     <Text style={styles.fieldMeta}>
                       PDF-Feld: {selectedSingleField.fieldName || selectedSingleField.fieldId}
                       {selectedSingleField.page ? ` · Seite ${selectedSingleField.page}` : ''}
                     </Text>
                     <TextField
-                      label="Beschriftung"
+                      label="Anzeigename im Assistenten"
                       value={selectedSingleField.label || ''}
                       onChangeText={(value) =>
                         updateSingleField(activeSingle.sectionId, selectedSingleField.fieldId, { label: value })
                       }
                       onFocus={() => setActiveFieldId(selectedSingleField.fieldId)}
                     />
-                    <ListItem
+                    <SettingRow
                       title="Pflichtfeld"
-                      subtitle={selectedSingleField.required ? 'Ja' : 'Nein'}
-                      onPress={() =>
-                        updateSingleField(activeSingle.sectionId, selectedSingleField.fieldId, {
-                          required: !selectedSingleField.required
-                        })
+                      hint="Muss vor dem Export ausgefüllt sein"
+                      value={selectedSingleField.required === true}
+                      onValueChange={(value) =>
+                        updateSingleField(activeSingle.sectionId, selectedSingleField.fieldId, { required: value })
                       }
                     />
-                    <ListItem
-                      title="Überspringen"
-                      subtitle={selectedSingleField.skipped ? 'Ausgeblendet' : 'Sichtbar'}
-                      onPress={() =>
-                        updateSingleField(activeSingle.sectionId, selectedSingleField.fieldId, {
-                          skipped: !selectedSingleField.skipped
-                        })
+                    <SettingRow
+                      title="Im Assistenten ausblenden"
+                      hint="Feld wird nicht angezeigt, bleibt aber im PDF"
+                      value={selectedSingleField.skipped === true}
+                      onValueChange={(value) =>
+                        updateSingleField(activeSingle.sectionId, selectedSingleField.fieldId, { skipped: value })
                       }
                     />
-                    <ListItem
-                      title="Mehrzeilig"
-                      subtitle={selectedSingleField.multiline ? 'Ja · großes Eingabefeld' : 'Nein · einzeilig'}
-                      onPress={() =>
-                        updateSingleField(activeSingle.sectionId, selectedSingleField.fieldId, {
-                          multiline: !selectedSingleField.multiline
-                        })
+                    <SettingRow
+                      title="Mehrzeiliges Eingabefeld"
+                      hint="Größeres Textfeld für längere Einträge"
+                      value={selectedSingleField.multiline === true}
+                      onValueChange={(value) =>
+                        updateSingleField(activeSingle.sectionId, selectedSingleField.fieldId, { multiline: value })
                       }
                     />
+                    <Text style={styles.sectionLabel}>Reihenfolge in der Gruppe</Text>
                     <View style={styles.row}>
                       <PrimaryButton
                         label="↑"
@@ -583,49 +634,53 @@ export function SetupEditor({
                       </Text>
                       <Text style={styles.selectorMeta}>
                         {column.columnId}
-                        {previewCell?.fieldName ? ` · ${previewCell.fieldName}` : ''} · {columnBadges(column)}
+                        {previewCell?.fieldName ? ` · ${previewCell.fieldName}` : ''}
                       </Text>
+                      <StatusPills
+                        items={[
+                          column.required ? 'Pflicht' : null,
+                          column.skipped ? 'Ausgeblendet' : null,
+                          column.multiline ? 'Mehrzeilig' : null
+                        ].filter(Boolean)}
+                      />
                     </Pressable>
                   );
                 })}
 
                 {selectedTableColumn ? (
                   <View style={styles.detailCard}>
-                    <Text style={styles.detailTitle}>Spalte bearbeiten</Text>
-                    <Text style={styles.fieldMeta}>Spalte: {selectedTableColumn.columnId}</Text>
+                    <Text style={styles.detailTitle}>{selectedTableColumn.label || selectedTableColumn.columnId}</Text>
+                    <Text style={styles.fieldMeta}>Spalten-ID: {selectedTableColumn.columnId}</Text>
                     <TextField
-                      label="Beschriftung"
+                      label="Anzeigename im Assistenten"
                       value={selectedTableColumn.label || ''}
                       onChangeText={(value) =>
                         updateTableColumn(activeTable.tableId, selectedTableColumn.columnId, { label: value })
                       }
                       onFocus={() => setActiveColumnId(selectedTableColumn.columnId)}
                     />
-                    <ListItem
+                    <SettingRow
                       title="Pflichtfeld"
-                      subtitle={selectedTableColumn.required ? 'Ja' : 'Nein'}
-                      onPress={() =>
-                        updateTableColumn(activeTable.tableId, selectedTableColumn.columnId, {
-                          required: !selectedTableColumn.required
-                        })
+                      hint="Spalte muss in jeder sichtbaren Zeile ausgefüllt sein"
+                      value={selectedTableColumn.required === true}
+                      onValueChange={(value) =>
+                        updateTableColumn(activeTable.tableId, selectedTableColumn.columnId, { required: value })
                       }
                     />
-                    <ListItem
-                      title="Überspringen"
-                      subtitle={selectedTableColumn.skipped ? 'Ausgeblendet' : 'Sichtbar'}
-                      onPress={() =>
-                        updateTableColumn(activeTable.tableId, selectedTableColumn.columnId, {
-                          skipped: !selectedTableColumn.skipped
-                        })
+                    <SettingRow
+                      title="Im Assistenten ausblenden"
+                      hint="Spalte wird nicht angezeigt, bleibt aber im PDF"
+                      value={selectedTableColumn.skipped === true}
+                      onValueChange={(value) =>
+                        updateTableColumn(activeTable.tableId, selectedTableColumn.columnId, { skipped: value })
                       }
                     />
-                    <ListItem
-                      title="Mehrzeilig"
-                      subtitle={selectedTableColumn.multiline ? 'Ja · großes Eingabefeld' : 'Nein · einzeilig'}
-                      onPress={() =>
-                        updateTableColumn(activeTable.tableId, selectedTableColumn.columnId, {
-                          multiline: !selectedTableColumn.multiline
-                        })
+                    <SettingRow
+                      title="Mehrzeiliges Eingabefeld"
+                      hint="Größeres Textfeld für längere Einträge"
+                      value={selectedTableColumn.multiline === true}
+                      onValueChange={(value) =>
+                        updateTableColumn(activeTable.tableId, selectedTableColumn.columnId, { multiline: value })
                       }
                     />
                   </View>
@@ -780,6 +835,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.panel
   },
+  orderRowActive: {
+    borderColor: colors.accent,
+    backgroundColor: 'rgba(47, 111, 237, 0.08)'
+  },
   orderMeta: {
     flex: 1,
     gap: 2
@@ -789,6 +848,48 @@ const styles = StyleSheet.create({
     color: colors.ink
   },
   orderType: {
+    ...typography.caption,
+    color: colors.muted
+  },
+  inlinePreview: {
+    borderRadius: 12,
+    overflow: 'hidden'
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs
+  },
+  settingCopy: {
+    flex: 1,
+    gap: 2
+  },
+  settingTitle: {
+    ...typography.bodyStrong,
+    color: colors.ink
+  },
+  settingHint: {
+    ...typography.caption,
+    color: colors.muted
+  },
+  pillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xxs
+  },
+  pill: {
+    borderRadius: 999,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    backgroundColor: colors.badgeBg
+  },
+  pillText: {
+    ...typography.caption,
+    color: colors.accent
+  },
+  pillNeutral: {
     ...typography.caption,
     color: colors.muted
   }

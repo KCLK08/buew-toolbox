@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
@@ -12,7 +12,8 @@ type Props = {
   error?: string | null;
 };
 
-const PREVIEW_HTML = `<!DOCTYPE html>
+function buildPreviewHtml(base64: string) {
+  return `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -73,14 +74,13 @@ const PREVIEW_HTML = `<!DOCTYPE html>
         post({ type: 'state', page: safePage, pageCount: pdfDoc.numPages, ready: true, error: null });
       }
 
-      async function loadPdfBase64(base64, preferredPage) {
+      async function boot() {
         try {
-          const data = atob(base64);
+          const data = atob('${base64}');
           const bytes = new Uint8Array(data.length);
           for (let i = 0; i < data.length; i += 1) bytes[i] = data.charCodeAt(i);
           pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
-          const targetPage = Math.min(Math.max(preferredPage || currentPage || 1, 1), pdfDoc.numPages);
-          await renderPage(targetPage);
+          await renderPage(1);
         } catch (error) {
           post({
             type: 'state',
@@ -95,14 +95,8 @@ const PREVIEW_HTML = `<!DOCTYPE html>
       function handleCommand(raw) {
         try {
           const message = typeof raw === 'string' ? JSON.parse(raw) : raw;
-          if (!message || !message.type) return;
-          if (message.type === 'setPage') {
-            void renderPage(Number(message.page || 1));
-            return;
-          }
-          if (message.type === 'setPdf' && message.base64) {
-            void loadPdfBase64(String(message.base64), Number(message.page || currentPage || 1));
-          }
+          if (!message || message.type !== 'setPage') return;
+          void renderPage(Number(message.page || 1));
         } catch {
           // Ignore malformed commands.
         }
@@ -110,41 +104,26 @@ const PREVIEW_HTML = `<!DOCTYPE html>
 
       document.addEventListener('message', (event) => handleCommand(event.data));
       window.addEventListener('message', (event) => handleCommand(event.data));
-      post({ type: 'ready' });
+      void boot();
     </script>
   </body>
 </html>`;
+}
 
 export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Props) {
   const webViewRef = useRef<WebView>(null);
-  const [webReady, setWebReady] = useState(false);
+  const [html, setHtml] = useState<string | null>(null);
   const [readBusy, setReadBusy] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
-  const [hasRendered, setHasRendered] = useState(false);
   const [previewState, setPreviewState] = useState({
     page: 1,
     pageCount: 1,
     ready: false
   });
-  const pendingBase64Ref = useRef<string | null>(null);
-  const currentPageRef = useRef(1);
-
-  const pushPdfToWebView = useCallback((base64: string, page = currentPageRef.current) => {
-    webViewRef.current?.postMessage(
-      JSON.stringify({
-        type: 'setPdf',
-        base64,
-        page
-      })
-    );
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
     if (!pdfPath) {
-      pendingBase64Ref.current = null;
-      setHasRendered(false);
-      setPreviewState({ page: 1, pageCount: 1, ready: false });
       return undefined;
     }
 
@@ -155,14 +134,11 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
     })
       .then((base64) => {
         if (cancelled) return;
-        pendingBase64Ref.current = base64;
-        if (webReady) {
-          pushPdfToWebView(base64, currentPageRef.current);
-        }
+        setHtml(buildPreviewHtml(base64));
+        setPreviewState({ page: 1, pageCount: 1, ready: false });
       })
       .catch((readError) => {
         if (!cancelled) {
-          pendingBase64Ref.current = null;
           setRenderError(readError instanceof Error ? readError.message : 'PDF konnte nicht gelesen werden.');
         }
       })
@@ -173,15 +149,9 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
     return () => {
       cancelled = true;
     };
-  }, [pdfPath, pushPdfToWebView, webReady]);
-
-  useEffect(() => {
-    if (!webReady || !pendingBase64Ref.current) return;
-    pushPdfToWebView(pendingBase64Ref.current, currentPageRef.current);
-  }, [webReady, pushPdfToWebView]);
+  }, [pdfPath]);
 
   const goToPage = (page: number) => {
-    currentPageRef.current = page;
     webViewRef.current?.postMessage(JSON.stringify({ type: 'setPage', page }));
   };
 
@@ -194,21 +164,14 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
         ready?: boolean;
         error?: string | null;
       };
-      if (payload.type === 'ready') {
-        setWebReady(true);
-        return;
-      }
       if (payload.type !== 'state') return;
       if (payload.error) {
         setRenderError(payload.error);
         return;
       }
       setRenderError(null);
-      const page = Number(payload.page || 1);
-      currentPageRef.current = page;
-      setHasRendered(true);
       setPreviewState({
-        page,
+        page: Number(payload.page || 1),
         pageCount: Number(payload.pageCount || 1),
         ready: Boolean(payload.ready)
       });
@@ -218,10 +181,10 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
   };
 
   const displayError = error || renderError;
-  const showInitialLoader = !hasRendered && (loading || readBusy || !pdfPath);
-  const showUpdateOverlay = hasRendered && (loading || readBusy);
+  const showInitialLoader = !html && (loading || readBusy || !pdfPath);
+  const showUpdateOverlay = Boolean(html) && (loading || readBusy);
 
-  if (displayError && !hasRendered) {
+  if (displayError && !html) {
     return (
       <View style={styles.center}>
         <Text style={styles.error}>{displayError}</Text>
@@ -238,13 +201,21 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
     );
   }
 
+  if (!html) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.muted}>Noch keine Live-Vorschau verfügbar.</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.root}>
       <Text style={styles.banner}>Live-PDF-Vorschau</Text>
       <View style={styles.panel}>
         <WebView
           ref={webViewRef}
-          source={{ html: PREVIEW_HTML }}
+          source={{ html }}
           style={styles.webview}
           originWhitelist={['*']}
           scrollEnabled
@@ -260,7 +231,7 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
             <Text style={styles.updateLabel}>Aktualisiere…</Text>
           </View>
         ) : null}
-        {displayError && hasRendered ? (
+        {displayError ? (
           <View style={styles.updateOverlay}>
             <Text style={styles.error}>{displayError}</Text>
           </View>

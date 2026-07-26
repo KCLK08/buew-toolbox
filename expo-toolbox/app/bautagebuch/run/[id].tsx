@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 
-import { PrimaryButton, Screen, StatusBadge } from '../../../src/components/mobile';
+import { PrimaryButton, Screen } from '../../../src/components/mobile';
 import { colors, typography } from '../../../src/constants/theme';
 import { useToast } from '../../../src/contexts/ToastContext';
 import { PdfPreviewPanel } from '../../../src/native/bautagebuch/components/PdfPreviewPanel';
@@ -43,7 +43,7 @@ export default function BautagebuchRunScreen() {
   const [exportSheetOpen, setExportSheetOpen] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [weatherBusy, setWeatherBusy] = useState(false);
-  const [showPreview, setShowPreview] = useState(true);
+  const [showPreview, setShowPreview] = useState(false);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -113,6 +113,11 @@ export default function BautagebuchRunScreen() {
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
     };
   }, [run?.runId, run?.values, run?.photoDoc, showPreview, refreshPreview]);
+
+  useEffect(() => {
+    if (!run || !showPreview || previewPath) return;
+    void refreshPreview();
+  }, [run, showPreview, previewPath, refreshPreview]);
 
   const persist = (patch: Partial<BautagebuchRun>) => {
     setRun((current) => {
@@ -289,23 +294,11 @@ export default function BautagebuchRunScreen() {
       subtitle="Guided Flow · PDF-Export"
       showBack
       footer={
-        <View style={styles.footerCol}>
-          {totalMissingRequired > 0 ? (
-            <StatusBadge
-              label={`${totalMissingRequired} Pflichtfeld${totalMissingRequired === 1 ? '' : 'er'} offen`}
-              tone="warning"
-            />
-          ) : (
-            <StatusBadge label="Bereit zum Export" tone="success" />
-          )}
-          <View style={styles.footerRow}>
-            <PrimaryButton
-              label={exporting ? 'PDF…' : 'PDF exportieren'}
-              disabled={exporting || totalMissingRequired > 0}
-              onPress={handleExport}
-            />
-          </View>
-        </View>
+        <PrimaryButton
+          label={showPreview ? 'Vorschau ausblenden' : 'Vorschau einblenden'}
+          variant="secondary"
+          onPress={() => setShowPreview((value) => !value)}
+        />
       }
     >
       <RunWizard
@@ -316,7 +309,6 @@ export default function BautagebuchRunScreen() {
         photoDoc={run.photoDoc}
         totalMissingRequired={totalMissingRequired}
         showPreview={showPreview}
-        onTogglePreview={() => setShowPreview((value) => !value)}
         previewPanel={
           <PdfPreviewPanel pdfPath={previewPath} loading={previewLoading} error={previewError} />
         }
@@ -344,7 +336,5 @@ export default function BautagebuchRunScreen() {
 
 const styles = StyleSheet.create({
   error: { ...typography.body, color: colors.danger },
-  muted: { ...typography.caption, color: colors.muted },
-  footerCol: { gap: 8 },
-  footerRow: { flexDirection: 'row', gap: 8 }
+  muted: { ...typography.caption, color: colors.muted }
 });

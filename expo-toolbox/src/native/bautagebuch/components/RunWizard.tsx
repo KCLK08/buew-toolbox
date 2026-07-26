@@ -34,7 +34,6 @@ type Props = {
   totalMissingRequired?: number;
   onRequestExport?: () => void;
   showPreview?: boolean;
-  onTogglePreview?: () => void;
   previewPanel?: React.ReactNode;
 };
 
@@ -121,8 +120,7 @@ export function RunWizard({
   photoBusy = false,
   totalMissingRequired = 0,
   onRequestExport,
-  showPreview = true,
-  onTogglePreview,
+  showPreview = false,
   previewPanel = null
 }: Props) {
   const sections = useMemo(() => buildRunSectionsWithPhotoDoc(setupModel), [setupModel]);
@@ -520,16 +518,7 @@ export function RunWizard({
         {renderSectionContent()}
       </Card>
 
-      {previewPanel ? (
-        <View style={styles.previewBlock}>
-          <PrimaryButton
-            label={showPreview ? 'Live-Vorschau ausblenden' : 'Live-Vorschau anzeigen'}
-            variant="secondary"
-            onPress={() => onTogglePreview?.()}
-          />
-          {showPreview ? previewPanel : null}
-        </View>
-      ) : null}
+      {showPreview && previewPanel ? <View style={styles.previewBlock}>{previewPanel}</View> : null}
 
       <View style={styles.footerRow}>
         <PrimaryButton
