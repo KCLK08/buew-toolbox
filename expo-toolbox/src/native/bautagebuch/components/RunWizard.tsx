@@ -13,7 +13,6 @@ import {
   sectionRunOptions,
   visibleRowCountForSection
 } from '../lib/run-validation';
-import { RunValuesPreview } from './RunValuesPreview';
 import { RunSectionNav } from './RunSectionNav';
 
 type RunSection = ReturnType<typeof buildRunSections>[number];
@@ -34,7 +33,6 @@ type Props = {
   photoBusy?: boolean;
   totalMissingRequired?: number;
   onRequestExport?: () => void;
-  showPreview?: boolean;
   previewPanel?: React.ReactNode;
 };
 
@@ -88,7 +86,6 @@ export function RunWizard({
   photoBusy = false,
   totalMissingRequired = 0,
   onRequestExport,
-  showPreview = false,
   previewPanel = null
 }: Props) {
   const sections = useMemo(() => buildRunSectionsWithPhotoDoc(setupModel), [setupModel]);
@@ -455,8 +452,7 @@ export function RunWizard({
         {renderSectionContent()}
       </Card>
 
-      {!showPreview ? <RunValuesPreview setupModel={setupModel} values={values} sectionIndex={sectionIndex} /> : null}
-      {showPreview ? previewPanel : null}
+      {previewPanel}
 
       <View style={styles.footerRow}>
         <PrimaryButton

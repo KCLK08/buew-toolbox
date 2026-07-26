@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 
 import { PrimaryButton, Screen, StatusBadge } from '../../../src/components/mobile';
@@ -43,7 +43,6 @@ export default function BautagebuchRunScreen() {
   const [exportSheetOpen, setExportSheetOpen] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [weatherBusy, setWeatherBusy] = useState(false);
-  const [showPreview, setShowPreview] = useState(true);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -89,7 +88,7 @@ export default function BautagebuchRunScreen() {
   }, [run, setupModel]);
 
   const refreshPreview = useCallback(async () => {
-    if (!run || !showPreview) return;
+    if (!run) return;
     setPreviewLoading(true);
     setPreviewError(null);
     try {
@@ -101,10 +100,10 @@ export default function BautagebuchRunScreen() {
     } finally {
       setPreviewLoading(false);
     }
-  }, [flush, run, showPreview]);
+  }, [flush, run]);
 
   useEffect(() => {
-    if (!run || !showPreview) return undefined;
+    if (!run) return undefined;
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
     previewTimerRef.current = setTimeout(() => {
       void refreshPreview();
@@ -112,7 +111,7 @@ export default function BautagebuchRunScreen() {
     return () => {
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
     };
-  }, [run?.values, run?.photoDoc, showPreview, refreshPreview]);
+  }, [run?.runId, run?.values, run?.photoDoc, refreshPreview]);
 
   const persist = (patch: Partial<BautagebuchRun>) => {
     setRun((current) => {
@@ -298,11 +297,6 @@ export default function BautagebuchRunScreen() {
           ) : (
             <StatusBadge label="Bereit zum Export" tone="success" />
           )}
-          <Pressable onPress={() => setShowPreview((value) => !value)}>
-            <Text style={styles.previewToggle}>
-              {showPreview ? 'Vorschau ausblenden' : 'Live-PDF-Vorschau anzeigen'}
-            </Text>
-          </Pressable>
           <View style={styles.footerRow}>
             <PrimaryButton
               label={exporting ? 'PDF…' : 'PDF exportieren'}
@@ -320,7 +314,6 @@ export default function BautagebuchRunScreen() {
         weatherBusy={weatherBusy}
         photoDoc={run.photoDoc}
         totalMissingRequired={totalMissingRequired}
-        showPreview={showPreview}
         previewPanel={
           <PdfPreviewPanel pdfPath={previewPath} loading={previewLoading} error={previewError} />
         }
@@ -350,6 +343,5 @@ const styles = StyleSheet.create({
   error: { ...typography.body, color: colors.danger },
   muted: { ...typography.caption, color: colors.muted },
   footerCol: { gap: 8 },
-  footerRow: { flexDirection: 'row', gap: 8 },
-  previewToggle: { ...typography.caption, color: colors.accent, textAlign: 'center' }
+  footerRow: { flexDirection: 'row', gap: 8 }
 });
