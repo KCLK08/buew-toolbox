@@ -1,6 +1,7 @@
-import { forwardRef, useEffect, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 
+import { useKeyboardScroll } from '../../contexts/KeyboardScrollContext';
 import { colors, spacing, typography } from '../../constants/theme';
 
 type Props = TextInputProps & {
@@ -13,10 +14,14 @@ const MULTILINE_MIN_HEIGHT = 132;
 const MULTILINE_MAX_HEIGHT = 320;
 
 export const TextField = forwardRef<TextInput, Props>(function TextField(
-  { label, hint, style, multiline, autoGrow, value, onContentSizeChange, ...rest },
+  { label, hint, style, multiline, autoGrow, value, onContentSizeChange, onFocus, ...rest },
   ref
 ) {
+  const inputRef = useRef<TextInput>(null);
   const [inputHeight, setInputHeight] = useState<number | undefined>(undefined);
+  const keyboardScroll = useKeyboardScroll();
+
+  useImperativeHandle(ref, () => inputRef.current as TextInput);
 
   useEffect(() => {
     if (!multiline || !autoGrow) {
@@ -30,12 +35,16 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
     <View style={styles.wrap}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
-        ref={ref}
+        ref={inputRef}
         placeholderTextColor={colors.muted}
         multiline={multiline}
         textAlignVertical={multiline ? 'top' : 'center'}
         scrollEnabled={!(multiline && autoGrow)}
         value={value}
+        onFocus={(event) => {
+          keyboardScroll?.scrollInputIntoView(inputRef.current);
+          onFocus?.(event);
+        }}
         onContentSizeChange={(event) => {
           if (multiline && autoGrow) {
             const nextHeight = Math.min(
