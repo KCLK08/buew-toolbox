@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ListItem, PrimaryButton, TextField } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
-import { validateSetupModel } from '../lib/setup-model.js';
+import { validateSetupModel, syncSectionOrder } from '../lib/setup-model.js';
 import { mutateSetupModel } from '../hooks/useSetupAutosave';
 import type { BautagebuchTemplate, DetectedField } from '../types';
 import { SetupPdfFieldPreview } from './SetupPdfFieldPreview';
@@ -103,6 +103,27 @@ export function SetupEditor({
   const insets = useSafeAreaInsets();
   const singleSections = (setupModel.single_sections || []) as SetupSingleSection[];
   const tableSections = (setupModel.table_sections || []) as SetupTableSection[];
+  const sectionOrder = useMemo(() => syncSectionOrder(setupModel), [setupModel]);
+  const orderedSections = useMemo(
+    () =>
+      sectionOrder.map((entry) => {
+        if (entry.kind === 'single') {
+          const section = singleSections.find((item) => item.sectionId === entry.id);
+          return {
+            ...entry,
+            label: section?.label || entry.id,
+            typeLabel: 'Gruppe'
+          };
+        }
+        const table = tableSections.find((item) => item.tableId === entry.id);
+        return {
+          ...entry,
+          label: table?.label || entry.id,
+          typeLabel: 'Tabelle'
+        };
+      }),
+    [sectionOrder, singleSections, tableSections]
+  );
   const validationErrors = useMemo(() => validateSetupModel(setupModel), [setupModel]);
 
   const [mode, setMode] = useState<'single' | 'table'>(() =>
@@ -174,6 +195,17 @@ export function SetupEditor({
 
   const updateModel = (mutator: (model: Record<string, unknown>) => void) => {
     onChange(mutateSetupModel(setupModel, mutator));
+  };
+
+  const moveSectionInOrder = (index: number, direction: -1 | 1) => {
+    updateModel((model) => {
+      const order = syncSectionOrder(model);
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= order.length) return;
+      const next = [...order];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      model.section_order = next;
+    });
   };
 
   const updateSingleField = (sectionId: string, fieldId: string, patch: Partial<SetupField>) => {
@@ -320,6 +352,39 @@ export function SetupEditor({
           <Text style={styles.warn}>
             {validationErrors.length} Validierungsproblem(e): {validationErrors[0]}
           </Text>
+        ) : null}
+
+        {orderedSections.length > 1 ? (
+          <>
+            <Text style={styles.sectionLabel}>Reihenfolge im Bautagebuch</Text>
+            <Text style={styles.muted}>
+              Gruppen und Tabellen frei anordnen — die Reihenfolge gilt im Assistenten und in der PDF-Vorschau.
+            </Text>
+            {orderedSections.map((entry, index) => (
+              <View key={`${entry.kind}:${entry.id}`} style={styles.orderRow}>
+                <View style={styles.orderMeta}>
+                  <Text style={styles.orderTitle} numberOfLines={1}>
+                    {entry.label}
+                  </Text>
+                  <Text style={styles.orderType}>{entry.typeLabel}</Text>
+                </View>
+                <View style={styles.row}>
+                  <PrimaryButton
+                    label="↑"
+                    variant="ghost"
+                    disabled={index === 0}
+                    onPress={() => moveSectionInOrder(index, -1)}
+                  />
+                  <PrimaryButton
+                    label="↓"
+                    variant="ghost"
+                    disabled={index === orderedSections.length - 1}
+                    onPress={() => moveSectionInOrder(index, 1)}
+                  />
+                </View>
+              </View>
+            ))}
+          </>
         ) : null}
 
         <View style={styles.modeRow}>
@@ -703,5 +768,28 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.xs,
     alignItems: 'center'
+  },
+  orderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.panel
+  },
+  orderMeta: {
+    flex: 1,
+    gap: 2
+  },
+  orderTitle: {
+    ...typography.bodyStrong,
+    color: colors.ink
+  },
+  orderType: {
+    ...typography.caption,
+    color: colors.muted
   }
 });

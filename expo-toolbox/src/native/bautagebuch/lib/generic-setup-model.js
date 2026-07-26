@@ -1,3 +1,5 @@
+import { buildLegacySectionOrder } from './setup-model.js';
+
 function createId(prefix = 'id') {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -87,6 +89,7 @@ export function buildGenericSetupModel({
     pageCount: Number(pageCount || 1),
     single_sections: singleSections,
     table_sections: [],
+    section_order: buildLegacySectionOrder({ single_sections: singleSections, table_sections: [] }),
     createdAt: nowIso(),
     updatedAt: nowIso()
   };

@@ -4,11 +4,13 @@ const GEWERK_FIELD_NAMES = new Set(['Text3', 'Text5', 'Text6', 'Text7', 'Text8']
 const SHIFT_FIELD_NAMES = new Set(['Check Box1', 'Check Box2', 'Check Box3']);
 const PHOTO_DOC_SECTION_ID = 'photo-doc';
 
-export type RunSection = ReturnType<typeof buildRunSections>[number] & {
-  kind?: string;
-  sectionId?: string;
-  tableId?: string;
-};
+export type RunSection =
+  | ReturnType<typeof buildRunSections>[number]
+  | {
+      sectionId: string;
+      kind: 'photo-doc';
+      label: string;
+    };
 
 function tableRowCountKey(tableId: string): string {
   return `__tableRows:${String(tableId || '').trim()}`;
@@ -121,7 +123,7 @@ export function buildRunSectionsWithPhotoDoc(setupModel: Record<string, unknown>
       sectionId: PHOTO_DOC_SECTION_ID,
       kind: 'photo-doc',
       label: 'Fotodokumentation'
-    } as RunSection
+    }
   ];
 }
 

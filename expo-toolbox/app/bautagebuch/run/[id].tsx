@@ -30,7 +30,7 @@ import { ExportFinishSheet } from '../../../src/native/bautagebuch/components/Ex
 import type { BautagebuchRun } from '../../../src/native/bautagebuch/types';
 import { nowIso } from '../../../src/lib/ids';
 
-const PREVIEW_DEBOUNCE_MS = 900;
+const PREVIEW_DEBOUNCE_MS = 350;
 
 export default function BautagebuchRunScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();

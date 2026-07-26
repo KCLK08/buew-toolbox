@@ -1,10 +1,20 @@
+import { buildLegacySectionOrder, syncSectionOrder } from './setup-model.js';
+
 const ETB_SNAPSHOT = null;
 
 export const ETB_TEMPLATE_KIND = 'builtin-etb';
 export const ETB_TEMPLATE_NAME = 'Vorlage-eBTB';
 export const ETB_TEMPLATE_FILE_NAME = 'Vorlage-eBTB.pdf';
 export const ETB_TEMPLATE_PUBLIC_URL = '/buew-toolbox/bautagebuch/templates/Vorlage-eBTB.pdf';
-export const ETB_SETUP_VERSION = 7;
+export const ETB_SETUP_VERSION = 8;
+
+const ETB_DEFAULT_SECTION_ORDER = [
+  { kind: 'single', id: 'header' },
+  { kind: 'table', id: 'table_main_personal' },
+  { kind: 'single', id: 'weather' },
+  { kind: 'table', id: 'table_detail_blocks' },
+  { kind: 'single', id: 'closing' }
+];
 
 const MULTILINE_COLUMNS_BY_TABLE = new Map([['table_detail_blocks', new Set(['c4', 'c5'])]]);
 
@@ -331,6 +341,7 @@ function buildEtbSetupModelFromSnapshot({ templateId, pageCount, detectedFields 
     pageCount: Number(pageCount || 1),
     single_sections: singleSections,
     table_sections: tableSections,
+    section_order: buildEtbSectionOrder(singleSections),
     createdAt: nowIso(),
     updatedAt: nowIso()
   };
@@ -385,6 +396,20 @@ function buildSnapshotTableCell({ tableId, rowId, column, entry, sourceField }) 
   return cell;
 }
 
+function buildEtbSectionOrder(singleSections = []) {
+  const order = [...ETB_DEFAULT_SECTION_ORDER];
+  const known = new Set(order.map((entry) => `${entry.kind}:${entry.id}`));
+  for (const section of singleSections) {
+    const id = String(section?.sectionId || '').trim();
+    const key = `single:${id}`;
+    if (id && !known.has(key)) {
+      order.push({ kind: 'single', id });
+      known.add(key);
+    }
+  }
+  return order;
+}
+
 function uniqueToken(value, fallback, used) {
   const base = String(value || '').trim() || String(fallback || '').trim() || 'item';
   if (!used.has(base)) {
@@ -436,6 +461,17 @@ export function upgradeSetupModel(model) {
             changed = true;
           }
         }
+      }
+    }
+
+    if (!Array.isArray(model.section_order) || model.section_order.length === 0) {
+      model.section_order = buildLegacySectionOrder(model);
+      changed = true;
+    } else {
+      const synced = syncSectionOrder(model);
+      if (JSON.stringify(synced) !== JSON.stringify(model.section_order)) {
+        model.section_order = synced;
+        changed = true;
       }
     }
 
@@ -540,6 +576,7 @@ export function buildEtbSetupModel({ templateId, pageCount, detectedFields = [] 
     pageCount: Number(pageCount || 1),
     single_sections: singleSections,
     table_sections: [mainPersonalTable, detailBlockTable],
+    section_order: buildEtbSectionOrder(singleSections),
     createdAt: nowIso(),
     updatedAt: nowIso()
   };
