@@ -12,11 +12,22 @@ function todayDateLabel(): string {
 }
 
 function hasRunValue(type: string | undefined, value: unknown): boolean {
-  if (type === 'checkbox') return value === true;
+  if (type === 'checkbox') return value === true || value === false;
   return String(value ?? '').trim().length > 0;
 }
 
-function runDefaultValueForField(field: { fieldName?: string; defaultValue?: string }): string {
+function runDefaultValueForField(field: {
+  fieldName?: string;
+  defaultValue?: string | boolean;
+  type?: string;
+}): string | boolean {
+  const type = String(field?.type || 'text');
+  if (type === 'checkbox') {
+    const raw = field?.defaultValue as string | boolean | undefined;
+    if (raw === true || raw === 'true') return true;
+    if (raw === false || raw === 'false') return false;
+    return '';
+  }
   const configured = String(field?.defaultValue || '').trim();
   if (configured) return configured;
   const fieldName = String(field?.fieldName || '').trim();
@@ -41,8 +52,8 @@ export function applyRunDefaultsFromModel(
   for (const section of singleSections) {
     for (const field of section?.fields || []) {
       if (field?.skipped === true) continue;
-      const defaultValue = runDefaultValueForField(field as { fieldName?: string });
-      if (!defaultValue) continue;
+      const defaultValue = runDefaultValueForField(field as { fieldName?: string; defaultValue?: string; type?: string });
+      if (defaultValue === '' || defaultValue === false) continue;
       const key = inputKeyForField(field as { fieldId: string });
       if (!key) continue;
       if (hasRunValue(String(field.type || 'text'), nextValues[key])) continue;

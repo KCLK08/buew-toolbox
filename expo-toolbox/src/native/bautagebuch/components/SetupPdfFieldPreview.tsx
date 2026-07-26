@@ -14,11 +14,13 @@ type Props = {
   activeFieldId?: string | null;
   activeFieldLabel?: string | null;
   activeFieldPage?: number;
-  variant?: 'default' | 'pinned' | 'mapping';
+  variant?: 'default' | 'pinned' | 'mapping' | 'overlay';
+  emphasizeActiveHighlight?: boolean;
 };
 
 const PINNED_PREVIEW_HEIGHT = Math.max(220, Math.round(Dimensions.get('window').height * 0.34));
 const MAPPING_PREVIEW_HEIGHT = Math.max(360, Math.round(Dimensions.get('window').height * 0.62));
+const OVERLAY_PREVIEW_HEIGHT = Math.max(420, Math.round(Dimensions.get('window').height * 0.72));
 
 type PreviewState = {
   page: number;
@@ -30,7 +32,9 @@ type PreviewState = {
 function buildPreviewHtml(
   base64: string,
   highlights: Array<{ fieldId: string; page: number; rect: number[] }>,
-  mappingMode = false
+  mappingMode = false,
+  highlightActive = false,
+  highQuality = false
 ) {
   const highlightsJson = JSON.stringify(highlights);
   return `<!DOCTYPE html>
@@ -42,8 +46,8 @@ function buildPreviewHtml(
     <style>
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; background: #f2f0eb; height: 100%; }
-      #wrap { position: relative; min-height: 320px; }
-      canvas { display: block; width: 100%; height: auto; }
+      #wrap { position: relative; min-height: 320px; display: flex; justify-content: center; padding: 8px 0; }
+      canvas { display: block; max-width: 100%; height: auto; background: #fff; }
       #overlay { position: absolute; inset: 0; pointer-events: none; }
       .highlight {
         position: absolute;
@@ -75,6 +79,8 @@ function buildPreviewHtml(
     </div>
     <script>
       const mappingMode = ${mappingMode ? 'true' : 'false'};
+      const highlightActive = ${highlightActive ? 'true' : 'false'};
+      const highQuality = ${highQuality ? 'true' : 'false'};
       const pdfjsLib = window.pdfjsLib;
       if (!pdfjsLib) {
         throw new Error('pdf.js nicht geladen');
@@ -115,7 +121,7 @@ function buildPreviewHtml(
           const isActive = entry.fieldId === activeFieldId;
           let className = 'highlight';
           if (isActive) className += ' active';
-          else if (mappingMode && activeFieldId) className += ' dim';
+          else if ((mappingMode || highlightActive) && activeFieldId) className += ' dim';
           box.className = className;
           box.style.left = left + 'px';
           box.style.top = top + 'px';
@@ -133,11 +139,17 @@ function buildPreviewHtml(
         const canvas = document.getElementById('canvas');
         const context = canvas.getContext('2d');
         const baseViewport = page.getViewport({ scale: 1 });
-        const maxWidth = Math.min(window.innerWidth || 860, mappingMode ? window.innerWidth || 860 : 860);
-        viewportScale = Math.min(maxWidth / baseViewport.width, mappingMode ? 2.6 : 2.1);
-        const viewport = page.getViewport({ scale: viewportScale });
+        const dpr = Math.min(window.devicePixelRatio || 1, 3);
+        const maxCssWidth = Math.min(window.innerWidth || 860, 860);
+        const fitScale = maxCssWidth / baseViewport.width;
+        const qualityBoost = highQuality ? 1.15 : 1;
+        viewportScale = Math.min(fitScale, mappingMode ? 2.8 : highQuality ? 3.2 : 2.4) * qualityBoost;
+        const scale = viewportScale * dpr;
+        const viewport = page.getViewport({ scale });
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
+        canvas.style.width = Math.ceil(viewport.width / dpr) + 'px';
+        canvas.style.height = Math.ceil(viewport.height / dpr) + 'px';
         await page.render({ canvasContext: context, viewport }).promise;
         drawOverlay(safePage, viewport);
         post({ type: 'state', page: safePage, pageCount: pdfDoc.numPages, ready: true, error: null });
@@ -192,10 +204,14 @@ export function SetupPdfFieldPreview({
   activeFieldId,
   activeFieldLabel,
   activeFieldPage = 1,
-  variant = 'default'
+  variant = 'default',
+  emphasizeActiveHighlight = false
 }: Props) {
   const pinned = variant === 'pinned';
   const mapping = variant === 'mapping';
+  const overlay = variant === 'overlay';
+  const highQuality = overlay || mapping;
+  const highlightActive = emphasizeActiveHighlight || mapping || overlay;
   const webViewRef = useRef<WebView>(null);
   const [html, setHtml] = useState<string | null>(null);
   const [readBusy, setReadBusy] = useState(false);
@@ -234,7 +250,7 @@ export function SetupPdfFieldPreview({
     })
       .then((base64) => {
         if (cancelled) return;
-        setHtml(buildPreviewHtml(base64, highlights, mapping));
+        setHtml(buildPreviewHtml(base64, highlights, mapping, highlightActive, highQuality));
         setPreviewState({ page: 1, pageCount: 1, ready: false, error: null });
       })
       .catch(() => {
@@ -250,7 +266,7 @@ export function SetupPdfFieldPreview({
     return () => {
       cancelled = true;
     };
-  }, [pdfPath, highlights, mapping]);
+  }, [pdfPath, highlights, mapping, highlightActive, highQuality]);
 
   useEffect(() => {
     if (!previewState.ready || useFallback) return;
@@ -314,17 +330,36 @@ export function SetupPdfFieldPreview({
       : 'Feld in der Liste antippen, um die zugehörige PDF-Seite zu sehen.';
 
   return (
-    <View style={[styles.root, pinned ? styles.rootPinned : null, mapping ? styles.rootMapping : null]}>
+    <View
+      style={[
+        styles.root,
+        pinned ? styles.rootPinned : null,
+        mapping ? styles.rootMapping : null,
+        overlay ? styles.rootOverlay : null
+      ]}
+    >
       {!mapping ? (
         <Text style={[styles.banner, pinned ? styles.bannerPinned : null]} numberOfLines={2}>
           {banner}
         </Text>
       ) : null}
-      <View style={[styles.panel, pinned ? styles.panelPinned : null, mapping ? styles.panelMapping : null]}>
+      <View
+        style={[
+          styles.panel,
+          pinned ? styles.panelPinned : null,
+          mapping ? styles.panelMapping : null,
+          overlay ? styles.panelOverlay : null
+        ]}
+      >
         <WebView
           ref={webViewRef}
           source={{ html }}
-          style={[styles.webview, pinned ? styles.webviewPinned : null, mapping ? styles.webviewMapping : null]}
+          style={[
+            styles.webview,
+            pinned ? styles.webviewPinned : null,
+            mapping ? styles.webviewMapping : null,
+            overlay ? styles.webviewOverlay : null
+          ]}
           originWhitelist={['*']}
           scrollEnabled
           onMessage={onWebMessage}
@@ -377,6 +412,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingTop: 0
   },
+  rootOverlay: {
+    flex: 1,
+    gap: spacing.xs
+  },
   banner: { ...typography.caption, color: colors.accent2 },
   bannerPinned: {
     ...typography.label,
@@ -401,6 +440,11 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     borderWidth: 0
   },
+  panelOverlay: {
+    flex: 1,
+    minHeight: OVERLAY_PREVIEW_HEIGHT,
+    borderRadius: 10
+  },
   webview: {
     flex: 1,
     minHeight: 360,
@@ -414,6 +458,10 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: MAPPING_PREVIEW_HEIGHT - 2,
     height: MAPPING_PREVIEW_HEIGHT - 2
+  },
+  webviewOverlay: {
+    flex: 1,
+    minHeight: OVERLAY_PREVIEW_HEIGHT - 2
   },
   controls: {
     flexDirection: 'row',
