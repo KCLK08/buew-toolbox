@@ -18,7 +18,7 @@ type Props = {
   totalMissingRequired?: number;
 };
 
-const CHIP_WIDTH = 128;
+const CHIP_WIDTH = 148;
 
 export function RunSectionNav({
   sections,
@@ -114,7 +114,11 @@ export function RunSectionNav({
                   </View>
                 ) : null}
               </View>
-              <Text style={[styles.chipLabel, active ? styles.chipLabelActive : null]} numberOfLines={2}>
+              <Text
+                style={[styles.chipLabel, active ? styles.chipLabelActive : null]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
                 {entry.label}
               </Text>
             </Pressable>
@@ -187,7 +191,7 @@ const styles = StyleSheet.create({
   },
   chip: {
     width: CHIP_WIDTH,
-    minHeight: spacing.touchMin + 20,
+    minHeight: 52,
     borderRadius: spacing.inputRadius,
     borderWidth: 1,
     borderColor: colors.border,

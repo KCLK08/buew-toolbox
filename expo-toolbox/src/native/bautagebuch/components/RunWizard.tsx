@@ -32,9 +32,7 @@ type Props = {
   onRemovePhoto?: (entryId: string) => void;
   photoBusy?: boolean;
   totalMissingRequired?: number;
-  onRequestExport?: () => void;
   showPreview?: boolean;
-  onTogglePreview?: () => void;
   previewPanel?: React.ReactNode;
 };
 
@@ -120,9 +118,7 @@ export function RunWizard({
   onRemovePhoto,
   photoBusy = false,
   totalMissingRequired = 0,
-  onRequestExport,
-  showPreview = true,
-  onTogglePreview,
+  showPreview = false,
   previewPanel = null
 }: Props) {
   const sections = useMemo(() => buildRunSectionsWithPhotoDoc(setupModel), [setupModel]);
@@ -468,9 +464,6 @@ export function RunWizard({
     return null;
   };
 
-  const isLastSection = safeSectionIndex >= sections.length - 1;
-  const exportBlocked = totalMissingRequired > 0;
-
   const sectionNavItems = sections.map((entry) => {
     const options = entry.kind === 'photo-doc' ? {} : sectionRunOptions(entry, values);
     const progress =
@@ -520,36 +513,7 @@ export function RunWizard({
         {renderSectionContent()}
       </Card>
 
-      {previewPanel ? (
-        <View style={styles.previewBlock}>
-          <PrimaryButton
-            label={showPreview ? 'Live-Vorschau ausblenden' : 'Live-Vorschau anzeigen'}
-            variant="secondary"
-            onPress={() => onTogglePreview?.()}
-          />
-          {showPreview ? previewPanel : null}
-        </View>
-      ) : null}
-
-      <View style={styles.footerRow}>
-        <PrimaryButton
-          label="Zurück"
-          variant="secondary"
-          disabled={safeSectionIndex <= 0}
-          onPress={() => onSectionChange(Math.max(0, safeSectionIndex - 1))}
-        />
-        <PrimaryButton
-          label={isLastSection ? 'Abschließen' : 'Weiter'}
-          disabled={isLastSection && exportBlocked}
-          onPress={() => {
-            if (isLastSection) {
-              onRequestExport?.();
-              return;
-            }
-            onSectionChange(Math.min(sections.length - 1, safeSectionIndex + 1));
-          }}
-        />
-      </View>
+      {showPreview && previewPanel ? <View style={styles.previewBlock}>{previewPanel}</View> : null}
     </View>
   );
 }
@@ -660,6 +624,5 @@ const styles = StyleSheet.create({
     padding: 6,
     backgroundColor: 'rgba(161, 44, 36, 0.05)'
   },
-  footerRow: { flexDirection: 'row', gap: spacing.sm },
   previewBlock: { gap: spacing.sm }
 });

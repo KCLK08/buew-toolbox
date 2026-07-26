@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { Screen } from '../../../../src/components/mobile';
+import { PrimaryButton, Screen } from '../../../../src/components/mobile';
 import { colors, spacing, typography } from '../../../../src/constants/theme';
 import { SetupEditor } from '../../../../src/native/bautagebuch/components/SetupEditor';
 import { SetupFieldSettingsStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupFieldSettingsStep';
@@ -24,6 +24,7 @@ export default function SetupFieldsScreen() {
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const { schedule, flush } = useSetupAutosave(String(templateId || ''));
 
   const load = useCallback(async () => {
@@ -99,6 +100,30 @@ export default function SetupFieldsScreen() {
     }
   };
 
+  const footer =
+    !loading && setupModel && !readOnly ? (
+      <View style={styles.footer}>
+        {pdfPath ? (
+          <PrimaryButton
+            label={showPreview ? 'Vorschau ausblenden' : 'Vorschau einblenden'}
+            variant="secondary"
+            onPress={() => setShowPreview((value) => !value)}
+          />
+        ) : null}
+        <PrimaryButton
+          label={saving ? 'Wird abgeschlossen…' : 'Setup abschließen'}
+          disabled={saving || validationIssues.length > 0}
+          onPress={() => void handleFinish()}
+        />
+      </View>
+    ) : pdfPath && !loading && setupModel ? (
+      <PrimaryButton
+        label={showPreview ? 'Vorschau ausblenden' : 'Vorschau einblenden'}
+        variant="secondary"
+        onPress={() => setShowPreview((value) => !value)}
+      />
+    ) : undefined;
+
   return (
     <Screen
       title="Schritt 2"
@@ -106,6 +131,7 @@ export default function SetupFieldsScreen() {
       showBack
       scroll={false}
       contentStyle={styles.screenContent}
+      footer={footer}
     >
       {loading ? (
         <View style={styles.center}>
@@ -128,6 +154,7 @@ export default function SetupFieldsScreen() {
           onChange={handleChange}
           error={error}
           embedded
+          showPreview={showPreview}
           onSelectEdit={() => undefined}
           onSetActive={() => undefined}
           onImport={() => undefined}
@@ -141,21 +168,9 @@ export default function SetupFieldsScreen() {
           setupModel={setupModel}
           validationIssues={validationIssues}
           readOnly={readOnly}
+          showPreview={showPreview}
           onChange={handleChange}
-          onFinish={() => void handleFinish()}
-          finishing={saving}
         />
-      ) : null}
-
-      {!loading && setupModel && useLegacyEditor && !readOnly ? (
-        <View style={styles.legacyFooter}>
-          <Text
-            style={styles.finishLink}
-            onPress={() => void handleFinish()}
-          >
-            {saving ? 'Wird abgeschlossen…' : 'Setup abschließen'}
-          </Text>
-        </View>
       ) : null}
     </Screen>
   );
@@ -182,16 +197,7 @@ const styles = StyleSheet.create({
     color: colors.danger,
     padding: spacing.pageX
   },
-  legacyFooter: {
-    padding: spacing.pageX,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.panel
-  },
-  finishLink: {
-    ...typography.button,
-    color: colors.accent,
-    textAlign: 'center',
-    paddingVertical: spacing.sm
+  footer: {
+    gap: spacing.sm
   }
 });
