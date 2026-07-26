@@ -291,59 +291,156 @@ export function validateSetupModel(model) {
   return errors;
 }
 
+export function buildLegacySectionOrder(model) {
+  const order = [];
+  for (const section of model?.single_sections || []) {
+    const id = String(section?.sectionId || '').trim();
+    if (id) {
+      order.push({ kind: 'single', id });
+    }
+  }
+  for (const table of model?.table_sections || []) {
+    const id = String(table?.tableId || '').trim();
+    if (id) {
+      order.push({ kind: 'table', id });
+    }
+  }
+  return order;
+}
+
+export function syncSectionOrder(model) {
+  if (!model || typeof model !== 'object') {
+    return [];
+  }
+
+  const singles = new Map(
+    (model.single_sections || [])
+      .map((section) => [String(section?.sectionId || '').trim(), section])
+      .filter(([id]) => Boolean(id))
+  );
+  const tables = new Map(
+    (model.table_sections || [])
+      .map((table) => [String(table?.tableId || '').trim(), table])
+      .filter(([id]) => Boolean(id))
+  );
+
+  const existing = Array.isArray(model.section_order) ? model.section_order : [];
+  const next = [];
+  const seen = new Set();
+
+  for (const entry of existing) {
+    const kind = String(entry?.kind || '').trim();
+    const id = String(entry?.id || '').trim();
+    const key = `${kind}:${id}`;
+    if (!id || seen.has(key)) {
+      continue;
+    }
+    if (kind === 'single' && singles.has(id)) {
+      next.push({ kind: 'single', id });
+      seen.add(key);
+    } else if (kind === 'table' && tables.has(id)) {
+      next.push({ kind: 'table', id });
+      seen.add(key);
+    }
+  }
+
+  for (const [id] of singles) {
+    const key = `single:${id}`;
+    if (!seen.has(key)) {
+      next.push({ kind: 'single', id });
+      seen.add(key);
+    }
+  }
+  for (const [id] of tables) {
+    const key = `table:${id}`;
+    if (!seen.has(key)) {
+      next.push({ kind: 'table', id });
+      seen.add(key);
+    }
+  }
+
+  return next;
+}
+
+function buildSingleRunSection(section) {
+  const fields = (section.fields || []).filter((field) => field.skipped !== true);
+  if (fields.length === 0) {
+    return null;
+  }
+  return {
+    sectionId: `single:${section.sectionId}`,
+    kind: /** @type {const} */ ('single'),
+    label: section.label,
+    page: section.page,
+    fields
+  };
+}
+
+function buildTableRunSection(table) {
+  const columns = (table.columns || []).filter((column) => column.skipped !== true);
+  const activeColumnIds = new Set(columns.map((column) => String(column.columnId)));
+  const rows = (table.rows || [])
+    .filter((row) => row.skipped !== true)
+    .map((row) => {
+      const cellMap = new Map();
+      for (const cell of row.cells || []) {
+        if (cell?.skipped === true) {
+          continue;
+        }
+        const columnId = String(cell?.columnId || '');
+        if (activeColumnIds.has(columnId) && !cellMap.has(columnId)) {
+          cellMap.set(columnId, cell);
+        }
+      }
+      return {
+        ...row,
+        cells: columns.map((column) => cellMap.get(String(column.columnId))).filter(Boolean)
+      };
+    })
+    .filter((row) => row.cells.length > 0);
+
+  if (columns.length === 0 || rows.length === 0) {
+    return null;
+  }
+  return {
+    sectionId: `table:${table.tableId}`,
+    kind: /** @type {const} */ ('table'),
+    tableId: table.tableId,
+    label: table.label,
+    page: table.page,
+    columns,
+    rows
+  };
+}
+
 export function buildRunSections(model) {
   if (!model) {
     return [];
   }
 
+  const singles = new Map(
+    (model.single_sections || [])
+      .map((section) => [String(section?.sectionId || '').trim(), section])
+      .filter(([id]) => Boolean(id))
+  );
+  const tables = new Map(
+    (model.table_sections || [])
+      .map((table) => [String(table?.tableId || '').trim(), table])
+      .filter(([id]) => Boolean(id))
+  );
+
   const sections = [];
-
-  for (const section of model.single_sections || []) {
-    const fields = (section.fields || []).filter((field) => field.skipped !== true);
-    if (fields.length !== 0) {
-      sections.push({
-        sectionId: `single:${section.sectionId}`,
-        kind: 'single',
-        label: section.label,
-        page: section.page,
-        fields
-      });
-    }
-  }
-
-  for (const table of model.table_sections || []) {
-    const columns = (table.columns || []).filter((column) => column.skipped !== true);
-    const activeColumnIds = new Set(columns.map((column) => String(column.columnId)));
-    const rows = (table.rows || [])
-      .filter((row) => row.skipped !== true)
-      .map((row) => {
-        const cellMap = new Map();
-        for (const cell of row.cells || []) {
-          if (cell?.skipped === true) {
-            continue;
-          }
-          const columnId = String(cell?.columnId || '');
-          if (activeColumnIds.has(columnId) && !cellMap.has(columnId)) {
-            cellMap.set(columnId, cell);
-          }
-        }
-        return {
-          ...row,
-          cells: columns.map((column) => cellMap.get(String(column.columnId))).filter(Boolean)
-        };
-      })
-      .filter((row) => row.cells.length > 0);
-
-    if (columns.length !== 0 && rows.length !== 0) {
-      sections.push({
-        sectionId: `table:${table.tableId}`,
-        kind: 'table',
-        tableId: table.tableId,
-        label: table.label,
-        page: table.page,
-        columns,
-        rows
-      });
+  for (const entry of syncSectionOrder(model)) {
+    if (entry.kind === 'single') {
+      const built = buildSingleRunSection(singles.get(entry.id));
+      if (built) {
+        sections.push(built);
+      }
+    } else if (entry.kind === 'table') {
+      const built = buildTableRunSection(tables.get(entry.id));
+      if (built) {
+        sections.push(built);
+      }
     }
   }
 
