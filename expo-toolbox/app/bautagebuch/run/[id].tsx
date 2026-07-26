@@ -6,6 +6,7 @@ import { PrimaryButton, Screen } from '../../../src/components/mobile';
 import { colors, typography } from '../../../src/constants/theme';
 import { useToast } from '../../../src/contexts/ToastContext';
 import { PdfPreviewPanel } from '../../../src/native/bautagebuch/components/PdfPreviewPanel';
+import { PreviewOverlayPanel } from '../../../src/native/bautagebuch/components/PreviewOverlayPanel';
 import { RunWizard } from '../../../src/native/bautagebuch/components/RunWizard';
 import { getRun, updateRun } from '../../../src/native/bautagebuch/db/database';
 import { useRunAutosave } from '../../../src/native/bautagebuch/hooks/useRunAutosave';
@@ -304,6 +305,13 @@ export default function BautagebuchRunScreen() {
       subtitle="Guided Flow · PDF-Export"
       showBack
       compactFooter
+      overlay={
+        showPreview ? (
+          <PreviewOverlayPanel title="Live-PDF-Vorschau" onClose={() => setShowPreview(false)}>
+            <PdfPreviewPanel pdfPath={previewPath} loading={previewLoading} error={previewError} />
+          </PreviewOverlayPanel>
+        ) : null
+      }
       footer={
         <View style={styles.runFooter}>
           <PrimaryButton
@@ -344,10 +352,6 @@ export default function BautagebuchRunScreen() {
         weatherBusy={weatherBusy}
         photoDoc={run.photoDoc}
         totalMissingRequired={totalMissingRequired}
-        showPreview={showPreview}
-        previewPanel={
-          <PdfPreviewPanel pdfPath={previewPath} loading={previewLoading} error={previewError} />
-        }
         onPhotoDocChange={handlePhotoDocChange}
         photoBusy={photoBusy}
         onAddPhoto={() => void handleAddPhoto()}

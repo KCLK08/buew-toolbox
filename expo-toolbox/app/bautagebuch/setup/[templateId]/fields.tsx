@@ -155,6 +155,7 @@ export default function SetupFieldsScreen() {
           error={error}
           embedded
           showPreview={showPreview}
+          onClosePreview={() => setShowPreview(false)}
           onSelectEdit={() => undefined}
           onSetActive={() => undefined}
           onImport={() => undefined}

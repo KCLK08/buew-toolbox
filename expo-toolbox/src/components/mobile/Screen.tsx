@@ -24,6 +24,7 @@ type Props = {
   showBack?: boolean;
   rightAction?: ReactNode;
   footer?: ReactNode;
+  overlay?: ReactNode;
   compactFooter?: boolean;
   contentStyle?: ViewStyle;
   refreshing?: boolean;
@@ -90,6 +91,7 @@ export function Screen({
   showBack = false,
   rightAction,
   footer,
+  overlay,
   compactFooter = false,
   contentStyle,
   refreshing,
@@ -98,7 +100,7 @@ export function Screen({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const headerHeight = spacing.touchMin + 8 + spacing.xs;
-  const footerBarHeight = compactFooter ? 44 : spacing.touchMin + 8;
+  const footerBarHeight = compactFooter ? 52 : spacing.touchMin + 8;
   const footerInset = footer ? footerBarHeight + spacing.sm + insets.bottom : insets.bottom;
 
   return (
@@ -138,21 +140,24 @@ export function Screen({
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + headerHeight : 0}
         >
-          <ScreenScrollBody
-            scroll={scroll}
-            contentStyle={contentStyle}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            insets={insets}
-          >
-            {children}
-          </ScreenScrollBody>
+          <View style={styles.bodySlot}>
+            <ScreenScrollBody
+              scroll={scroll}
+              contentStyle={contentStyle}
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              insets={insets}
+            >
+              {children}
+            </ScreenScrollBody>
+            {overlay ? <View style={styles.overlaySlot}>{overlay}</View> : null}
+          </View>
           {footer ? (
             <View
               style={[
                 styles.footer,
                 compactFooter ? styles.footerCompact : null,
-                { paddingBottom: Math.max(insets.bottom, compactFooter ? spacing.xxs : spacing.sm) }
+                { paddingBottom: Math.max(insets.bottom, compactFooter ? spacing.xs : spacing.sm) }
               ]}
             >
               {footer}
@@ -171,6 +176,14 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1
+  },
+  bodySlot: {
+    flex: 1,
+    position: 'relative'
+  },
+  overlaySlot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20
   },
   header: {
     minHeight: spacing.touchMin + 8,
@@ -226,8 +239,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs
   },
   footerCompact: {
-    paddingTop: spacing.xxs,
+    paddingTop: spacing.xs,
     paddingHorizontal: spacing.sm,
-    gap: spacing.xxs
+    gap: spacing.xs
   }
 });

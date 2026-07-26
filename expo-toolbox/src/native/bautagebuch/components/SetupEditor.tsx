@@ -9,6 +9,7 @@ import { validateSetupModel, syncSectionOrder } from '../lib/setup-model.js';
 import { mutateSetupModel } from '../hooks/useSetupAutosave';
 import type { BautagebuchTemplate, DetectedField } from '../types';
 import { SetupPdfFieldPreview } from './SetupPdfFieldPreview';
+import { PreviewOverlayPanel } from './PreviewOverlayPanel';
 import { SetupTemplateManager } from './SetupTemplateManager';
 
 type SetupField = {
@@ -66,6 +67,7 @@ type Props = {
   error?: string | null;
   embedded?: boolean;
   showPreview?: boolean;
+  onClosePreview?: () => void;
 };
 
 
@@ -130,7 +132,8 @@ export function SetupEditor({
   info,
   error,
   embedded = false,
-  showPreview = false
+  showPreview = false,
+  onClosePreview
 }: Props) {
   const insets = useSafeAreaInsets();
   const singleSections = (setupModel.single_sections || []) as SetupSingleSection[];
@@ -327,15 +330,6 @@ export function SetupEditor({
     });
   };
 
-  const selectedSingleField =
-    mode === 'single'
-      ? (activeSingle?.fields || []).find((field) => field.fieldId === activeFieldId) || null
-      : null;
-  const selectedTableColumn =
-    mode === 'table'
-      ? (activeTable?.columns || []).find((column) => column.columnId === activeColumnId) || null
-      : null;
-
   return (
     <View style={styles.root}>
       <ScrollView
@@ -350,19 +344,6 @@ export function SetupEditor({
             Abschnitt wählen, Feld antippen und Einstellungen direkt darunter anpassen.
           </Text>
         </View>
-
-        {showPreview && templatePdfPath ? (
-          <View style={styles.inlinePreview}>
-            <SetupPdfFieldPreview
-              variant="default"
-              pdfPath={templatePdfPath}
-              detectedFields={detectedFields}
-              activeFieldId={activeField?.fieldId || null}
-              activeFieldLabel={activeFieldLabel}
-              activeFieldPage={activeFieldPage}
-            />
-          </View>
-        ) : null}
 
         {!embedded ? (
           <SetupTemplateManager
@@ -490,96 +471,93 @@ export function SetupEditor({
                 {(activeSingle.fields || []).map((field) => {
                   const active = activeFieldId === field.fieldId;
                   return (
-                    <Pressable
-                      key={field.fieldId}
-                      style={[styles.selectorCard, active ? styles.selectorCardActive : null]}
-                      onPress={() => setActiveFieldId(field.fieldId)}
-                    >
-                      <Text style={styles.selectorTitle} numberOfLines={2}>
-                        {field.label || field.fieldName || field.fieldId}
-                      </Text>
-                      <Text style={styles.selectorMeta}>{field.fieldName || field.fieldId}</Text>
-                      <StatusPills
-                        items={[
-                          field.required ? 'Pflicht' : null,
-                          field.skipped ? 'Ausgeblendet' : null,
-                          field.multiline ? 'Mehrzeilig' : null
-                        ].filter(Boolean)}
-                      />
-                    </Pressable>
+                    <View key={field.fieldId} style={styles.fieldBlock}>
+                      <Pressable
+                        style={[styles.selectorCard, active ? styles.selectorCardActive : null]}
+                        onPress={() => setActiveFieldId(field.fieldId)}
+                      >
+                        <Text style={styles.selectorTitle} numberOfLines={2}>
+                          {field.label || field.fieldName || field.fieldId}
+                        </Text>
+                        <Text style={styles.selectorMeta}>{field.fieldName || field.fieldId}</Text>
+                        <StatusPills
+                          items={[
+                            field.required ? 'Pflicht' : null,
+                            field.skipped ? 'Ausgeblendet' : null,
+                            field.multiline ? 'Mehrzeilig' : null
+                          ].filter(Boolean)}
+                        />
+                      </Pressable>
+
+                      {active ? (
+                        <View style={styles.detailCard}>
+                          <Text style={styles.detailTitle}>{field.label || field.fieldName}</Text>
+                          <Text style={styles.fieldMeta}>
+                            PDF-Feld: {field.fieldName || field.fieldId}
+                            {field.page ? ` · Seite ${field.page}` : ''}
+                          </Text>
+                          <TextField
+                            label="Anzeigename im Assistenten"
+                            value={field.label || ''}
+                            onChangeText={(value) =>
+                              updateSingleField(activeSingle.sectionId, field.fieldId, { label: value })
+                            }
+                            onFocus={() => setActiveFieldId(field.fieldId)}
+                          />
+                          <SettingRow
+                            title="Pflichtfeld"
+                            hint="Muss vor dem Export ausgefüllt sein"
+                            value={field.required === true}
+                            onValueChange={(value) =>
+                              updateSingleField(activeSingle.sectionId, field.fieldId, { required: value })
+                            }
+                          />
+                          <SettingRow
+                            title="Im Assistenten ausblenden"
+                            hint="Feld wird nicht angezeigt, bleibt aber im PDF"
+                            value={field.skipped === true}
+                            onValueChange={(value) =>
+                              updateSingleField(activeSingle.sectionId, field.fieldId, { skipped: value })
+                            }
+                          />
+                          <SettingRow
+                            title="Mehrzeiliges Eingabefeld"
+                            hint="Größeres Textfeld für längere Einträge"
+                            value={field.multiline === true}
+                            onValueChange={(value) =>
+                              updateSingleField(activeSingle.sectionId, field.fieldId, { multiline: value })
+                            }
+                          />
+                          <Text style={styles.sectionLabel}>Reihenfolge in der Gruppe</Text>
+                          <View style={styles.row}>
+                            <PrimaryButton
+                              label="↑"
+                              variant="ghost"
+                              disabled={
+                                (activeSingle.fields || []).findIndex((entry) => entry.fieldId === field.fieldId) === 0
+                              }
+                              onPress={() => moveFieldWithinSection(activeSingle.sectionId, field.fieldId, -1)}
+                            />
+                            <PrimaryButton
+                              label="↓"
+                              variant="ghost"
+                              disabled={
+                                (activeSingle.fields || []).findIndex((entry) => entry.fieldId === field.fieldId) ===
+                                (activeSingle.fields?.length || 0) - 1
+                              }
+                              onPress={() => moveFieldWithinSection(activeSingle.sectionId, field.fieldId, 1)}
+                            />
+                            <PrimaryButton
+                              label="Verschieben"
+                              variant="secondary"
+                              onPress={() => moveFieldToSection(activeSingle.sectionId, field.fieldId)}
+                            />
+                          </View>
+                        </View>
+                      ) : null}
+                    </View>
                   );
                 })}
-
-                {selectedSingleField ? (
-                  <View style={styles.detailCard}>
-                    <Text style={styles.detailTitle}>{selectedSingleField.label || selectedSingleField.fieldName}</Text>
-                    <Text style={styles.fieldMeta}>
-                      PDF-Feld: {selectedSingleField.fieldName || selectedSingleField.fieldId}
-                      {selectedSingleField.page ? ` · Seite ${selectedSingleField.page}` : ''}
-                    </Text>
-                    <TextField
-                      label="Anzeigename im Assistenten"
-                      value={selectedSingleField.label || ''}
-                      onChangeText={(value) =>
-                        updateSingleField(activeSingle.sectionId, selectedSingleField.fieldId, { label: value })
-                      }
-                      onFocus={() => setActiveFieldId(selectedSingleField.fieldId)}
-                    />
-                    <SettingRow
-                      title="Pflichtfeld"
-                      hint="Muss vor dem Export ausgefüllt sein"
-                      value={selectedSingleField.required === true}
-                      onValueChange={(value) =>
-                        updateSingleField(activeSingle.sectionId, selectedSingleField.fieldId, { required: value })
-                      }
-                    />
-                    <SettingRow
-                      title="Im Assistenten ausblenden"
-                      hint="Feld wird nicht angezeigt, bleibt aber im PDF"
-                      value={selectedSingleField.skipped === true}
-                      onValueChange={(value) =>
-                        updateSingleField(activeSingle.sectionId, selectedSingleField.fieldId, { skipped: value })
-                      }
-                    />
-                    <SettingRow
-                      title="Mehrzeiliges Eingabefeld"
-                      hint="Größeres Textfeld für längere Einträge"
-                      value={selectedSingleField.multiline === true}
-                      onValueChange={(value) =>
-                        updateSingleField(activeSingle.sectionId, selectedSingleField.fieldId, { multiline: value })
-                      }
-                    />
-                    <Text style={styles.sectionLabel}>Reihenfolge in der Gruppe</Text>
-                    <View style={styles.row}>
-                      <PrimaryButton
-                        label="↑"
-                        variant="ghost"
-                        disabled={
-                          (activeSingle.fields || []).findIndex((field) => field.fieldId === selectedSingleField.fieldId) === 0
-                        }
-                        onPress={() =>
-                          moveFieldWithinSection(activeSingle.sectionId, selectedSingleField.fieldId, -1)
-                        }
-                      />
-                      <PrimaryButton
-                        label="↓"
-                        variant="ghost"
-                        disabled={
-                          (activeSingle.fields || []).findIndex((field) => field.fieldId === selectedSingleField.fieldId) ===
-                          (activeSingle.fields?.length || 0) - 1
-                        }
-                        onPress={() =>
-                          moveFieldWithinSection(activeSingle.sectionId, selectedSingleField.fieldId, 1)
-                        }
-                      />
-                      <PrimaryButton
-                        label="Verschieben"
-                        variant="secondary"
-                        onPress={() => moveFieldToSection(activeSingle.sectionId, selectedSingleField.fieldId)}
-                      />
-                    </View>
-                  </View>
-                ) : null}
               </>
             ) : null}
           </>
@@ -624,80 +602,95 @@ export function SetupEditor({
                   const active = activeColumnId === column.columnId;
                   const previewCell = activeTable.rows?.[0]?.cells?.find((cell) => cell.columnId === column.columnId);
                   return (
-                    <Pressable
-                      key={column.columnId}
-                      style={[styles.selectorCard, active ? styles.selectorCardActive : null]}
-                      onPress={() => setActiveColumnId(column.columnId)}
-                    >
-                      <Text style={styles.selectorTitle} numberOfLines={2}>
-                        {column.label || column.columnId}
-                      </Text>
-                      <Text style={styles.selectorMeta}>
-                        {column.columnId}
-                        {previewCell?.fieldName ? ` · ${previewCell.fieldName}` : ''}
-                      </Text>
-                      <StatusPills
-                        items={[
-                          column.required ? 'Pflicht' : null,
-                          column.skipped ? 'Ausgeblendet' : null,
-                          column.multiline ? 'Mehrzeilig' : null
-                        ].filter(Boolean)}
-                      />
-                    </Pressable>
+                    <View key={column.columnId} style={styles.fieldBlock}>
+                      <Pressable
+                        style={[styles.selectorCard, active ? styles.selectorCardActive : null]}
+                        onPress={() => setActiveColumnId(column.columnId)}
+                      >
+                        <Text style={styles.selectorTitle} numberOfLines={2}>
+                          {column.label || column.columnId}
+                        </Text>
+                        <Text style={styles.selectorMeta}>
+                          {column.columnId}
+                          {previewCell?.fieldName ? ` · ${previewCell.fieldName}` : ''}
+                        </Text>
+                        <StatusPills
+                          items={[
+                            column.required ? 'Pflicht' : null,
+                            column.skipped ? 'Ausgeblendet' : null,
+                            column.multiline ? 'Mehrzeilig' : null
+                          ].filter(Boolean)}
+                        />
+                      </Pressable>
+
+                      {active ? (
+                        <View style={styles.detailCard}>
+                          <Text style={styles.detailTitle}>{column.label || column.columnId}</Text>
+                          <Text style={styles.fieldMeta}>Spalten-ID: {column.columnId}</Text>
+                          <TextField
+                            label="Anzeigename im Assistenten"
+                            value={column.label || ''}
+                            onChangeText={(value) =>
+                              updateTableColumn(activeTable.tableId, column.columnId, { label: value })
+                            }
+                            onFocus={() => setActiveColumnId(column.columnId)}
+                          />
+                          <SettingRow
+                            title="Pflichtfeld"
+                            hint="Spalte muss in jeder sichtbaren Zeile ausgefüllt sein"
+                            value={column.required === true}
+                            onValueChange={(value) =>
+                              updateTableColumn(activeTable.tableId, column.columnId, { required: value })
+                            }
+                          />
+                          <SettingRow
+                            title="Im Assistenten ausblenden"
+                            hint="Spalte wird nicht angezeigt, bleibt aber im PDF"
+                            value={column.skipped === true}
+                            onValueChange={(value) =>
+                              updateTableColumn(activeTable.tableId, column.columnId, { skipped: value })
+                            }
+                          />
+                          <SettingRow
+                            title="Mehrzeiliges Eingabefeld"
+                            hint="Größeres Textfeld für längere Einträge"
+                            value={column.multiline === true}
+                            onValueChange={(value) =>
+                              updateTableColumn(activeTable.tableId, column.columnId, { multiline: value })
+                            }
+                          />
+                        </View>
+                      ) : null}
+                    </View>
                   );
                 })}
-
-                {selectedTableColumn ? (
-                  <View style={styles.detailCard}>
-                    <Text style={styles.detailTitle}>{selectedTableColumn.label || selectedTableColumn.columnId}</Text>
-                    <Text style={styles.fieldMeta}>Spalten-ID: {selectedTableColumn.columnId}</Text>
-                    <TextField
-                      label="Anzeigename im Assistenten"
-                      value={selectedTableColumn.label || ''}
-                      onChangeText={(value) =>
-                        updateTableColumn(activeTable.tableId, selectedTableColumn.columnId, { label: value })
-                      }
-                      onFocus={() => setActiveColumnId(selectedTableColumn.columnId)}
-                    />
-                    <SettingRow
-                      title="Pflichtfeld"
-                      hint="Spalte muss in jeder sichtbaren Zeile ausgefüllt sein"
-                      value={selectedTableColumn.required === true}
-                      onValueChange={(value) =>
-                        updateTableColumn(activeTable.tableId, selectedTableColumn.columnId, { required: value })
-                      }
-                    />
-                    <SettingRow
-                      title="Im Assistenten ausblenden"
-                      hint="Spalte wird nicht angezeigt, bleibt aber im PDF"
-                      value={selectedTableColumn.skipped === true}
-                      onValueChange={(value) =>
-                        updateTableColumn(activeTable.tableId, selectedTableColumn.columnId, { skipped: value })
-                      }
-                    />
-                    <SettingRow
-                      title="Mehrzeiliges Eingabefeld"
-                      hint="Größeres Textfeld für längere Einträge"
-                      value={selectedTableColumn.multiline === true}
-                      onValueChange={(value) =>
-                        updateTableColumn(activeTable.tableId, selectedTableColumn.columnId, { multiline: value })
-                      }
-                    />
-                  </View>
-                ) : null}
               </>
             ) : null}
           </>
         )}
 
       </ScrollView>
+
+      {showPreview && templatePdfPath ? (
+        <PreviewOverlayPanel title="PDF-Vorschau" onClose={onClosePreview}>
+          <SetupPdfFieldPreview
+            variant="default"
+            pdfPath={templatePdfPath}
+            detectedFields={detectedFields}
+            activeFieldId={activeField?.fieldId || null}
+            activeFieldLabel={activeFieldLabel}
+            activeFieldPage={activeFieldPage}
+          />
+        </PreviewOverlayPanel>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
-    flex: 1
+    flex: 1,
+    position: 'relative'
   },
   previewPane: {
     borderBottomWidth: 1,
@@ -782,6 +775,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border
   },
+  fieldBlock: {
+    gap: spacing.xs
+  },
   selectorCard: {
     gap: 4,
     padding: spacing.sm,
@@ -850,10 +846,6 @@ const styles = StyleSheet.create({
   orderType: {
     ...typography.caption,
     color: colors.muted
-  },
-  inlinePreview: {
-    borderRadius: 12,
-    overflow: 'hidden'
   },
   settingRow: {
     flexDirection: 'row',
