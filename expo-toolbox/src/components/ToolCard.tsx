@@ -1,15 +1,14 @@
 import { useRef } from 'react';
-import {
-  Animated,
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  View
-} from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { colors, spacing } from '../constants/theme';
 import type { ToolboxTool } from '../constants/tools';
+
+const TOOL_VECTOR_ICONS: Record<ToolboxTool['id'], keyof typeof MaterialCommunityIcons.glyphMap> = {
+  sitereport: 'camera-document',
+  bautagebuch: 'notebook-edit-outline'
+};
 
 type ToolCardProps = {
   tool: ToolboxTool;
@@ -66,7 +65,12 @@ export function ToolCard({ tool, onPress }: ToolCardProps) {
         />
         <View style={styles.header}>
           <View style={styles.iconWrap}>
-            <Image source={tool.icon} style={styles.icon} accessibilityLabel={tool.iconAlt} />
+            <MaterialCommunityIcons
+              name={TOOL_VECTOR_ICONS[tool.id]}
+              size={28}
+              color={colors.accent}
+              accessibilityLabel={tool.iconAlt}
+            />
           </View>
           <Text style={styles.title}>{tool.title}</Text>
         </View>
@@ -121,14 +125,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.white,
-    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center'
-  },
-  icon: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover'
   },
   title: {
     color: colors.ink,

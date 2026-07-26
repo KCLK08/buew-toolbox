@@ -1,89 +1,14 @@
 import { Tabs } from 'expo-router';
-import { Image, StyleSheet, Text } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-import { colors, spacing, typography } from '../../src/constants/theme';
-import { TOOLBOX_TOOLS } from '../../src/constants/tools';
-
-const appIcon = require('../../assets/icon.png');
-
-function HomeTabIcon({ focused }: { focused: boolean }) {
-  return (
-    <Image
-      source={appIcon}
-      style={[styles.homeIcon, focused ? styles.toolIconFocused : null]}
-      accessibilityLabel="BÜW-Toolbox Start"
-    />
-  );
-}
-
-function TabIcon({ label, focused }: { label: string; focused: boolean }) {
-  return (
-    <Text style={[styles.icon, focused ? styles.iconFocused : null]} accessibilityElementsHidden>
-      {label}
-    </Text>
-  );
-}
-
-function ToolTabIcon({ toolId, focused }: { toolId: 'sitereport' | 'bautagebuch'; focused: boolean }) {
-  const tool = TOOLBOX_TOOLS.find((entry) => entry.id === toolId);
-  if (!tool) return <TabIcon label="?" focused={focused} />;
-  return (
-    <Image
-      source={tool.icon}
-      style={[styles.toolIcon, focused ? styles.toolIconFocused : null]}
-      accessibilityLabel={tool.iconAlt}
-    />
-  );
-}
 
 export default function TabsLayout() {
-  const insets = useSafeAreaInsets();
-  const tabBarHeight = spacing.tabBarBody + insets.bottom;
-
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.tabActive,
-        tabBarInactiveTintColor: colors.tabInactive,
-        tabBarLabelStyle: styles.tabLabel,
-        tabBarStyle: {
-          ...styles.tabBar,
-          height: tabBarHeight,
-          paddingBottom: Math.max(insets.bottom, spacing.xs),
-          paddingTop: spacing.xs
-        },
-        tabBarItemStyle: styles.tabItem
+        tabBarStyle: { display: 'none' }
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{ title: 'Home', tabBarIcon: ({ focused }) => <HomeTabIcon focused={focused} /> }}
-      />
-      <Tabs.Screen
-        name="sitereport"
-        options={{ title: 'SiteReport', tabBarIcon: ({ focused }) => <ToolTabIcon toolId="sitereport" focused={focused} /> }}
-      />
-      <Tabs.Screen
-        name="bautagebuch"
-        options={{ title: 'Bautagebuch', tabBarIcon: ({ focused }) => <ToolTabIcon toolId="bautagebuch" focused={focused} /> }}
-      />
+      <Tabs.Screen name="index" options={{ title: 'Toolbox' }} />
     </Tabs>
   );
 }
-
-const styles = StyleSheet.create({
-  tabBar: {
-    backgroundColor: colors.panel,
-    borderTopColor: colors.border,
-    borderTopWidth: 1
-  },
-  tabItem: { minHeight: spacing.touchMin },
-  tabLabel: { ...typography.caption, fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 11 },
-  icon: { fontSize: 18, color: colors.tabInactive },
-  iconFocused: { color: colors.tabActive },
-  toolIcon: { width: 22, height: 22, borderRadius: 6, opacity: 0.72 },
-  toolIconFocused: { opacity: 1 },
-  homeIcon: { width: 24, height: 24, borderRadius: 6, opacity: 0.8 }
-});

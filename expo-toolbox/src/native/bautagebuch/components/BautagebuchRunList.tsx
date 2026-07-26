@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
   },
   runStack: {
     flexDirection: 'column',
-    gap: spacing.sm,
+    gap: spacing.xs,
     width: '100%'
   }
 });
