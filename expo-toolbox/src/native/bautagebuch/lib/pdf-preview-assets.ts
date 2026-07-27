@@ -3,8 +3,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 import type { PdfPreviewRuntimeAssets } from './pdf-preview-html';
 
-const PDFJS_CORE_MODULE = require('../../../../assets/pdfjs/pdf.min.js');
-const PDFJS_WORKER_MODULE = require('../../../../assets/pdfjs/pdf.worker.min.js');
+const PDFJS_CORE_MODULE = require('../../../../assets/pdfjs/pdf.min.bundle');
+const PDFJS_WORKER_MODULE = require('../../../../assets/pdfjs/pdf.worker.min.bundle');
 
 let assetsPromise: Promise<PdfPreviewRuntimeAssets> | null = null;
 

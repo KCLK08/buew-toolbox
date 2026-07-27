@@ -9,8 +9,8 @@ const edgeToEdgeJs = path.resolve(
   'node_modules/react-native-is-edge-to-edge/dist/index.js'
 );
 const pdfWorkerAsset = path.resolve(projectRoot, 'assets/pdf.worker.min.mjs');
-const pdfPreviewCoreAsset = path.resolve(projectRoot, 'assets/pdfjs/pdf.min.js');
-const pdfPreviewWorkerAsset = path.resolve(projectRoot, 'assets/pdfjs/pdf.worker.min.js');
+const pdfPreviewCoreAsset = path.resolve(projectRoot, 'assets/pdfjs/pdf.min.bundle');
+const pdfPreviewWorkerAsset = path.resolve(projectRoot, 'assets/pdfjs/pdf.worker.min.bundle');
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(projectRoot);
@@ -29,10 +29,10 @@ function targetsPdfWorkerAsset(moduleName) {
 
 function targetsPdfPreviewAssets(moduleName) {
   return (
-    moduleName.endsWith('/assets/pdfjs/pdf.min.js') ||
-    moduleName.endsWith('assets/pdfjs/pdf.min.js') ||
-    moduleName.endsWith('/assets/pdfjs/pdf.worker.min.js') ||
-    moduleName.endsWith('assets/pdfjs/pdf.worker.min.js')
+    moduleName.endsWith('/assets/pdfjs/pdf.min.bundle') ||
+    moduleName.endsWith('assets/pdfjs/pdf.min.bundle') ||
+    moduleName.endsWith('/assets/pdfjs/pdf.worker.min.bundle') ||
+    moduleName.endsWith('assets/pdfjs/pdf.worker.min.bundle')
   );
 }
 
@@ -48,6 +48,7 @@ function targetsEdgeToEdge(moduleName) {
 
 config.resolver = {
   ...config.resolver,
+  assetExts: [...(config.resolver.assetExts || []), 'bundle'],
   nodeModulesPaths: [path.resolve(projectRoot, 'node_modules')],
   extraNodeModules: {
     ...(config.resolver?.extraNodeModules || {}),
@@ -87,7 +88,7 @@ config.resolver = {
     }
 
     if (targetsPdfPreviewAssets(moduleName)) {
-      const filePath = moduleName.includes('pdf.worker.min.js')
+      const filePath = moduleName.includes('pdf.worker.min.bundle')
         ? pdfPreviewWorkerAsset
         : pdfPreviewCoreAsset;
 
