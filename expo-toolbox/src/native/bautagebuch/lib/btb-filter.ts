@@ -16,8 +16,6 @@ export type BtbGroupMode = 'calendar' | 'project';
 export type BtbListFilters = {
   groupMode: BtbGroupMode;
   projectKey: string | null;
-  year: number | null;
-  weekKey: string | null;
   sortOrder: BtbSortOrder;
 };
 
@@ -53,8 +51,6 @@ export type ProjectFirstTree = {
 export const DEFAULT_BTB_FILTERS: BtbListFilters = {
   groupMode: 'calendar',
   projectKey: null,
-  year: null,
-  weekKey: null,
   sortOrder: 'newest'
 };
 
@@ -100,69 +96,20 @@ function flattenWeekRuns(week: WeekRunGroup): BautagebuchRun[] {
   return week.projects.flatMap((project) => project.runs);
 }
 
-function filterCalendarTree(tree: BautagebuchRunTree, filters: BtbListFilters): BautagebuchRunTree {
-  let years = tree.years;
-
-  if (filters.projectKey) {
-    years = years
-      .map((year) => ({
-        ...year,
-        weeks: year.weeks
-          .map((week) => ({
-            ...week,
-            projects: week.projects.filter((project) => project.projectKey === filters.projectKey),
-            runCount: week.projects
-              .filter((project) => project.projectKey === filters.projectKey)
-              .reduce((sum, project) => sum + project.runs.length, 0)
-          }))
-          .filter((week) => week.runCount > 0),
-        runCount: 0
-      }))
-      .map((year) => ({
-        ...year,
-        runCount: year.weeks.reduce((sum, week) => sum + week.runCount, 0)
-      }))
-      .filter((year) => year.runCount > 0);
-  }
-
-  if (filters.year !== null) {
-    years = years.filter((year) => year.year === filters.year);
-  }
-
-  if (filters.weekKey) {
-    years = years
-      .map((year) => ({
-        ...year,
-        weeks: year.weeks.filter((week) => week.weekKey === filters.weekKey),
-        runCount: year.weeks
-          .filter((week) => week.weekKey === filters.weekKey)
-          .reduce((sum, week) => sum + week.runCount, 0)
-      }))
-      .filter((year) => year.weeks.length > 0);
-  }
-
-  const distinctYears = years.filter((entry) => entry.year > 0);
-  return {
-    multiYear: distinctYears.length > 1,
-    years
-  };
-}
-
 export function buildCalendarTree(
   runs: BautagebuchRun[],
   setupModel: Record<string, unknown> | null | undefined,
-  filters: BtbListFilters
+  filters: Pick<BtbListFilters, 'sortOrder'>
 ): BautagebuchRunTree {
   const sorted = sortRuns(runs, filters.sortOrder);
-  const tree = groupRunsByCalendar(sorted, { setupModel });
-  return filterCalendarTree(tree, filters);
+  return groupRunsByCalendar(sorted, { setupModel });
 }
 
 export function buildProjectFirstTree(
   runs: BautagebuchRun[],
   setupModel: Record<string, unknown> | null | undefined,
   projectKey: string,
-  filters: Pick<BtbListFilters, 'year' | 'weekKey' | 'sortOrder'>
+  filters: Pick<BtbListFilters, 'sortOrder'>
 ): ProjectFirstTree | null {
   const projects = listProjectsFromRuns(runs, setupModel);
   const project = projects.find((entry) => entry.projectKey === projectKey);
@@ -175,7 +122,7 @@ export function buildProjectFirstTree(
   );
 
   const tree = groupRunsByCalendar(projectRuns, { setupModel });
-  let years: ProjectFirstYear[] = tree.years.map((year) => ({
+  const years: ProjectFirstYear[] = tree.years.map((year) => ({
     year: year.year,
     runCount: year.runCount,
     weeks: year.weeks.map((week) => ({
@@ -189,21 +136,6 @@ export function buildProjectFirstTree(
     }))
   }));
 
-  if (filters.year !== null) {
-    years = years.filter((year) => year.year === filters.year);
-  }
-  if (filters.weekKey) {
-    years = years
-      .map((year) => ({
-        ...year,
-        weeks: year.weeks.filter((week) => week.weekKey === filters.weekKey),
-        runCount: year.weeks
-          .filter((week) => week.weekKey === filters.weekKey)
-          .reduce((sum, week) => sum + week.runCount, 0)
-      }))
-      .filter((year) => year.weeks.length > 0);
-  }
-
   const runCount = years.reduce((sum, year) => sum + year.runCount, 0);
 
   return {
@@ -212,15 +144,6 @@ export function buildProjectFirstTree(
     runCount,
     years
   };
-}
-
-export function listAvailableYears(tree: BautagebuchRunTree): number[] {
-  return tree.years.map((year) => year.year).filter((year) => year > 0);
-}
-
-export function listAvailableWeeks(tree: BautagebuchRunTree, year: number | null): WeekRunGroup[] {
-  const weeks = year === null ? tree.years.flatMap((entry) => entry.weeks) : tree.years.find((entry) => entry.year === year)?.weeks || [];
-  return weeks;
 }
 
 export function formatGroupLabel(label: string, count: number): string {

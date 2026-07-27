@@ -1,24 +1,14 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { BottomSheet, BottomSheetOption } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
-import {
-  DEFAULT_BTB_FILTERS,
-  formatGroupLabel,
-  listAvailableWeeks,
-  listAvailableYears,
-  type BtbListFilters,
-  type BtbSortOrder
-} from '../../lib/btb-filter';
-import type { BautagebuchRunTree } from '../../lib/group-runs-by-calendar';
+import { type BtbListFilters, type BtbSortOrder } from '../../lib/btb-filter';
 
-type FilterSheet = 'sort' | 'project' | 'year' | 'week' | 'view' | null;
+type FilterSheet = 'sort' | 'view' | null;
 
 type Props = {
   filters: BtbListFilters;
-  baseTree: BautagebuchRunTree;
-  projectOptions: Array<{ projectKey: string; projectLabel: string; runCount: number }>;
   onChange: (next: BtbListFilters) => void;
 };
 
@@ -44,17 +34,8 @@ function FilterChip({
   );
 }
 
-export function BTBFilterBar({ filters, baseTree, projectOptions, onChange }: Props) {
+export function BTBFilterBar({ filters, onChange }: Props) {
   const [sheet, setSheet] = useState<FilterSheet>(null);
-
-  const years = useMemo(() => listAvailableYears(baseTree), [baseTree]);
-  const weeks = useMemo(
-    () => listAvailableWeeks(baseTree, filters.year),
-    [baseTree, filters.year]
-  );
-
-  const selectedProject = projectOptions.find((entry) => entry.projectKey === filters.projectKey);
-  const selectedWeek = weeks.find((entry) => entry.weekKey === filters.weekKey);
 
   const patch = (partial: Partial<BtbListFilters>) => onChange({ ...filters, ...partial });
 
@@ -74,35 +55,6 @@ export function BTBFilterBar({ filters, baseTree, projectOptions, onChange }: Pr
           label={filters.sortOrder === 'newest' ? 'Sortieren: Neueste' : 'Sortieren: Älteste'}
           onPress={() => setSheet('sort')}
         />
-        <FilterChip
-          label={
-            selectedProject
-              ? `Projekt: ${selectedProject.projectLabel}`
-              : 'Filter Projekt'
-          }
-          active={Boolean(filters.projectKey)}
-          onPress={() => setSheet('project')}
-        />
-        <FilterChip
-          label={filters.year ? `Jahr: ${filters.year}` : 'Filter Jahr'}
-          active={filters.year !== null}
-          onPress={() => setSheet('year')}
-        />
-        <FilterChip
-          label={
-            selectedWeek
-              ? formatGroupLabel(selectedWeek.weekLabel, selectedWeek.runCount)
-              : 'Filter KW'
-          }
-          active={Boolean(filters.weekKey)}
-          onPress={() => setSheet('week')}
-        />
-        {filters.projectKey || filters.year !== null || filters.weekKey ? (
-          <FilterChip
-            label="Zurücksetzen"
-            onPress={() => onChange({ ...filters, ...DEFAULT_BTB_FILTERS, groupMode: filters.groupMode, sortOrder: filters.sortOrder })}
-          />
-        ) : null}
       </ScrollView>
 
       <BottomSheet visible={sheet === 'view'} title="Ansicht" onClose={() => setSheet(null)}>
@@ -120,7 +72,7 @@ export function BTBFilterBar({ filters, baseTree, projectOptions, onChange }: Pr
           description="Projektliste mit Drill-down"
           selected={filters.groupMode === 'project'}
           onPress={() => {
-            patch({ groupMode: 'project', projectKey: null, year: null, weekKey: null });
+            patch({ groupMode: 'project', projectKey: null });
             setSheet(null);
           }}
         />
@@ -134,81 +86,6 @@ export function BTBFilterBar({ filters, baseTree, projectOptions, onChange }: Pr
             selected={filters.sortOrder === order}
             onPress={() => {
               patch({ sortOrder: order });
-              setSheet(null);
-            }}
-          />
-        ))}
-      </BottomSheet>
-
-      <BottomSheet visible={sheet === 'project'} title="Projekt filtern" onClose={() => setSheet(null)}>
-        <BottomSheetOption
-          label="Alle Projekte"
-          selected={!filters.projectKey}
-          onPress={() => {
-            patch({ projectKey: null, year: null, weekKey: null });
-            setSheet(null);
-          }}
-        />
-        {projectOptions.map((project) => (
-          <BottomSheetOption
-            key={project.projectKey}
-            label={formatGroupLabel(project.projectLabel, project.runCount)}
-            selected={filters.projectKey === project.projectKey}
-            onPress={() => {
-              patch({
-                projectKey: project.projectKey,
-                groupMode: filters.groupMode === 'project' ? 'project' : 'calendar',
-                year: null,
-                weekKey: null
-              });
-              setSheet(null);
-            }}
-          />
-        ))}
-      </BottomSheet>
-
-      <BottomSheet visible={sheet === 'year'} title="Jahr filtern" onClose={() => setSheet(null)}>
-        <BottomSheetOption
-          label="Alle Jahre"
-          selected={filters.year === null}
-          onPress={() => {
-            patch({ year: null, weekKey: null });
-            setSheet(null);
-          }}
-        />
-        {years.map((year) => {
-          const count = baseTree.years.find((entry) => entry.year === year)?.runCount || 0;
-          return (
-            <BottomSheetOption
-              key={year}
-              label={formatGroupLabel(String(year), count)}
-              selected={filters.year === year}
-              onPress={() => {
-                patch({ year, weekKey: null });
-                setSheet(null);
-              }}
-            />
-          );
-        })}
-      </BottomSheet>
-
-      <BottomSheet visible={sheet === 'week'} title="Kalenderwoche filtern" onClose={() => setSheet(null)}>
-        <BottomSheetOption
-          label="Alle Kalenderwochen"
-          selected={!filters.weekKey}
-          onPress={() => {
-            patch({ weekKey: null });
-            setSheet(null);
-          }}
-        />
-        {weeks.map((week) => (
-          <BottomSheetOption
-            key={week.weekKey}
-            label={formatGroupLabel(week.weekLabel, week.runCount)}
-            description={week.dateRangeLabel}
-            selected={filters.weekKey === week.weekKey}
-            onPress={() => {
-              patch({ weekKey: week.weekKey, year: week.weekYear || filters.year });
               setSheet(null);
             }}
           />
