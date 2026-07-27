@@ -1,89 +1,30 @@
-import { PDFDocument, PDFDropdown, PDFRadioGroup } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 
 import { detectPdfFieldType } from './setup-model.js';
 import { ETB_SCAN_VERSION } from './scan-meta';
+import {
+  assignFieldIds,
+  humanizeFieldName,
+  readSelectOptions,
+  sortDetectedFields,
+  type MutableScanField
+} from './pdf-scan-shared';
+import { resultHasRects, withDetectedFieldsAlias, type PdfScanResultLegacy } from './pdf-scan-types';
 
 export { ETB_SCAN_VERSION, detectedFieldsNeedRescan } from './scan-meta';
 
-function humanizeFieldName(value: string): string {
-  return String(value || '')
-    .replace(/[_\.]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+function buildScanResult(pageCount: number, rawFields: MutableScanField[]): PdfScanResultLegacy {
+  const fields = assignFieldIds(sortDetectedFields(rawFields));
+  const result = {
+    fields,
+    pageCount,
+    scanVersion: String(ETB_SCAN_VERSION),
+    hasRects: resultHasRects(fields)
+  };
+  return withDetectedFieldsAlias(result);
 }
 
-function slugify(value: string): string {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function uniqueStrings(values: string[] = []): string[] {
-  return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))];
-}
-
-function readSelectOptions(field: { getOptions?: () => string[] }, fallbackOptions: unknown[] = []): string[] {
-  try {
-    if (field instanceof PDFDropdown || field instanceof PDFRadioGroup) {
-      return uniqueStrings(field.getOptions());
-    }
-    if (typeof field.getOptions === 'function') {
-      return uniqueStrings(field.getOptions());
-    }
-  } catch {
-    // Some fields do not expose options.
-  }
-
-  if (Array.isArray(fallbackOptions)) {
-    return uniqueStrings(
-      fallbackOptions.map((option) => {
-        if (typeof option === 'string') return option;
-        const record = option as { displayValue?: string; exportValue?: string; value?: string };
-        return record.displayValue || record.exportValue || record.value || '';
-      })
-    );
-  }
-  return [];
-}
-
-function assignFieldIds(
-  fields: Array<{
-    fieldName: string;
-    labelCandidate: string;
-    type: string;
-    options: string[];
-    page: number;
-    orderIndex: number;
-    rect: number[] | null;
-  }>
-) {
-  const usedIds = new Set<string>();
-  return fields.map((field, index) => {
-    const slug = slugify(field.fieldName) || `field-${index + 1}`;
-    const page = Number(field.page || 1);
-    const orderIndex = Number(field.orderIndex ?? index + 1);
-    const baseId = `${slug}-p${page}-o${orderIndex}`;
-    let fieldId = baseId;
-    let suffix = 2;
-    while (usedIds.has(fieldId)) {
-      fieldId = `${baseId}-${suffix}`;
-      suffix += 1;
-    }
-    usedIds.add(fieldId);
-    return { ...field, fieldId };
-  });
-}
-
-function sortDetectedFields<T extends { fieldName: string; page: number; orderIndex: number }>(fields: T[]): T[] {
-  return [...fields].sort((left, right) => {
-    if (left.page !== right.page) return left.page - right.page;
-    if (left.orderIndex !== right.orderIndex) return left.orderIndex - right.orderIndex;
-    return left.fieldName.localeCompare(right.fieldName, 'de');
-  });
-}
-
-export async function scanTemplatePdfLite(pdfBytes: Uint8Array) {
+export async function scanTemplatePdfLite(pdfBytes: Uint8Array): Promise<PdfScanResultLegacy> {
   let pdfDoc;
   try {
     pdfDoc = await PDFDocument.load(pdfBytes);
@@ -117,9 +58,5 @@ export async function scanTemplatePdfLite(pdfBytes: Uint8Array) {
     };
   });
 
-  return {
-    pageCount: pdfDoc.getPageCount(),
-    scanVersion: ETB_SCAN_VERSION,
-    detectedFields: assignFieldIds(sortDetectedFields(detectedFields))
-  };
+  return buildScanResult(pdfDoc.getPageCount(), detectedFields);
 }
