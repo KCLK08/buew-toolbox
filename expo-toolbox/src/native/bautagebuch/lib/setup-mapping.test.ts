@@ -8,6 +8,8 @@ import {
   getWizardState,
   isMappingComplete,
   rebuildSectionsFromWizard,
+  resolveCurrentMappingIndex,
+  resolveOverlayPlacement,
   sortMappingFields,
   withWizardState
 } from './setup-mapping';
@@ -87,6 +89,25 @@ test('getMappingProgress counts deferred fields as handled', () => {
   const progress = getMappingProgress(fields, wizard);
   assert.equal(progress.percent, 67);
   assert.equal(progress.remaining, 1);
+});
+
+test('resolveOverlayPlacement keeps panel away from field edges', () => {
+  assert.equal(resolveOverlayPlacement([100, 720, 200, 760]), 'bottom');
+  assert.equal(resolveOverlayPlacement([100, 40, 200, 80]), 'top');
+  assert.equal(resolveOverlayPlacement([20, 400, 80, 440]), 'right');
+});
+
+test('resolveCurrentMappingIndex prefers first unassigned field', () => {
+  const fields = sortMappingFields([field('a'), field('b'), field('c')]);
+  const model = withWizardState(
+    {},
+    {
+      currentFieldIndex: 2,
+      assignments: { a: 'kopfdaten' }
+    }
+  );
+  const wizard = getWizardState(model);
+  assert.equal(resolveCurrentMappingIndex(fields, wizard), 1);
 });
 
 console.log(`\n${passed} tests passed`);
