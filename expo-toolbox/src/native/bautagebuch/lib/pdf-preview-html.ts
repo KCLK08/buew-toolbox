@@ -14,8 +14,8 @@ export type PreviewHighlight = {
 export type PdfPreviewRuntimeAssets = {
   pdfJsSource: string;
   workerSrc: string;
-  /** Worker script body — used to spawn a blob: worker inside WebView (file:// workers are unreliable). */
-  workerSource?: string;
+  /** Worker script body — inlined in HTML head before core (file:// / blob workers fail in WebView). */
+  workerSource: string;
 };
 
 export type BuildPreviewHtmlOptions = PdfPreviewRuntimeAssets & {
@@ -50,6 +50,10 @@ export function buildPdfJsInlineScript(pdfJsSource: string): string {
   return `<script>\n${escapeInlineScript(pdfJsSource)}\n</script>`;
 }
 
+export function buildPdfWorkerInlineScript(workerSource: string): string {
+  return `<script>\n${escapeInlineScript(workerSource)}\n</script>`;
+}
+
 function previewErrorStyles(): string {
   return `
       #errorState {
@@ -68,13 +72,9 @@ function previewErrorStyles(): string {
       #errorState.visible { display: flex; }`;
 }
 
-function previewBootHelpers(errorMessage: string, workerSrc: string, workerSource?: string): string {
+function previewBootHelpers(errorMessage: string, workerSrc: string): string {
   const safeWorkerSrc = escapeJsStringLiteral(workerSrc);
   const safeErrorMessage = escapeJsStringLiteral(errorMessage);
-  const workerInit = workerSource
-    ? `const workerBlob = new Blob([${JSON.stringify(workerSource)}], { type: 'application/javascript' });
-        pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(workerBlob);`
-    : `pdfjsLib.GlobalWorkerOptions.workerSrc = '${safeWorkerSrc}';`;
 
   return `
       const PREVIEW_ERROR = '${safeErrorMessage}';
@@ -101,8 +101,15 @@ function previewBootHelpers(errorMessage: string, workerSrc: string, workerSourc
       const pdfjsLib = window.pdfjsLib;
       if (!pdfjsLib) {
         showPreviewError('PDF preview worker bootstrap failed', new Error('pdf.js core missing'));
+      } else if (!globalThis.pdfjsWorker?.WorkerMessageHandler) {
+        showPreviewError('PDF preview worker bootstrap failed', new Error('pdf.js worker missing'));
       } else {
-        ${workerInit}
+        window.Worker = class PdfPreviewWorkerDisabled {
+          constructor() {
+            throw new Error('PDF preview: native Worker disabled');
+          }
+        };
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '${safeWorkerSrc}';
       }`;
 }
 
@@ -126,6 +133,7 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    ${buildPdfWorkerInlineScript(workerSource)}
     ${buildPdfJsInlineScript(pdfJsSource)}
     <style>
       * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -197,7 +205,7 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
       const mappingMode = ${mappingMode ? 'true' : 'false'};
       const highlightActive = ${highlightActive ? 'true' : 'false'};
       const highQuality = ${highQuality ? 'true' : 'false'};
-      ${previewBootHelpers(PDF_PREVIEW_LOAD_ERROR, workerSrc, workerSource)}
+      ${previewBootHelpers(PDF_PREVIEW_LOAD_ERROR, workerSrc)}
 
       const highlights = ${highlightsJson};
       let pdfDoc = null;
