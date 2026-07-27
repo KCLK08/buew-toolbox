@@ -86,7 +86,7 @@ test('buildSimplePdfPreviewHtml rejects legacy base64-only signature', () => {
   );
 });
 
-test('buildSimplePdfPreviewHtml embeds inline worker and fake-worker boot helpers', () => {
+test('buildSimplePdfPreviewHtml uses scrollable multi-page layout without field overlay', () => {
   const html = buildSimplePdfPreviewHtml({
     base64: 'UEZERg==',
     ...mockAssets
@@ -96,7 +96,10 @@ test('buildSimplePdfPreviewHtml embeds inline worker and fake-worker boot helper
   assert.match(html, /PdfPreviewWorkerDisabled/);
   assert.match(html, /GlobalWorkerOptions\.workerSrc = 'file:\/\/\/offline\/pdf\.worker\.min\.js'/);
   assert.match(html, /showPreviewError\('PDF preview boot failed'/);
-  assert.match(html, /id="overlay"/);
+  assert.match(html, /renderPageSheet/);
+  assert.match(html, /Scrollen · Zwei Finger zum Zoomen/);
+  assert.doesNotMatch(html, /id="overlay"/);
+  assert.doesNotMatch(html, /setPage/);
 });
 
 test('offline simulation: bundled asset files exist for pdf.js 3.11.174', () => {

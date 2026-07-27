@@ -12,7 +12,6 @@ type Props = {
 
 export function PreviewOverlayPanel({ title = 'Live-Vorschau', onClose, children }: Props) {
   const insets = useSafeAreaInsets();
-  const bottomInset = Math.max(insets.bottom, spacing.sm);
   const topInset = Math.max(insets.top, spacing.xs);
 
   return (
@@ -22,7 +21,6 @@ export function PreviewOverlayPanel({ title = 'Live-Vorschau', onClose, children
           styles.panel,
           {
             marginTop: topInset,
-            marginBottom: bottomInset,
             marginHorizontal: spacing.xs
           }
         ]}
