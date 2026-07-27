@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, ScrollView, View } from 'react-native';
+import { Animated, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,13 +8,21 @@ import { HomeHeader } from '../../src/components/toolbox/HomeHeader';
 import { ToolboxBackground } from '../../src/components/ToolboxBackground';
 import { spacing } from '../../src/constants/theme';
 import { TOOLBOX_TOOLS } from '../../src/constants/tools';
-import { tabBarReservedHeight } from '../../src/navigation/appTabBar';
+import { systemBottomInset } from '../../src/navigation/systemInsets';
+
+/** Below this height the home layout compacts cards to stay on one screen. */
+const COMPACT_HOME_HEIGHT = 760;
 
 export default function ToolboxHomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const compact = windowHeight < COMPACT_HOME_HEIGHT;
   const fadeIn = useRef(new Animated.Value(0)).current;
   const slideUp = useRef(new Animated.Value(16)).current;
+
+  const topPad = Math.max(spacing.sm, insets.top + spacing.sm);
+  const bottomPad = systemBottomInset(insets) + spacing.md;
 
   useEffect(() => {
     Animated.parallel([
@@ -25,25 +33,38 @@ export default function ToolboxHomeScreen() {
 
   return (
     <ToolboxBackground>
-      <ScrollView
-        contentContainerStyle={{
-          paddingTop: Math.max(spacing.pageTop, insets.top + 16),
-          paddingBottom: Math.max(spacing.pageBottom, tabBarReservedHeight(insets) + spacing.xl),
-          paddingHorizontal: spacing.pageX,
-          gap: spacing.lg
+      <View
+        style={{
+          flex: 1,
+          paddingTop: topPad,
+          paddingBottom: bottomPad,
+          paddingHorizontal: spacing.pageX
         }}
-        showsVerticalScrollIndicator={false}
       >
         <Animated.View style={{ opacity: fadeIn, transform: [{ translateY: slideUp }] }}>
-          <HomeHeader />
+          <HomeHeader compact={compact} />
         </Animated.View>
 
-        <Animated.View style={{ opacity: fadeIn, transform: [{ translateY: slideUp }], gap: spacing.md }}>
+        <Animated.View
+          style={{
+            flex: 1,
+            minHeight: 0,
+            justifyContent: 'center',
+            gap: compact ? spacing.sm : spacing.md,
+            opacity: fadeIn,
+            transform: [{ translateY: slideUp }]
+          }}
+        >
           {TOOLBOX_TOOLS.map((tool) => (
-            <ToolCard key={tool.id} tool={tool} onPress={() => router.push(tool.tabHref)} />
+            <ToolCard
+              key={tool.id}
+              tool={tool}
+              compact={compact}
+              onPress={() => router.push(tool.tabHref)}
+            />
           ))}
         </Animated.View>
-      </ScrollView>
+      </View>
     </ToolboxBackground>
   );
 }
