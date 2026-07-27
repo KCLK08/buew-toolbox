@@ -3,7 +3,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { Card } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
-import { displayRunTitle, formatActivityTime, runActivityMeta } from '../../lib/home-utils';
+import { displayRunTitle, formatActivityTime } from '../../lib/home-utils';
 import type { BautagebuchRun } from '../../types';
 
 type Props = {
@@ -22,9 +22,7 @@ export function RecentActivityCard({ runs, onOpenRun }: Props) {
         </View>
       ) : (
         <View style={styles.list}>
-          {runs.map((run) => {
-            const meta = runActivityMeta(run);
-            return (
+          {runs.map((run) => (
               <Pressable
                 key={run.runId}
                 accessibilityRole="button"
@@ -39,12 +37,10 @@ export function RecentActivityCard({ runs, onOpenRun }: Props) {
                     {displayRunTitle(run.title)}
                   </Text>
                   <Text style={styles.rowMeta}>{formatActivityTime(run.updatedAt)}</Text>
-                  {meta ? <Text style={styles.rowExtra}>{meta}</Text> : null}
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={20} color={colors.muted} />
               </Pressable>
-            );
-          })}
+            ))}
         </View>
       )}
     </Card>
@@ -105,9 +101,5 @@ const styles = StyleSheet.create({
   rowMeta: {
     ...typography.caption,
     color: colors.muted
-  },
-  rowExtra: {
-    ...typography.caption,
-    color: colors.accent2
   }
 });

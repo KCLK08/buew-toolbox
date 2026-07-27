@@ -51,15 +51,3 @@ export function formatActivityTime(iso: string): string {
     minute: '2-digit'
   });
 }
-
-export function runActivityMeta(run: BautagebuchRun): string {
-  const filledEntries = Object.values(run.values || {}).filter((value) => {
-    if (value === true || value === false) return true;
-    return String(value ?? '').trim().length > 0;
-  }).length;
-  const photoCount = run.photoDoc?.entries?.length || 0;
-  const parts: string[] = [];
-  if (filledEntries > 0) parts.push(`${filledEntries} Einträge`);
-  if (photoCount > 0) parts.push(`${photoCount} Fotos`);
-  return parts.join(' · ');
-}
