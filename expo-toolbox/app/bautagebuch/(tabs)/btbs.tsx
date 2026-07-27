@@ -1,36 +1,31 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import {
-  EmptyState,
-  PrimaryButton,
-  Screen,
-  Section,
-  TextField
-} from '../../../src/components/mobile';
+import { EmptyState, PrimaryButton, Screen, TextField } from '../../../src/components/mobile';
 import { colors, spacing, typography } from '../../../src/constants/theme';
 import { useToast } from '../../../src/contexts/ToastContext';
-import { BautagebuchRunList } from '../../../src/native/bautagebuch/components/BautagebuchRunList';
+import { BTBFilterBar } from '../../../src/native/bautagebuch/components/btb-list/BTBFilterBar';
+import { BTBGroupedList } from '../../../src/native/bautagebuch/components/btb-list/BTBGroupedList';
+import { ProjectFilterList } from '../../../src/native/bautagebuch/components/btb-list/ProjectFilterList';
 import { useBautagebuchWorkspace } from '../../../src/native/bautagebuch/hooks/useBautagebuchWorkspace';
+import {
+  buildCalendarTree,
+  buildProjectFirstTree,
+  DEFAULT_BTB_FILTERS,
+  listProjectsFromRuns,
+  type BtbListFilters
+} from '../../../src/native/bautagebuch/lib/btb-filter';
+import { groupRunsByCalendar } from '../../../src/native/bautagebuch/lib/group-runs-by-calendar';
 import type { BautagebuchRun } from '../../../src/native/bautagebuch/types';
 
 export default function BautagebuchBtbsScreen() {
   const router = useRouter();
   const { showToast } = useToast();
-  const {
-    initialLoading,
-    refreshing,
-    error,
-    runs,
-    runTree,
-    load,
-    deleteRunById,
-    renameRunById
-  } = useBautagebuchWorkspace();
+  const { initialLoading, refreshing, error, runs, setupModel, load, deleteRunById, renameRunById } =
+    useBautagebuchWorkspace();
 
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
+  const [filters, setFilters] = useState<BtbListFilters>(DEFAULT_BTB_FILTERS);
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
@@ -38,20 +33,34 @@ export default function BautagebuchBtbsScreen() {
   const [renameTitle, setRenameTitle] = useState('');
   const expansionInitialized = useRef(false);
 
+  const baseTree = useMemo(
+    () => groupRunsByCalendar(runs, { setupModel }),
+    [runs, setupModel]
+  );
+  const projectOptions = useMemo(
+    () => listProjectsFromRuns(runs, setupModel),
+    [runs, setupModel]
+  );
+  const calendarTree = useMemo(
+    () => buildCalendarTree(runs, setupModel, filters),
+    [runs, setupModel, filters]
+  );
+  const projectTree = useMemo(() => {
+    if (filters.groupMode !== 'project' || !filters.projectKey) return null;
+    return buildProjectFirstTree(runs, setupModel, filters.projectKey, filters);
+  }, [runs, setupModel, filters]);
+
   useEffect(() => {
-    if (runs.length === 0) {
-      expansionInitialized.current = false;
-      setExpandedYears(new Set());
-      setExpandedWeeks(new Set());
-      setExpandedProjects(new Set());
-      return;
-    }
-    if (expansionInitialized.current) return;
+    expansionInitialized.current = false;
     setExpandedYears(new Set());
     setExpandedWeeks(new Set());
     setExpandedProjects(new Set());
+  }, [filters.groupMode, filters.projectKey, filters.year, filters.weekKey]);
+
+  useEffect(() => {
+    if (runs.length === 0 || expansionInitialized.current) return;
     expansionInitialized.current = true;
-  }, [runTree, runs.length]);
+  }, [runs.length, calendarTree, projectTree]);
 
   const toggleYear = (year: number) => {
     setExpandedYears((current) => {
@@ -80,12 +89,6 @@ export default function BautagebuchBtbsScreen() {
     });
   };
 
-  const toggleSelection = (runId: string) => {
-    setSelectedRunIds((current) =>
-      current.includes(runId) ? current.filter((id) => id !== runId) : [...current, runId]
-    );
-  };
-
   const deleteRun = (runId: string) => {
     Alert.alert('BTB löschen', 'Dieses Bautagebuch wirklich löschen?', [
       { text: 'Abbrechen', style: 'cancel' },
@@ -93,35 +96,10 @@ export default function BautagebuchBtbsScreen() {
         text: 'Löschen',
         style: 'destructive',
         onPress: () => {
-          void deleteRunById(runId).then(() => {
-            setSelectedRunIds((current) => current.filter((id) => id !== runId));
-            showToast('BTB gelöscht');
-          });
+          void deleteRunById(runId).then(() => showToast('BTB gelöscht'));
         }
       }
     ]);
-  };
-
-  const deleteSelected = () => {
-    if (selectedRunIds.length === 0) return;
-    Alert.alert(
-      'Auswahl löschen',
-      `${selectedRunIds.length} Bautagebuch${selectedRunIds.length === 1 ? '' : 'er'} wirklich löschen?`,
-      [
-        { text: 'Abbrechen', style: 'cancel' },
-        {
-          text: 'Löschen',
-          style: 'destructive',
-          onPress: () => {
-            void Promise.all(selectedRunIds.map((runId) => deleteRunById(runId))).then(() => {
-              setSelectedRunIds([]);
-              setSelectionMode(false);
-              showToast('Auswahl gelöscht');
-            });
-          }
-        }
-      ]
-    );
   };
 
   const openRename = (run: BautagebuchRun) => {
@@ -140,6 +118,8 @@ export default function BautagebuchBtbsScreen() {
     setRenameTitle('');
     showToast('BTB umbenannt');
   };
+
+  const showProjectList = filters.groupMode === 'project' && !filters.projectKey;
 
   return (
     <Screen
@@ -166,62 +146,66 @@ export default function BautagebuchBtbsScreen() {
       ) : null}
 
       {!initialLoading && !error ? (
-        <Section
-          title="Deine Bautagebücher"
-          action={
-            selectionMode ? (
-              <View style={styles.listActions}>
-                <PrimaryButton
-                  label="Abbrechen"
-                  variant="ghost"
-                  compact
-                  onPress={() => {
-                    setSelectionMode(false);
-                    setSelectedRunIds([]);
-                  }}
-                />
-                <PrimaryButton
-                  label={`Löschen (${selectedRunIds.length})`}
-                  variant="secondary"
-                  compact
-                  disabled={selectedRunIds.length === 0}
-                  onPress={deleteSelected}
-                />
-              </View>
-            ) : (
-              <PrimaryButton
-                label="Auswahl"
-                variant="ghost"
-                compact
-                disabled={runs.length === 0}
-                onPress={() => setSelectionMode(true)}
-              />
-            )
-          }
-        >
+        <View style={styles.content}>
+          {runs.length > 0 ? (
+            <BTBFilterBar
+              filters={filters}
+              baseTree={baseTree}
+              projectOptions={projectOptions}
+              onChange={setFilters}
+            />
+          ) : null}
+
+          {filters.groupMode === 'project' && filters.projectKey ? (
+            <PrimaryButton
+              label="← Alle Projekte"
+              variant="ghost"
+              onPress={() =>
+                setFilters((current) => ({ ...current, projectKey: null, year: null, weekKey: null }))
+              }
+            />
+          ) : null}
+
           {runs.length === 0 ? (
             <EmptyState
               title="Noch keine BTB-Läufe"
               description="Wechsle zum Home-Tab, um dein erstes Bautagebuch zu starten."
             />
+          ) : showProjectList ? (
+            <ProjectFilterList
+              projects={projectOptions}
+              onSelectProject={(projectKey) =>
+                setFilters((current) => ({ ...current, projectKey, year: null, weekKey: null }))
+              }
+            />
+          ) : filters.groupMode === 'project' && projectTree ? (
+            <BTBGroupedList
+              mode="project"
+              tree={projectTree}
+              expandedYears={expandedYears}
+              expandedWeeks={expandedWeeks}
+              onToggleYear={toggleYear}
+              onToggleWeek={toggleWeek}
+              onOpenRun={(runId) => router.push(`/bautagebuch/run/${runId}`)}
+              onRename={openRename}
+              onDelete={deleteRun}
+            />
           ) : (
-            <BautagebuchRunList
-              tree={runTree}
+            <BTBGroupedList
+              mode="calendar"
+              tree={calendarTree}
               expandedYears={expandedYears}
               expandedWeeks={expandedWeeks}
               expandedProjects={expandedProjects}
-              selectionMode={selectionMode}
-              selectedRunIds={selectedRunIds}
               onToggleYear={toggleYear}
               onToggleWeek={toggleWeek}
               onToggleProject={toggleProject}
               onOpenRun={(runId) => router.push(`/bautagebuch/run/${runId}`)}
-              onToggleSelect={toggleSelection}
               onRename={openRename}
               onDelete={deleteRun}
             />
           )}
-        </Section>
+        </View>
       ) : null}
 
       <Modal visible={Boolean(renameRunId)} transparent animationType="fade">
@@ -241,11 +225,11 @@ export default function BautagebuchBtbsScreen() {
 }
 
 const styles = StyleSheet.create({
+  content: { gap: spacing.md },
   center: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xl },
   muted: { ...typography.caption, color: colors.muted },
   errorBox: { gap: spacing.sm },
   error: { ...typography.body, color: colors.danger },
-  listActions: { flexDirection: 'row', gap: spacing.xs },
   modalBackdrop: {
     flex: 1,
     backgroundColor: colors.overlay,

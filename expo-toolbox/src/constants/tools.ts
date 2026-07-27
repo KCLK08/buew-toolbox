@@ -6,6 +6,7 @@ export type ToolboxTool = {
   id: ToolId;
   title: string;
   description: string;
+  features: string[];
   href: '/sitereport' | '/bautagebuch';
   tabHref: '/sitereport' | '/bautagebuch';
   webPath: string;
@@ -17,7 +18,9 @@ export const TOOLBOX_TOOLS: ToolboxTool[] = [
   {
     id: 'sitereport',
     title: 'SiteReport',
-    description: 'Foto‑basierte Protokolle mit XLSX‑Export.',
+    description:
+      'Baustellenprotokolle mit Fotos, strukturierten Einträgen und professionellem Export für die Bauüberwachung.',
+    features: ['Protokolle erstellen', 'Fotos dokumentieren', 'PDF- und Excel-Export'],
     href: '/sitereport',
     tabHref: '/sitereport',
     webPath: '/sitereport/',
@@ -27,7 +30,9 @@ export const TOOLBOX_TOOLS: ToolboxTool[] = [
   {
     id: 'bautagebuch',
     title: 'Bautagebuch',
-    description: 'AcroForm-Tool mit Auto-Erkennung, Guided Flow und sauberem PDF-Export.',
+    description:
+      'Digitale Erfassung, Dokumentation und Verwaltung von Baustellenereignissen, Fotos und Leistungen.',
+    features: ['Protokolle erstellen', 'Fotos dokumentieren', 'PDF/XLSX Export'],
     href: '/bautagebuch',
     tabHref: '/bautagebuch',
     webPath: '/bautagebuch/',
