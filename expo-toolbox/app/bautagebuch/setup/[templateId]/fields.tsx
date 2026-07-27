@@ -174,6 +174,7 @@ export default function SetupFieldsScreen() {
       subtitle={templateName ? `Feldeinstellungen · ${templateName}` : 'Feldeinstellungen'}
       showBack
       scroll={false}
+      scrollableHeader
       contentStyle={styles.screenContent}
       footer={footer}
     >

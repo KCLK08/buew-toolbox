@@ -17,6 +17,7 @@ import { colors, spacing, typography } from '../../constants/theme';
 import { KeyboardScrollProvider, useKeyboardScroll } from '../../contexts/KeyboardScrollContext';
 import { tabBarReservedHeight } from '../../navigation/appTabBar';
 import { systemBottomInset } from '../../navigation/systemInsets';
+import { SingleLineText } from './SingleLineText';
 
 type Props = {
   title: string;
@@ -32,6 +33,8 @@ type Props = {
   footer?: ReactNode;
   overlay?: ReactNode;
   compactFooter?: boolean;
+  /** Header title/subtitle scroll horizontally instead of truncating with ellipsis. */
+  scrollableHeader?: boolean;
   contentStyle?: ViewStyle;
   refreshing?: boolean;
   onRefresh?: () => void;
@@ -111,6 +114,7 @@ export function Screen({
   footer,
   overlay,
   compactFooter = false,
+  scrollableHeader = false,
   contentStyle,
   refreshing,
   onRefresh
@@ -154,13 +158,25 @@ export function Screen({
           )}
         </View>
         <View style={styles.headerCenter}>
-          <Text style={styles.title} numberOfLines={1}>
-            {title}
-          </Text>
-          {subtitle ? (
-            <Text style={styles.subtitle} numberOfLines={1}>
-              {subtitle}
+          {scrollableHeader ? (
+            <SingleLineText style={styles.title} centered>
+              {title}
+            </SingleLineText>
+          ) : (
+            <Text style={styles.title} numberOfLines={1}>
+              {title}
             </Text>
+          )}
+          {subtitle ? (
+            scrollableHeader ? (
+              <SingleLineText style={styles.subtitle} centered>
+                {subtitle}
+              </SingleLineText>
+            ) : (
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            )
           ) : null}
         </View>
         <View style={[styles.headerSide, styles.headerRight]}>{rightAction}</View>

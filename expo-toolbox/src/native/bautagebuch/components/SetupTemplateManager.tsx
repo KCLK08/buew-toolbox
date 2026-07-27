@@ -1,6 +1,6 @@
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { PrimaryButton, StatusBadge } from '../../../components/mobile';
+import { PrimaryButton, SingleLineText, StatusBadge } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
 import type { BautagebuchTemplate } from '../types';
 
@@ -11,6 +11,7 @@ type Props = {
   importing?: boolean;
   onSelectEdit: (templateId: string) => void;
   onSetActive: (templateId: string) => void;
+  onRename?: (templateId: string) => void;
   onImport: () => void;
 };
 
@@ -21,6 +22,7 @@ export function SetupTemplateManager({
   importing = false,
   onSelectEdit,
   onSetActive,
+  onRename,
   onImport
 }: Props) {
   return (
@@ -49,14 +51,12 @@ export function SetupTemplateManager({
               onPress={() => onSelectEdit(template.templateId)}
             >
               <View style={styles.cardTop}>
-                <Text style={styles.cardTitle} numberOfLines={2}>
-                  {template.templateName}
-                </Text>
+                <View style={styles.cardTitleWrap}>
+                  <SingleLineText style={styles.cardTitle}>{template.templateName}</SingleLineText>
+                </View>
                 {isActive ? <StatusBadge label="Aktiv" tone="success" /> : null}
               </View>
-              <Text style={styles.cardMeta} numberOfLines={1}>
-                {template.fileName}
-              </Text>
+              <SingleLineText style={styles.cardMeta}>{template.fileName}</SingleLineText>
               <Text style={styles.cardMeta}>
                 {template.status === 'ready' ? 'Startbereit' : 'Setup offen'} · {template.pageCount} Seite(n)
               </Text>
@@ -73,6 +73,17 @@ export function SetupTemplateManager({
               ) : (
                 <Text style={styles.activeNote}>Wird für neue BTBs genutzt</Text>
               )}
+              {onRename ? (
+                <Pressable
+                  style={styles.renameBtn}
+                  onPress={(event) => {
+                    event.stopPropagation?.();
+                    onRename(template.templateId);
+                  }}
+                >
+                  <Text style={styles.renameLabel}>Umbenennen</Text>
+                </Pressable>
+              ) : null}
             </Pressable>
           );
         })}
@@ -129,10 +140,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.xs
   },
+  cardTitleWrap: {
+    flex: 1,
+    minWidth: 0
+  },
   cardTitle: {
     ...typography.bodyStrong,
-    color: colors.ink,
-    flex: 1
+    color: colors.ink
   },
   cardMeta: {
     ...typography.caption,
@@ -152,6 +166,15 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.accent,
     fontFamily: 'SpaceGrotesk_600SemiBold'
+  },
+  renameBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: 4
+  },
+  renameLabel: {
+    ...typography.caption,
+    color: colors.accent2,
+    textDecorationLine: 'underline'
   },
   activeNote: {
     ...typography.caption,

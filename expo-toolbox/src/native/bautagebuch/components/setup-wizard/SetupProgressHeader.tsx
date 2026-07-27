@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { SingleLineText } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 import type { MappingProgress } from '../../lib/setup-mapping';
 
@@ -36,16 +37,12 @@ export function SetupProgressHeader({
         <View style={styles.fieldInfo}>
           <View style={styles.fieldRow}>
             <Text style={styles.fieldLabel}>Erkannter Name:</Text>
-            <Text style={styles.fieldValue} numberOfLines={2}>
-              {fieldName}
-            </Text>
+            <SingleLineText style={styles.fieldValue}>{fieldName}</SingleLineText>
           </View>
           {labelCandidate && labelCandidate !== fieldName ? (
             <View style={styles.fieldRow}>
               <Text style={styles.fieldLabel}>Vorschlag:</Text>
-              <Text style={styles.fieldValueStrong} numberOfLines={2}>
-                {labelCandidate}
-              </Text>
+              <SingleLineText style={styles.fieldValueStrong}>{labelCandidate}</SingleLineText>
             </View>
           ) : null}
         </View>

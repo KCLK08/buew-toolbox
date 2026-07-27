@@ -237,6 +237,19 @@ export async function putTemplate(template: BautagebuchTemplate): Promise<Bautag
   return record;
 }
 
+export async function renameTemplate(
+  templateId: string,
+  templateName: string
+): Promise<BautagebuchTemplate | null> {
+  const template = await getTemplate(templateId);
+  if (!template) return null;
+  const trimmed = String(templateName || '').trim();
+  if (!trimmed) {
+    throw new Error('Vorlagenname fehlt.');
+  }
+  return putTemplate({ ...template, templateName: trimmed });
+}
+
 export async function saveDetectedFields(
   templateId: string,
   fields: Omit<DetectedField, 'id' | 'templateId' | 'createdAt' | 'updatedAt'>[]

@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { SingleLineText } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 
 type Props = {
@@ -22,7 +23,9 @@ export function SetupFieldsIntro({ templateName, fieldCount, groupCount }: Props
         <Text style={styles.summaryHeading}>Vorlagenübersicht</Text>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>PDF</Text>
-          <Text style={styles.summaryValue}>{templateName}</Text>
+          <View style={styles.summaryValueWrap}>
+            <SingleLineText style={styles.summaryValue}>{templateName}</SingleLineText>
+          </View>
         </View>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Felder</Text>
@@ -83,7 +86,11 @@ const styles = StyleSheet.create({
   summaryValue: {
     ...typography.bodyStrong,
     color: colors.ink,
-    flexShrink: 1,
     textAlign: 'right'
+  },
+  summaryValueWrap: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-end'
   }
 });

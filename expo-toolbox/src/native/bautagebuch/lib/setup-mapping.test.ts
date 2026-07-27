@@ -48,6 +48,16 @@ test('ensureWizardInitialized does not reset wizard step', () => {
   assert.equal(getWizardState(next).step, 'fields');
 });
 
+test('ensureWizardInitialized starts new templates without preset groups', () => {
+  const next = ensureWizardInitialized({ single_sections: [] });
+  assert.deepEqual(getWizardState(next).groups, []);
+});
+
+test('getWizardState returns empty groups when none were saved', () => {
+  const wizard = getWizardState({});
+  assert.deepEqual(wizard.groups, []);
+});
+
 test('isMappingComplete treats deferred fields as handled', () => {
   const fields = sortMappingFields([field('a'), field('b')]);
   let model: Record<string, unknown> = { wizard: { groups: [{ sectionId: 'g1', label: 'G1' }] } };
@@ -104,8 +114,9 @@ test('resolveCurrentMappingIndex prefers first unassigned field', () => {
   const model = withWizardState(
     {},
     {
-      currentFieldIndex: 2,
-      assignments: { a: 'kopfdaten' }
+      currentFieldIndex: 0,
+      groups: [{ sectionId: 'g1', label: 'G1' }],
+      assignments: { a: 'g1' }
     }
   );
   const wizard = getWizardState(model);

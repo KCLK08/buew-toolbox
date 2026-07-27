@@ -104,6 +104,7 @@ export default function SetupMappingScreen() {
       subtitle={templateName ? `Feldzuordnung · ${templateName}` : 'Feldzuordnung'}
       showBack
       scroll={false}
+      scrollableHeader
       contentStyle={styles.screenContent}
     >
       {loading ? (

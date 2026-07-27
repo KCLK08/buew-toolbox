@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
-import { TextField } from '../../../../components/mobile';
+import { TextField, SingleLineText } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 import {
   checkboxBehaviorHint,
@@ -73,9 +73,7 @@ export function SetupFieldCard({
     >
       <View style={styles.header}>
         <View style={styles.heading}>
-          <Text style={styles.title} numberOfLines={2}>
-            {title}
-          </Text>
+          <SingleLineText style={styles.title}>{title}</SingleLineText>
           <View style={styles.metaRow}>
             <Text style={styles.typeBadge}>{typeLabel}</Text>
             {field.page ? <Text style={styles.meta}>Seite {field.page}</Text> : null}
