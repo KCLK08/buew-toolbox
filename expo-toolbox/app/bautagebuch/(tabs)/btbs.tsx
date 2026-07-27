@@ -16,8 +16,14 @@ import {
   listProjectsFromRuns,
   type BtbListFilters
 } from '../../../src/native/bautagebuch/lib/btb-filter';
-import { groupRunsByCalendar } from '../../../src/native/bautagebuch/lib/group-runs-by-calendar';
+import { filterRunsBySearchQuery } from '../../../src/native/bautagebuch/lib/btb-search';
 import type { BautagebuchRun } from '../../../src/native/bautagebuch/types';
+
+function buildSubtitle(totalCount: number, visibleCount: number, searchQuery: string): string {
+  const totalLabel = `${totalCount} BTB${totalCount === 1 ? '' : 's'}`;
+  if (!searchQuery.trim()) return totalLabel;
+  return `${visibleCount} von ${totalLabel}`;
+}
 
 export default function BautagebuchBtbsScreen() {
   const router = useRouter();
@@ -26,6 +32,7 @@ export default function BautagebuchBtbsScreen() {
     useBautagebuchWorkspace();
 
   const [filters, setFilters] = useState<BtbListFilters>(DEFAULT_BTB_FILTERS);
+  const [searchQuery, setSearchQuery] = useState('');
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
@@ -33,34 +40,34 @@ export default function BautagebuchBtbsScreen() {
   const [renameTitle, setRenameTitle] = useState('');
   const expansionInitialized = useRef(false);
 
-  const baseTree = useMemo(
-    () => groupRunsByCalendar(runs, { setupModel }),
-    [runs, setupModel]
+  const visibleRuns = useMemo(
+    () => filterRunsBySearchQuery(runs, searchQuery),
+    [runs, searchQuery]
   );
   const projectOptions = useMemo(
-    () => listProjectsFromRuns(runs, setupModel),
-    [runs, setupModel]
+    () => listProjectsFromRuns(visibleRuns, setupModel),
+    [visibleRuns, setupModel]
   );
   const calendarTree = useMemo(
-    () => buildCalendarTree(runs, setupModel, filters),
-    [runs, setupModel, filters]
+    () => buildCalendarTree(visibleRuns, setupModel, filters),
+    [visibleRuns, setupModel, filters]
   );
   const projectTree = useMemo(() => {
     if (filters.groupMode !== 'project' || !filters.projectKey) return null;
-    return buildProjectFirstTree(runs, setupModel, filters.projectKey, filters);
-  }, [runs, setupModel, filters]);
+    return buildProjectFirstTree(visibleRuns, setupModel, filters.projectKey, filters);
+  }, [visibleRuns, setupModel, filters]);
 
   useEffect(() => {
     expansionInitialized.current = false;
     setExpandedYears(new Set());
     setExpandedWeeks(new Set());
     setExpandedProjects(new Set());
-  }, [filters.groupMode, filters.projectKey, filters.year, filters.weekKey]);
+  }, [filters.groupMode, filters.projectKey, searchQuery]);
 
   useEffect(() => {
-    if (runs.length === 0 || expansionInitialized.current) return;
+    if (visibleRuns.length === 0 || expansionInitialized.current) return;
     expansionInitialized.current = true;
-  }, [runs.length, calendarTree, projectTree]);
+  }, [visibleRuns.length, calendarTree, projectTree]);
 
   const toggleYear = (year: number) => {
     setExpandedYears((current) => {
@@ -120,11 +127,13 @@ export default function BautagebuchBtbsScreen() {
   };
 
   const showProjectList = filters.groupMode === 'project' && !filters.projectKey;
+  const hasSearchQuery = searchQuery.trim().length > 0;
+  const subtitle = buildSubtitle(runs.length, visibleRuns.length, searchQuery);
 
   return (
     <Screen
       title="Bautagebücher"
-      subtitle={`${runs.length} BTB${runs.length === 1 ? '' : 's'}`}
+      subtitle={subtitle}
       toolboxBack
       reserveTabBarSpace
       scroll
@@ -148,21 +157,26 @@ export default function BautagebuchBtbsScreen() {
       {!initialLoading && !error ? (
         <View style={styles.content}>
           {runs.length > 0 ? (
-            <BTBFilterBar
-              filters={filters}
-              baseTree={baseTree}
-              projectOptions={projectOptions}
-              onChange={setFilters}
-            />
+            <>
+              <TextField
+                label="Suche"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Begriff im BTB suchen, z. B. Zaun"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                clearButtonMode="while-editing"
+              />
+              <BTBFilterBar filters={filters} onChange={setFilters} />
+            </>
           ) : null}
 
           {filters.groupMode === 'project' && filters.projectKey ? (
             <PrimaryButton
               label="← Alle Projekte"
               variant="ghost"
-              onPress={() =>
-                setFilters((current) => ({ ...current, projectKey: null, year: null, weekKey: null }))
-              }
+              onPress={() => setFilters((current) => ({ ...current, projectKey: null }))}
             />
           ) : null}
 
@@ -171,11 +185,16 @@ export default function BautagebuchBtbsScreen() {
               title="Noch keine BTB-Läufe"
               description="Wechsle zum Home-Tab, um dein erstes Bautagebuch zu starten."
             />
+          ) : visibleRuns.length === 0 && hasSearchQuery ? (
+            <EmptyState
+              title="Keine Treffer"
+              description={`Kein Bautagebuch enthält „${searchQuery.trim()}“.`}
+            />
           ) : showProjectList ? (
             <ProjectFilterList
               projects={projectOptions}
               onSelectProject={(projectKey) =>
-                setFilters((current) => ({ ...current, projectKey, year: null, weekKey: null }))
+                setFilters((current) => ({ ...current, projectKey }))
               }
             />
           ) : filters.groupMode === 'project' && projectTree ? (
