@@ -39,29 +39,29 @@ type PdfJsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 
 let pdfJsPromise: Promise<PdfJsModule> | null = null;
 
+async function resolvePdfJsWorkerSrc(): Promise<string> {
+  try {
+    const { Asset } = await import('expo-asset');
+    const asset = Asset.fromModule(require('../../../../assets/pdf.worker.min.mjs'));
+    await asset.downloadAsync();
+    const uri = asset.localUri || asset.uri;
+    if (uri) return uri;
+  } catch {
+    // Expo Asset unavailable (e.g. Node tests) — fall back below.
+  }
+
+  try {
+    return require.resolve('pdfjs-dist/legacy/build/pdf.worker.min.mjs');
+  } catch {
+    throw new Error('pdf.js worker could not be resolved');
+  }
+}
+
 async function loadPdfJs(): Promise<PdfJsModule> {
   if (!pdfJsPromise) {
     pdfJsPromise = (async () => {
       const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-      try {
-        const { Asset } = await import('expo-asset');
-        const asset = Asset.fromModule(require('../../../../assets/pdf.worker.min.mjs'));
-        await asset.downloadAsync();
-        pdfjs.GlobalWorkerOptions.workerSrc = asset.localUri || asset.uri;
-      } catch {
-        try {
-          const { createRequire } = await import('node:module');
-          const require = createRequire(import.meta.url);
-          pdfjs.GlobalWorkerOptions.workerSrc = require.resolve(
-            'pdfjs-dist/legacy/build/pdf.worker.min.mjs'
-          );
-        } catch {
-          pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-            'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
-            import.meta.url
-          ).toString();
-        }
-      }
+      pdfjs.GlobalWorkerOptions.workerSrc = await resolvePdfJsWorkerSrc();
       return pdfjs;
     })();
   }
