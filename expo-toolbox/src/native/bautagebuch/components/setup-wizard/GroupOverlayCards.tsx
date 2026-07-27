@@ -9,6 +9,7 @@ import type { SetupWizardGroup } from '../../types';
 type Props = {
   groups: SetupWizardGroup[];
   placement: OverlayPlacement;
+  selectedGroupId?: string | null;
   onSelectGroup: (sectionId: string) => void;
   onCreateGroup: (label: string) => void;
   disabled?: boolean;
@@ -17,12 +18,14 @@ type Props = {
 export function GroupOverlayCards({
   groups,
   placement,
+  selectedGroupId = null,
   onSelectGroup,
   onCreateGroup,
   disabled = false
 }: Props) {
   const [creating, setCreating] = useState(false);
   const [newGroupLabel, setNewGroupLabel] = useState('');
+  const hasGroups = groups.length > 0;
 
   const containerStyle = useMemo(() => {
     if (placement === 'top') return styles.overlayTop;
@@ -39,6 +42,41 @@ export function GroupOverlayCards({
     setCreating(false);
   };
 
+  const openCreateDialog = () => {
+    setCreating(true);
+  };
+
+  if (!hasGroups) {
+    return (
+      <View style={[styles.host, styles.overlayBottom]} pointerEvents="box-none">
+        <View style={[styles.panel, styles.panelEmpty, shadows.card]} pointerEvents="auto">
+          <Text style={styles.emptyTitle}>Gruppen erforderlich</Text>
+          <Text style={styles.emptyCopy}>
+            Für die Zuordnung müssen zuerst Gruppen erstellt werden.
+          </Text>
+          {creating ? (
+            <View style={styles.createRow}>
+              <Text style={styles.createLabel}>Name der Gruppe</Text>
+              <TextInput
+                value={newGroupLabel}
+                onChangeText={setNewGroupLabel}
+                placeholder="z. B. Kopfdaten"
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+                autoFocus
+                returnKeyType="done"
+                onSubmitEditing={handleCreate}
+              />
+              <PrimaryButton label="Speichern" onPress={handleCreate} />
+            </View>
+          ) : (
+            <PrimaryButton label="+ Neue Gruppe" onPress={openCreateDialog} />
+          )}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.host, containerStyle]} pointerEvents="box-none">
       <View style={[styles.panel, shadows.card]} pointerEvents="auto">
@@ -49,19 +87,28 @@ export function GroupOverlayCards({
           contentContainerStyle={styles.cardRow}
           keyboardShouldPersistTaps="handled"
         >
-          {groups.map((group) => (
-            <Pressable
-              key={group.sectionId}
-              disabled={disabled}
-              style={({ pressed }) => [styles.card, pressed ? styles.cardPressed : null]}
-              onPress={() => onSelectGroup(group.sectionId)}
-            >
-              <Text style={styles.cardLabel}>{group.label}</Text>
-            </Pressable>
-          ))}
+          {groups.map((group) => {
+            const selected = selectedGroupId === group.sectionId;
+            return (
+              <Pressable
+                key={group.sectionId}
+                disabled={disabled}
+                style={({ pressed }) => [
+                  styles.card,
+                  selected ? styles.cardSelected : null,
+                  pressed ? styles.cardPressed : null
+                ]}
+                onPress={() => onSelectGroup(group.sectionId)}
+              >
+                <Text style={[styles.cardLabel, selected ? styles.cardLabelSelected : null]}>
+                  {group.label}
+                </Text>
+              </Pressable>
+            );
+          })}
           <Pressable
             style={({ pressed }) => [styles.card, styles.createCard, pressed ? styles.cardPressed : null]}
-            onPress={() => setCreating((value) => !value)}
+            onPress={openCreateDialog}
           >
             <Text style={styles.createLabel}>+ Neue Gruppe</Text>
           </Pressable>
@@ -69,6 +116,7 @@ export function GroupOverlayCards({
 
         {creating ? (
           <View style={styles.createRow}>
+            <Text style={styles.createLabel}>Name der Gruppe</Text>
             <TextInput
               value={newGroupLabel}
               onChangeText={setNewGroupLabel}
@@ -76,8 +124,10 @@ export function GroupOverlayCards({
               placeholderTextColor={colors.muted}
               style={styles.input}
               autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleCreate}
             />
-            <PrimaryButton label="Hinzufügen" onPress={handleCreate} />
+            <PrimaryButton label="Speichern" onPress={handleCreate} />
           </View>
         ) : null}
       </View>
@@ -88,7 +138,8 @@ export function GroupOverlayCards({
 const styles = StyleSheet.create({
   host: {
     position: 'absolute',
-    zIndex: 20
+    zIndex: 20,
+    maxWidth: '100%'
   },
   overlayTop: {
     top: spacing.sm,
@@ -102,21 +153,32 @@ const styles = StyleSheet.create({
   },
   overlayLeft: {
     left: spacing.pageX,
-    top: '28%',
-    width: 180
+    top: '22%',
+    maxWidth: 200
   },
   overlayRight: {
     right: spacing.pageX,
-    top: '28%',
-    width: 180
+    top: '22%',
+    maxWidth: 200
   },
   panel: {
     backgroundColor: colors.panelElevated,
     borderRadius: spacing.cardRadius,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.sm,
+    padding: spacing.md,
     gap: spacing.sm
+  },
+  panelEmpty: {
+    gap: spacing.md
+  },
+  emptyTitle: {
+    ...typography.bodyStrong,
+    color: colors.ink
+  },
+  emptyCopy: {
+    ...typography.body,
+    color: colors.muted
   },
   heading: {
     ...typography.label,
@@ -127,8 +189,8 @@ const styles = StyleSheet.create({
     paddingRight: spacing.xs
   },
   card: {
-    minWidth: 132,
-    minHeight: spacing.touchMin,
+    minWidth: 140,
+    minHeight: spacing.touchMin + 4,
     borderRadius: 14,
     backgroundColor: colors.panel,
     borderWidth: 1,
@@ -137,13 +199,22 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     justifyContent: 'center'
   },
+  cardSelected: {
+    backgroundColor: colors.badgeBg,
+    borderColor: colors.accent,
+    borderWidth: 2
+  },
   cardPressed: {
     backgroundColor: colors.badgeBg,
     borderColor: colors.accent
   },
   cardLabel: {
     ...typography.bodyStrong,
-    color: colors.ink
+    color: colors.ink,
+    textAlign: 'center'
+  },
+  cardLabelSelected: {
+    color: colors.accent2
   },
   createCard: {
     borderStyle: 'dashed',
@@ -163,6 +234,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: spacing.inputRadius,
     paddingHorizontal: spacing.md,
+    minHeight: spacing.touchMin,
     paddingVertical: spacing.sm,
     backgroundColor: colors.panel
   }

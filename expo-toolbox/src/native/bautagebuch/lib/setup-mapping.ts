@@ -321,17 +321,52 @@ export function updateSetupField(
   };
 }
 
+/** PDF page height assumption for A4-like templates (points, origin bottom-left). */
+const PDF_PAGE_HEIGHT = 842;
+const PDF_PAGE_WIDTH = 595;
+
+/**
+ * Place group-selection overlay away from the active field so it stays visible.
+ * PDF Y increases upward — high centerY = field near top of page on screen.
+ */
 export function resolveOverlayPlacement(rect: number[] | null): OverlayPlacement {
   if (!rect || rect.length < 4) return 'bottom';
   const [x1, y1, x2, y2] = rect;
   const centerX = (x1 + x2) / 2;
   const centerY = (y1 + y2) / 2;
 
-  if (centerY > 700) return 'top';
-  if (centerY < 220) return 'bottom';
-  if (centerX < 220) return 'right';
-  if (centerX > 520) return 'left';
+  const topThird = PDF_PAGE_HEIGHT * 0.68;
+  const bottomThird = PDF_PAGE_HEIGHT * 0.32;
+  const leftThird = PDF_PAGE_WIDTH * 0.33;
+  const rightThird = PDF_PAGE_WIDTH * 0.67;
+
+  // Field near top of page → selection panel at bottom of preview.
+  if (centerY >= topThird) return 'bottom';
+  // Field near bottom of page → selection panel at top.
+  if (centerY <= bottomThird) return 'top';
+  // Field on left edge → panel on right.
+  if (centerX <= leftThird) return 'right';
+  // Field on right edge → panel on left.
+  if (centerX >= rightThird) return 'left';
   return 'bottom';
+}
+
+export function resolveCurrentMappingIndex(
+  fields: MappingField[],
+  wizard: SetupWizardState
+): number {
+  if (fields.length === 0) return 0;
+  const stored = Math.max(0, Number(wizard.currentFieldIndex || 0));
+  const storedField = fields[stored];
+  if (
+    storedField &&
+    !wizard.assignments[storedField.fieldId] &&
+    !wizard.deferredFieldIds.includes(storedField.fieldId)
+  ) {
+    return stored;
+  }
+  const next = getNextUnassignedIndex(fields, wizard, 0);
+  return next >= 0 ? next : Math.min(stored, fields.length - 1);
 }
 
 export function templateDisplayStatus(

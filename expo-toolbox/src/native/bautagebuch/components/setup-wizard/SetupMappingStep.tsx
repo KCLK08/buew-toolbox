@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
@@ -11,6 +12,7 @@ import {
   getNextUnassignedIndex,
   getWizardState,
   isMappingComplete,
+  resolveCurrentMappingIndex,
   resolveOverlayPlacement,
   type MappingField
 } from '../../lib/setup-mapping';
@@ -38,11 +40,13 @@ export function SetupMappingStep({
   onComplete,
   onFinishLater
 }: Props) {
+  const insets = useSafeAreaInsets();
+  const indexSyncedRef = useRef(false);
   const wizard = useMemo(() => getWizardState(setupModel), [setupModel]);
-  const currentIndex = Math.min(
-    Math.max(0, wizard.currentFieldIndex),
-    Math.max(0, mappingFields.length - 1)
-  );
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [completionShown, setCompletionShown] = useState(false);
+
+  const currentIndex = resolveCurrentMappingIndex(mappingFields, wizard);
   const currentField = mappingFields[currentIndex] || null;
   const progress = useMemo(
     () => getMappingProgress(mappingFields, wizard),
@@ -50,14 +54,54 @@ export function SetupMappingStep({
   );
   const placement = resolveOverlayPlacement(currentField?.rect || null);
   const mappingDone = isMappingComplete(mappingFields, wizard);
+  const hasGroups = wizard.groups.length > 0;
+  const fieldNumber = currentField ? currentIndex + 1 : 0;
+
+  useEffect(() => {
+    if (indexSyncedRef.current || mappingFields.length === 0) return;
+    indexSyncedRef.current = true;
+    const resolved = resolveCurrentMappingIndex(mappingFields, wizard);
+    if (resolved !== wizard.currentFieldIndex) {
+      onChange({
+        ...setupModel,
+        wizard: {
+          ...wizard,
+          currentFieldIndex: resolved
+        }
+      });
+    }
+  }, [mappingFields, wizard, setupModel, onChange]);
+
+  useEffect(() => {
+    if (!mappingDone || completionShown) return;
+    setCompletionShown(true);
+    Alert.alert(
+      'Alle Felder wurden zugeordnet',
+      'Du kannst jetzt die Feldeinstellungen vornehmen oder später fortsetzen.',
+      [
+        {
+          text: 'Später fortsetzen',
+          style: 'cancel',
+          onPress: onFinishLater
+        },
+        {
+          text: 'Zu Feldern wechseln',
+          onPress: () => onComplete(setupModel)
+        }
+      ],
+      { cancelable: false }
+    );
+  }, [mappingDone, completionShown, onComplete, onFinishLater, setupModel]);
 
   const advanceAfterChange = (next: Record<string, unknown>) => {
     const nextWizard = getWizardState(next);
+    setSelectedGroupId(null);
+
     if (isMappingComplete(mappingFields, nextWizard)) {
       onChange(next);
-      onComplete(next);
       return;
     }
+
     const nextIndex = getNextUnassignedIndex(mappingFields, nextWizard, 0);
     onChange({
       ...next,
@@ -69,17 +113,20 @@ export function SetupMappingStep({
   };
 
   const assignGroup = (sectionId: string) => {
-    if (!currentField) return;
+    if (!currentField || !hasGroups) return;
+    setSelectedGroupId(sectionId);
     const next = assignFieldToGroup(setupModel, currentField.fieldId, sectionId);
     advanceAfterChange(next);
   };
 
   const createGroup = (label: string) => {
     const result = addWizardGroup(setupModel, label);
+    setSelectedGroupId(result.group.sectionId);
     onChange(result.setupModel);
   };
 
   const goBack = () => {
+    setSelectedGroupId(null);
     onChange({
       ...setupModel,
       wizard: {
@@ -90,6 +137,7 @@ export function SetupMappingStep({
   };
 
   const goForward = () => {
+    setSelectedGroupId(null);
     onChange({
       ...setupModel,
       wizard: {
@@ -105,11 +153,19 @@ export function SetupMappingStep({
     advanceAfterChange(next);
   };
 
+  const handleGoToFields = () => {
+    onComplete(setupModel);
+  };
+
+  const footerBottom = Math.max(insets.bottom, spacing.md);
+
   return (
     <View style={styles.root}>
       <SetupProgressHeader
         progress={progress}
-        title={currentField ? currentField.labelCandidate : 'Feldzuordnung'}
+        fieldNumber={fieldNumber}
+        fieldName={currentField?.fieldName}
+        labelCandidate={currentField?.labelCandidate}
       />
 
       <View style={styles.canvas}>
@@ -126,28 +182,52 @@ export function SetupMappingStep({
           <GroupOverlayCards
             groups={wizard.groups}
             placement={placement}
+            selectedGroupId={selectedGroupId}
             onSelectGroup={assignGroup}
             onCreateGroup={createGroup}
+            disabled={!hasGroups}
           />
         ) : null}
       </View>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: footerBottom }]}>
         <View style={styles.navRow}>
-          <Pressable style={styles.navBtn} onPress={goBack} disabled={currentIndex <= 0}>
-            <Text style={styles.navLabel}>Zurück</Text>
+          <Pressable
+            style={[styles.navBtn, currentIndex <= 0 ? styles.navBtnDisabled : null]}
+            onPress={goBack}
+            disabled={currentIndex <= 0}
+          >
+            <Text style={[styles.navLabel, currentIndex <= 0 ? styles.navLabelDisabled : null]}>
+              Zurück
+            </Text>
           </Pressable>
-          <Pressable style={styles.navBtn} onPress={skipField}>
-            <Text style={styles.navLabel}>Überspringen</Text>
+          <Pressable style={styles.navBtnPrimary} onPress={skipField} disabled={!currentField}>
+            <Text style={styles.navLabelPrimary}>Überspringen</Text>
           </Pressable>
-          <Pressable style={styles.navBtn} onPress={goForward}>
-            <Text style={styles.navLabel}>Weiter</Text>
+          <Pressable
+            style={[
+              styles.navBtn,
+              currentIndex >= mappingFields.length - 1 ? styles.navBtnDisabled : null
+            ]}
+            onPress={goForward}
+            disabled={currentIndex >= mappingFields.length - 1}
+          >
+            <Text
+              style={[
+                styles.navLabel,
+                currentIndex >= mappingFields.length - 1 ? styles.navLabelDisabled : null
+              ]}
+            >
+              Weiter
+            </Text>
           </Pressable>
         </View>
-        <PrimaryButton label="Später bearbeiten" variant="ghost" onPress={onFinishLater} />
+
         {mappingDone ? (
-          <PrimaryButton label="Weiter zu Schritt 2" onPress={() => onComplete(setupModel)} />
-        ) : null}
+          <PrimaryButton label="Zu Feldern wechseln" onPress={handleGoToFields} />
+        ) : (
+          <PrimaryButton label="Später fortsetzen" variant="ghost" onPress={onFinishLater} />
+        )}
       </View>
     </View>
   );
@@ -159,12 +239,13 @@ const styles = StyleSheet.create({
   },
   canvas: {
     flex: 1,
-    position: 'relative'
+    position: 'relative',
+    minHeight: 0
   },
   footer: {
     gap: spacing.sm,
     paddingHorizontal: spacing.pageX,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.panel
@@ -175,12 +256,37 @@ const styles = StyleSheet.create({
     gap: spacing.sm
   },
   navBtn: {
-    minHeight: spacing.touchMin,
+    flex: 1,
+    minHeight: spacing.touchMin + 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.panel,
     justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: spacing.sm
+  },
+  navBtnPrimary: {
+    flex: 1.4,
+    minHeight: spacing.touchMin + 4,
+    borderRadius: 12,
+    backgroundColor: colors.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm
+  },
+  navBtnDisabled: {
+    opacity: 0.45
   },
   navLabel: {
     ...typography.bodyStrong,
     color: colors.accent2
+  },
+  navLabelPrimary: {
+    ...typography.bodyStrong,
+    color: colors.panel
+  },
+  navLabelDisabled: {
+    color: colors.muted
   }
 });

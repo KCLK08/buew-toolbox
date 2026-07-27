@@ -152,6 +152,14 @@ function buildPreviewHtml(
         canvas.style.height = Math.ceil(viewport.height / dpr) + 'px';
         await page.render({ canvasContext: context, viewport }).promise;
         drawOverlay(safePage, viewport);
+        if (mappingMode && activeFieldId) {
+          requestAnimationFrame(() => {
+            const active = document.querySelector('.highlight.active');
+            if (active && typeof active.scrollIntoView === 'function') {
+              active.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+            }
+          });
+        }
         post({ type: 'state', page: safePage, pageCount: pdfDoc.numPages, ready: true, error: null });
       }
 
@@ -436,7 +444,7 @@ const styles = StyleSheet.create({
   },
   panelMapping: {
     flex: 1,
-    minHeight: MAPPING_PREVIEW_HEIGHT,
+    minHeight: 0,
     borderRadius: 0,
     borderWidth: 0
   },
@@ -456,8 +464,7 @@ const styles = StyleSheet.create({
   },
   webviewMapping: {
     flex: 1,
-    minHeight: MAPPING_PREVIEW_HEIGHT - 2,
-    height: MAPPING_PREVIEW_HEIGHT - 2
+    minHeight: 0
   },
   webviewOverlay: {
     flex: 1,
