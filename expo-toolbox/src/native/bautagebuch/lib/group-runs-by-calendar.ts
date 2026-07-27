@@ -47,7 +47,7 @@ function parseBtbDate(run: BautagebuchRun): Date | null {
   return null;
 }
 
-function resolveProjectFieldKey(setupModel?: Record<string, unknown> | null): string | null {
+export function resolveProjectFieldKey(setupModel?: Record<string, unknown> | null): string | null {
   const sections =
     (setupModel?.single_sections as Array<{ fields?: Array<{ fieldId?: string; fieldName?: string }> }>) || [];
   for (const section of sections) {

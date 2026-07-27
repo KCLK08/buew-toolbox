@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -8,10 +8,10 @@ import {
   SpaceGrotesk_600SemiBold,
   SpaceGrotesk_700Bold
 } from '@expo-google-fonts/space-grotesk';
-import { ActivityIndicator, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AppLoadingScreen } from '../src/components/AppLoadingScreen';
 import { colors } from '../src/constants/theme';
 import { ToastProvider } from '../src/contexts/ToastContext';
 import { useOfflineBootstrap } from '../src/hooks/useOfflineBootstrap';
@@ -27,13 +27,13 @@ export default function RootLayout() {
 }
 
 function RootLayoutContent() {
-  const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts({
     SpaceGrotesk_400Regular,
     SpaceGrotesk_600SemiBold,
     SpaceGrotesk_700Bold
   });
   const [nativeReady, setNativeReady] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
   useOfflineBootstrap();
 
   useEffect(() => {
@@ -43,35 +43,34 @@ function RootLayoutContent() {
   }, []);
 
   const appReady = fontsLoaded && nativeReady;
+  const handleSplashFinish = useCallback(() => setShowSplash(false), []);
+
+  if (!appReady) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
+        <AppLoadingScreen onFinish={() => undefined} minDurationMs={60000} />
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (showSplash) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <AppLoadingScreen onFinish={handleSplashFinish} />
+      </GestureHandlerRootView>
+    );
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      {!appReady ? (
-        <View
-          style={{
-            flex: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: colors.bg,
-            gap: 12,
-            paddingTop: insets.top
-          }}
-        >
-          <ActivityIndicator color={colors.accent} size="large" />
-          <Text style={{ color: colors.muted, fontFamily: fontsLoaded ? 'SpaceGrotesk_400Regular' : undefined }}>
-            App wird geladen…
-          </Text>
-        </View>
-      ) : (
-        <ToastProvider>
-          <StatusBar style="dark" />
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="bautagebuch" />
-            <Stack.Screen name="sitereport" />
-          </Stack>
-        </ToastProvider>
-      )}
+      <ToastProvider>
+        <StatusBar style="dark" />
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="bautagebuch" />
+          <Stack.Screen name="sitereport" />
+        </Stack>
+      </ToastProvider>
     </GestureHandlerRootView>
   );
 }

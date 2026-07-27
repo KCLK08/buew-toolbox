@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import { colors, spacing } from '../constants/theme';
+import { colors, shadows, spacing, typography } from '../constants/theme';
 import type { ToolboxTool } from '../constants/tools';
 
 const TOOL_VECTOR_ICONS: Record<ToolboxTool['id'], keyof typeof MaterialCommunityIcons.glyphMap> = {
@@ -39,42 +39,42 @@ export function ToolCard({ tool, onPress }: ToolCardProps) {
       <Animated.View
         style={[
           styles.card,
+          shadows.card,
           {
             transform: [
               {
                 translateY: lift.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0, -4]
+                  outputRange: [0, -3]
                 })
               }
             ]
           }
         ]}
       >
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.glow,
-            {
-              opacity: lift.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, 0.55]
-              })
-            }
-          ]}
-        />
-        <View style={styles.header}>
+        <View style={styles.topRow}>
           <View style={styles.iconWrap}>
             <MaterialCommunityIcons
               name={TOOL_VECTOR_ICONS[tool.id]}
-              size={28}
+              size={32}
               color={colors.accent}
               accessibilityLabel={tool.iconAlt}
             />
           </View>
-          <Text style={styles.title}>{tool.title}</Text>
+          <MaterialCommunityIcons name="arrow-top-right" size={22} color={colors.muted} />
         </View>
+
+        <Text style={styles.title}>{tool.title}</Text>
         <Text style={styles.description}>{tool.description}</Text>
+
+        <View style={styles.features}>
+          {tool.features.map((feature) => (
+            <View key={feature} style={styles.featureRow}>
+              <View style={styles.featureDot} />
+              <Text style={styles.featureText}>{feature}</Text>
+            </View>
+          ))}
+        </View>
       </Animated.View>
     </Pressable>
   );
@@ -82,46 +82,29 @@ export function ToolCard({ tool, onPress }: ToolCardProps) {
 
 const styles = StyleSheet.create({
   pressable: {
-    flexGrow: 1,
-    minWidth: 260,
-    maxWidth: 520
+    width: '100%'
   },
   pressableActive: {
     opacity: 0.98
   },
   card: {
-    backgroundColor: colors.panel,
+    backgroundColor: colors.panelElevated,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: spacing.cardRadius,
-    padding: spacing.cardPadding,
-    overflow: 'hidden',
-    shadowColor: '#171512',
-    shadowOffset: { width: 0, height: 14 },
-    shadowRadius: 30,
-    shadowOpacity: 0.08,
-    elevation: 4,
-    minHeight: 132
+    padding: spacing.lg,
+    gap: spacing.sm,
+    minHeight: 196
   },
-  glow: {
-    position: 'absolute',
-    top: -40,
-    right: -20,
-    width: 180,
-    height: 120,
-    borderRadius: 90,
-    backgroundColor: colors.glow
-  },
-  header: {
+  topRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 10
+    alignItems: 'flex-start',
+    justifyContent: 'space-between'
   },
   iconWrap: {
-    width: spacing.iconSize,
-    height: spacing.iconSize,
-    borderRadius: spacing.iconRadius,
+    width: 56,
+    height: 56,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.white,
@@ -129,15 +112,35 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   title: {
+    ...typography.title,
     color: colors.ink,
-    fontSize: 22,
-    fontFamily: 'SpaceGrotesk_700Bold',
-    letterSpacing: -0.3
+    fontSize: 24
   },
   description: {
+    ...typography.body,
     color: colors.muted,
     fontSize: 15,
-    lineHeight: 22,
-    fontFamily: 'SpaceGrotesk_400Regular'
+    lineHeight: 22
+  },
+  features: {
+    gap: spacing.xs,
+    paddingTop: spacing.xxs
+  },
+  featureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: 28
+  },
+  featureDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: colors.accent
+  },
+  featureText: {
+    ...typography.caption,
+    color: colors.ink,
+    fontSize: 14
   }
 });
