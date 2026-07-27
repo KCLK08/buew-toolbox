@@ -15,6 +15,7 @@ import { AppLoadingScreen } from '../src/components/AppLoadingScreen';
 import { colors } from '../src/constants/theme';
 import { ToastProvider } from '../src/contexts/ToastContext';
 import { useOfflineBootstrap } from '../src/hooks/useOfflineBootstrap';
+import { AndroidHardwareBack } from '../src/navigation/useAndroidHardwareBack';
 import { initBautagebuchDatabase } from '../src/native/bautagebuch/db/database';
 import { initSiteReportDatabase } from '../src/native/sitereport/db/database';
 
@@ -65,6 +66,7 @@ function RootLayoutContent() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ToastProvider>
         <StatusBar style="dark" />
+        <AndroidHardwareBack />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="bautagebuch" />
