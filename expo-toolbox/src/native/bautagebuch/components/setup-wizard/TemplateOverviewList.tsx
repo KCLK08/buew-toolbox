@@ -1,6 +1,6 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { PrimaryButton, StatusBadge } from '../../../../components/mobile';
+import { PrimaryButton, SingleLineText, StatusBadge } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 import { templateDisplayStatus } from '../../lib/setup-mapping';
 import type { BautagebuchTemplate } from '../../types';
@@ -13,6 +13,7 @@ type Props = {
   onOpen: (templateId: string) => void;
   onContinueSetup: (templateId: string) => void;
   onActivate: (templateId: string) => void;
+  onRename?: (templateId: string) => void;
   onArchive?: (templateId: string) => void;
 };
 
@@ -43,6 +44,7 @@ export function TemplateOverviewList({
   onOpen,
   onContinueSetup,
   onActivate,
+  onRename,
   onArchive
 }: Props) {
   return (
@@ -77,16 +79,19 @@ export function TemplateOverviewList({
         return (
           <View key={template.templateId} style={styles.row}>
             <View style={styles.nameCol}>
-              <Text style={styles.templateName}>{template.templateName}</Text>
-              <Text style={styles.fileName} numberOfLines={1}>
-                {template.fileName}
-              </Text>
+              <SingleLineText style={styles.templateName}>{template.templateName}</SingleLineText>
+              <SingleLineText style={styles.fileName}>{template.fileName}</SingleLineText>
             </View>
             <View style={styles.statusCol}>
               <StatusBadge label={status.label} tone={status.tone} />
             </View>
             <View style={styles.actionCol}>
               <PrimaryButton label={action.label} variant={action.variant} onPress={handleAction} />
+              {onRename ? (
+                <Pressable onPress={() => onRename(template.templateId)}>
+                  <Text style={styles.link}>Umbenennen</Text>
+                </Pressable>
+              ) : null}
               {onArchive && template.status !== 'archived' && !isActive ? (
                 <Pressable onPress={() => onArchive(template.templateId)}>
                   <Text style={styles.archiveLink}>Archivieren</Text>
@@ -165,6 +170,11 @@ const styles = StyleSheet.create({
   archiveLink: {
     ...typography.caption,
     color: colors.muted,
+    textDecorationLine: 'underline'
+  },
+  link: {
+    ...typography.caption,
+    color: colors.accent,
     textDecorationLine: 'underline'
   },
   importRow: {

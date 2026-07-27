@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { PrimaryButton } from '../../../../components/mobile';
+import { PrimaryButton, SingleLineText } from '../../../../components/mobile';
 import { colors, shadows, spacing, typography } from '../../../../constants/theme';
 import type { OverlayPlacement } from '../../lib/setup-mapping';
 import type { SetupWizardGroup } from '../../types';
@@ -100,9 +100,12 @@ export function GroupOverlayCards({
                 ]}
                 onPress={() => onSelectGroup(group.sectionId)}
               >
-                <Text style={[styles.cardLabel, selected ? styles.cardLabelSelected : null]}>
+                <SingleLineText
+                  style={selected ? styles.cardLabelSelected : styles.cardLabel}
+                  centered
+                >
                   {group.label}
-                </Text>
+                </SingleLineText>
               </Pressable>
             );
           })}

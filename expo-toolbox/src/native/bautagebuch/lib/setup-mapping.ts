@@ -2,15 +2,6 @@ import type { Href } from 'expo-router';
 
 import type { DetectedField, SetupFieldConfig, SetupWizardGroup, SetupWizardState } from '../types';
 
-export const DEFAULT_SETUP_GROUPS: SetupWizardGroup[] = [
-  { sectionId: 'kopfdaten', label: 'Kopfdaten' },
-  { sectionId: 'witterung', label: 'Witterung' },
-  { sectionId: 'baustellenbesetzung', label: 'Baustellenbesetzung' },
-  { sectionId: 'leistungsblock', label: 'Leistungsblock' },
-  { sectionId: 'abschluss', label: 'Abschluss' },
-  { sectionId: 'sonstiges', label: 'Sonstiges' }
-];
-
 export type MappingField = {
   fieldId: string;
   fieldName: string;
@@ -67,7 +58,7 @@ export function getWizardState(setupModel: Record<string, unknown>): SetupWizard
           sectionId: String(group.sectionId || ''),
           label: String(group.label || 'Gruppe')
         }))
-      : [...DEFAULT_SETUP_GROUPS];
+      : [];
 
   return {
     step: raw.step === 'fields' ? 'fields' : 'mapping',
@@ -389,11 +380,10 @@ export function templateDisplayStatus(
 }
 
 export function ensureWizardInitialized(setupModel: Record<string, unknown>): Record<string, unknown> {
-  const raw = (setupModel.wizard || {}) as Partial<SetupWizardState>;
-  if (Array.isArray(raw.groups) && raw.groups.length > 0) {
+  if (setupModel.wizard && typeof setupModel.wizard === 'object') {
     return setupModel;
   }
-  return withWizardState(setupModel, { step: 'mapping', groups: DEFAULT_SETUP_GROUPS });
+  return withWizardState(setupModel, { step: 'mapping', groups: [] });
 }
 
 export function hasTableSections(setupModel: Record<string, unknown>): boolean {

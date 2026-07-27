@@ -21,6 +21,7 @@ import {
   getTemplate,
   listTemplates,
   putTemplate,
+  renameTemplate as renameTemplateRecord,
   saveDetectedFields,
   saveSetupModel,
   setAppSetting
@@ -155,6 +156,17 @@ export async function archiveTemplate(templateId: string): Promise<void> {
     status: 'archived',
     updatedAt: new Date().toISOString()
   });
+}
+
+export async function renameTemplate(
+  templateId: string,
+  templateName: string
+): Promise<BautagebuchTemplate> {
+  const updated = await renameTemplateRecord(templateId, templateName);
+  if (!updated) {
+    throw new Error('Vorlage nicht gefunden.');
+  }
+  return updated;
 }
 
 export async function listManagedTemplates(): Promise<BautagebuchTemplate[]> {

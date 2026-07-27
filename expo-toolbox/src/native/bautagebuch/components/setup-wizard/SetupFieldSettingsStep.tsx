@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { SingleLineText } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
 import { listSetupSections, updateSetupField } from '../../lib/setup-mapping';
@@ -109,9 +110,7 @@ export function SetupFieldSettingsStep({
           <View style={styles.mobileGroupBar}>
             <Pressable style={styles.groupPickerBtn} onPress={() => setGroupSheetOpen(true)}>
               <Text style={styles.groupPickerLabel}>Gruppe auswählen</Text>
-              <Text style={styles.groupPickerValue} numberOfLines={1}>
-                {activeGroupLabel}
-              </Text>
+              <SingleLineText style={styles.groupPickerValue}>{activeGroupLabel}</SingleLineText>
             </Pressable>
           </View>
         )}
