@@ -3,6 +3,7 @@ import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../constants/theme';
+import { systemBottomInset } from '../navigation/systemInsets';
 
 const appIcon = require('../../assets/icon.png');
 
@@ -44,7 +45,7 @@ export function AppLoadingScreen({ onFinish, minDurationMs = 1600 }: Props) {
   }, [fade, minDurationMs, onFinish, pulse, scale]);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.root, { paddingTop: insets.top, paddingBottom: systemBottomInset(insets) }]}>
       <Animated.View style={[styles.content, { opacity: fade, transform: [{ scale }] }]}>
         <View style={styles.logoWrap}>
           <Image source={appIcon} style={styles.logo} accessibilityLabel="BÜW Toolbox" />

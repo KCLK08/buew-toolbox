@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, shadows, spacing, typography } from '../../constants/theme';
+import { tabBarReservedHeight } from '../../navigation/appTabBar';
 
 type Props = {
   label?: string;
@@ -12,7 +13,7 @@ type Props = {
 
 export function Fab({ label = '+', onPress, accessibilityLabel, bottomOffset }: Props) {
   const insets = useSafeAreaInsets();
-  const bottom = bottomOffset ?? spacing.tabBarBody + insets.bottom + spacing.md;
+  const bottom = bottomOffset ?? tabBarReservedHeight(insets) + spacing.md;
   return (
     <Pressable
       accessibilityRole="button"

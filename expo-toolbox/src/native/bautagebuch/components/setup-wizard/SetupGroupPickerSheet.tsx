@@ -2,6 +2,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../../../constants/theme';
+import { systemBottomInset } from '../../../../navigation/systemInsets';
 
 type GroupItem = {
   sectionId: string;
@@ -30,7 +31,7 @@ export function SetupGroupPickerSheet({
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}
+          style={[styles.sheet, { paddingBottom: systemBottomInset(insets) + spacing.sm }]}
           onPress={(event) => event.stopPropagation()}
         >
           <View style={styles.handle} />

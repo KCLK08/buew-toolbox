@@ -1,7 +1,9 @@
 import { ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../constants/theme';
+import { systemBottomInset } from '../../navigation/systemInsets';
 import { PrimaryButton } from '../mobile';
 
 export type ConfirmAction = {
@@ -49,10 +51,15 @@ type BottomSheetProps = {
 };
 
 export function BottomSheet({ visible, title, children, onClose }: BottomSheetProps) {
+  const insets = useSafeAreaInsets();
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.bottomSheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable
+          style={[styles.bottomSheet, { paddingBottom: systemBottomInset(insets) + spacing.lg }]}
+          onPress={(e) => e.stopPropagation()}
+        >
           <View style={styles.handle} />
           <Text style={styles.title}>{title}</Text>
           {children}
@@ -83,7 +90,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: spacing.cardRadius + 4,
     borderTopRightRadius: spacing.cardRadius + 4,
     padding: spacing.lg,
-    paddingBottom: spacing.xxl,
     gap: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border

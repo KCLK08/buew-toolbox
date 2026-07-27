@@ -3,6 +3,7 @@ import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../constants/theme';
+import { systemBottomInset } from '../navigation/systemInsets';
 
 type ToastContextValue = {
   showToast: (message: string) => void;
@@ -38,7 +39,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {message ? (
         <Animated.View
           pointerEvents="none"
-          style={[styles.toastWrap, { bottom: insets.bottom + 72, opacity }]}
+          style={[styles.toastWrap, { bottom: systemBottomInset(insets) + 72, opacity }]}
         >
           <View style={styles.toast}>
             <Text style={styles.toastText}>{message}</Text>

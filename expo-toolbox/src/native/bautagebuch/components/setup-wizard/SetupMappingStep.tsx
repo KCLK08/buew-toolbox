@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
+import { systemBottomInset } from '../../../../navigation/systemInsets';
 import {
   assignFieldToGroup,
   addWizardGroup,
@@ -162,7 +163,7 @@ export function SetupMappingStep({
     onComplete(setupModel);
   };
 
-  const footerBottom = Math.max(insets.bottom, spacing.md);
+  const footerBottom = systemBottomInset(insets);
 
   if (showCompletion && mappingDone) {
     return (

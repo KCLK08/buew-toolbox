@@ -8,7 +8,7 @@ import { HomeHeader } from '../../src/components/toolbox/HomeHeader';
 import { ToolboxBackground } from '../../src/components/ToolboxBackground';
 import { spacing } from '../../src/constants/theme';
 import { TOOLBOX_TOOLS } from '../../src/constants/tools';
-import { tabBarBottomInset } from '../../src/navigation/appTabBar';
+import { tabBarReservedHeight } from '../../src/navigation/appTabBar';
 
 export default function ToolboxHomeScreen() {
   const router = useRouter();
@@ -28,7 +28,7 @@ export default function ToolboxHomeScreen() {
       <ScrollView
         contentContainerStyle={{
           paddingTop: Math.max(spacing.pageTop, insets.top + 16),
-          paddingBottom: Math.max(spacing.pageBottom, tabBarBottomInset(insets) + spacing.xl),
+          paddingBottom: Math.max(spacing.pageBottom, tabBarReservedHeight(insets) + spacing.xl),
           paddingHorizontal: spacing.pageX,
           gap: spacing.lg
         }}

@@ -6,6 +6,7 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { PrimaryButton } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
+import { systemBottomInset } from '../../../navigation/systemInsets';
 import { loadPdfPreviewAssets } from '../lib/pdf-preview-assets';
 import {
   buildFieldPreviewHtml,
@@ -213,7 +214,7 @@ export function SetupPdfFieldPreview({
         styles.root,
         pinned ? styles.rootPinned : null,
         mapping ? styles.rootMapping : null,
-        overlay ? [styles.rootOverlay, { paddingBottom: Math.max(insets.bottom, 0) }] : null
+        overlay ? [styles.rootOverlay, { paddingBottom: systemBottomInset(insets) }] : null
       ]}
     >
       {!mapping ? (
@@ -260,7 +261,7 @@ export function SetupPdfFieldPreview({
         />
       </View>
       {!mapping ? (
-        <View style={[styles.controls, overlay ? { paddingBottom: Math.max(insets.bottom, spacing.xs) } : null]}>
+        <View style={[styles.controls, overlay ? { paddingBottom: systemBottomInset(insets) + spacing.xs } : null]}>
           <PrimaryButton
             label="◀"
             variant="ghost"
