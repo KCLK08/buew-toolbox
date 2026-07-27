@@ -3,7 +3,6 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
-import { PrimaryButton } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
 import { loadPdfPreviewAssets } from '../lib/pdf-preview-assets';
 import { buildSimplePdfPreviewHtml, PDF_PREVIEW_LOAD_ERROR } from '../lib/pdf-preview-html';
@@ -21,22 +20,20 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null, reload
   const [html, setHtml] = useState<string | null>(null);
   const [readBusy, setReadBusy] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
-  const [previewState, setPreviewState] = useState({
-    page: 1,
-    pageCount: 1,
-    ready: false
-  });
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     if (!pdfPath) {
       setHtml(null);
       setRenderError(null);
+      setReady(false);
       return undefined;
     }
 
     setReadBusy(true);
     setRenderError(null);
+    setReady(false);
     void Promise.all([
       FileSystem.readAsStringAsync(pdfPath, {
         encoding: FileSystem.EncodingType.Base64
@@ -46,7 +43,6 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null, reload
       .then(([base64, assets]) => {
         if (cancelled) return;
         setHtml(buildSimplePdfPreviewHtml({ base64, ...assets }));
-        setPreviewState({ page: 1, pageCount: 1, ready: false });
       })
       .catch((readError) => {
         console.error('PDF preview setup failed', readError);
@@ -64,16 +60,10 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null, reload
     };
   }, [pdfPath, reloadKey]);
 
-  const goToPage = (page: number) => {
-    webViewRef.current?.postMessage(JSON.stringify({ type: 'setPage', page }));
-  };
-
   const onWebMessage = (event: WebViewMessageEvent) => {
     try {
       const payload = JSON.parse(event.nativeEvent.data) as {
         type?: string;
-        page?: number;
-        pageCount?: number;
         ready?: boolean;
         error?: string | null;
       };
@@ -81,17 +71,15 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null, reload
       if (payload.error) {
         console.error('PDF preview render error', payload.error);
         setRenderError(PDF_PREVIEW_LOAD_ERROR);
+        setReady(false);
         return;
       }
       setRenderError(null);
-      setPreviewState({
-        page: Number(payload.page || 1),
-        pageCount: Number(payload.pageCount || 1),
-        ready: Boolean(payload.ready)
-      });
+      setReady(Boolean(payload.ready));
     } catch (messageError) {
       console.error('PDF preview message parse failed', messageError);
       setRenderError(PDF_PREVIEW_LOAD_ERROR);
+      setReady(false);
     }
   };
 
@@ -126,7 +114,6 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null, reload
 
   return (
     <View style={styles.root}>
-      <Text style={styles.banner}>Live-PDF-Vorschau</Text>
       <View style={styles.panel}>
         <WebView
           ref={webViewRef}
@@ -135,17 +122,21 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null, reload
           originWhitelist={['*']}
           scrollEnabled={false}
           bounces={false}
+          overScrollMode="never"
           javaScriptEnabled
           domStorageEnabled
           setBuiltInZoomControls={false}
+          scalesPageToFit={false}
           onMessage={onWebMessage}
           onError={(event) => {
             console.error('PDF preview WebView error', event.nativeEvent);
             setRenderError(PDF_PREVIEW_LOAD_ERROR);
+            setReady(false);
           }}
           onHttpError={(event) => {
             console.error('PDF preview WebView HTTP error', event.nativeEvent);
             setRenderError(PDF_PREVIEW_LOAD_ERROR);
+            setReady(false);
           }}
         />
         {showUpdateOverlay ? (
@@ -159,34 +150,21 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null, reload
             <Text style={styles.error}>{displayError}</Text>
           </View>
         ) : null}
-      </View>
-      <View style={styles.controls}>
-        <PrimaryButton
-          label="◀"
-          variant="ghost"
-          disabled={!previewState.ready || previewState.page <= 1}
-          onPress={() => goToPage(previewState.page - 1)}
-        />
-        <Text style={styles.pageLabel}>
-          Seite {previewState.page} / {previewState.pageCount}
-        </Text>
-        <PrimaryButton
-          label="▶"
-          variant="ghost"
-          disabled={!previewState.ready || previewState.page >= previewState.pageCount}
-          onPress={() => goToPage(previewState.page + 1)}
-        />
+        {!ready && !displayError && !showUpdateOverlay ? (
+          <View style={styles.updateOverlay} pointerEvents="none">
+            <ActivityIndicator color={colors.accent} />
+          </View>
+        ) : null}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, gap: spacing.sm, minHeight: 0 },
-  banner: { ...typography.label, color: colors.accent2 },
+  root: { flex: 1, minHeight: 0 },
   panel: {
     flex: 1,
-    minHeight: 280,
+    minHeight: 0,
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
@@ -195,7 +173,6 @@ const styles = StyleSheet.create({
   },
   webview: {
     flex: 1,
-    minHeight: 280,
     backgroundColor: colors.panel
   },
   updateOverlay: {
@@ -206,16 +183,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(242, 240, 235, 0.72)'
   },
   updateLabel: { ...typography.caption, color: colors.muted },
-  controls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm
-  },
-  pageLabel: { ...typography.caption, color: colors.muted, minWidth: 110, textAlign: 'center' },
   center: {
-    minHeight: 200,
     flex: 1,
+    minHeight: 0,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,

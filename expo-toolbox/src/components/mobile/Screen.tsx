@@ -166,22 +166,24 @@ export function Screen({
       </View>
 
       <KeyboardScrollProvider footerInset={footerInset}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + headerHeight : 0}
-        >
+        <View style={styles.flex}>
           <View style={styles.bodySlot}>
-            <ScreenScrollBody
-              scroll={scroll}
-              contentStyle={contentStyle}
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              insets={insets}
-              reserveTabBarSpace={reserveTabBarSpace}
+            <KeyboardAvoidingView
+              style={styles.flex}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + headerHeight : 0}
             >
-              {children}
-            </ScreenScrollBody>
+              <ScreenScrollBody
+                scroll={scroll}
+                contentStyle={contentStyle}
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                insets={insets}
+                reserveTabBarSpace={reserveTabBarSpace}
+              >
+                {children}
+              </ScreenScrollBody>
+            </KeyboardAvoidingView>
             {overlay ? <View style={styles.overlaySlot}>{overlay}</View> : null}
           </View>
           {footer ? (
@@ -195,7 +197,7 @@ export function Screen({
               {footer}
             </View>
           ) : null}
-        </KeyboardAvoidingView>
+        </View>
       </KeyboardScrollProvider>
     </View>
   );
