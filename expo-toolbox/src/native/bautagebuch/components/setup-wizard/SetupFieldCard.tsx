@@ -6,6 +6,7 @@ import {
   checkboxBehaviorHint,
   isCheckboxField,
   readCheckboxDefault,
+  resolveSetupFieldType,
   writeCheckboxDefault
 } from '../../lib/setup-field-hints.js';
 import type { DetectedField, SetupFieldConfig } from '../../types';
@@ -19,40 +20,28 @@ type Props = {
   onChange: (patch: Partial<SetupFieldConfig>) => void;
 };
 
-function StatusPills({ items }: { items: string[] }) {
-  if (items.length === 0) {
-    return <Text style={styles.pillNeutral}>Standard</Text>;
-  }
-  return (
-    <View style={styles.pillRow}>
-      {items.map((item) => (
-        <View key={item} style={styles.pill}>
-          <Text style={styles.pillText}>{item}</Text>
-        </View>
-      ))}
-    </View>
-  );
+function fieldTypeLabel(field: SetupFieldConfig, detectedFields: DetectedField[]): string {
+  const type = resolveSetupFieldType(field, detectedFields);
+  if (type === 'checkbox') return 'Checkbox';
+  if (type === 'dropdown') return 'Dropdown';
+  if (type === 'radio') return 'Radio';
+  return 'Textfeld';
 }
 
-function SettingRow({
+function ToggleRow({
   title,
-  hint,
   value,
   onValueChange,
   disabled = false
 }: {
   title: string;
-  hint: string;
   value: boolean;
   onValueChange: (next: boolean) => void;
   disabled?: boolean;
 }) {
   return (
-    <View style={styles.settingRow}>
-      <View style={styles.settingCopy}>
-        <Text style={styles.settingTitle}>{title}</Text>
-        <Text style={styles.settingHint}>{hint}</Text>
-      </View>
+    <View style={styles.toggleRow}>
+      <Text style={styles.toggleTitle}>{title}</Text>
       <Switch
         value={value}
         onValueChange={onValueChange}
@@ -74,6 +63,7 @@ export function SetupFieldCard({
 }: Props) {
   const title = field.label || field.fieldName || field.fieldId;
   const checkboxField = isCheckboxField(field, detectedFields);
+  const typeLabel = fieldTypeLabel(field, detectedFields);
 
   return (
     <Pressable
@@ -86,36 +76,35 @@ export function SetupFieldCard({
           <Text style={styles.title} numberOfLines={2}>
             {title}
           </Text>
-          <Text style={styles.meta}>
-            {field.fieldName || field.fieldId}
-            {field.page ? ` · Seite ${field.page}` : ''}
-          </Text>
+          <View style={styles.metaRow}>
+            <Text style={styles.typeBadge}>{typeLabel}</Text>
+            {field.page ? <Text style={styles.meta}>Seite {field.page}</Text> : null}
+          </View>
         </View>
         {onPress ? <Text style={styles.chevron}>{expanded ? '▲' : '▼'}</Text> : null}
       </View>
 
       {!expanded ? (
-        <StatusPills
-          items={[
-            field.required ? 'Pflicht' : null,
-            field.skipped ? 'Ausgeblendet' : null,
-            field.multiline ? 'Mehrzeilig' : null,
-            field.defaultValue ? 'Standardwert' : null
-          ].filter((item): item is string => Boolean(item))}
-        />
+        <View style={styles.collapsedFlags}>
+          {field.required ? <Text style={styles.flagOn}>Pflichtfeld ✓</Text> : null}
+          {field.skipped ? <Text style={styles.flagMuted}>Ausgeblendet</Text> : null}
+          {field.multiline ? <Text style={styles.flagOn}>Mehrzeilig ✓</Text> : null}
+          {!field.required && !field.skipped && !field.multiline ? (
+            <Text style={styles.flagMuted}>Standard</Text>
+          ) : null}
+        </View>
       ) : (
         <View style={styles.body}>
           <TextField
-            label="Anzeigename im Assistenten"
+            label="Anzeigename"
             value={field.label || ''}
             editable={!readOnly}
             onChangeText={(label) => onChange({ label })}
           />
 
           {checkboxField ? (
-            <SettingRow
+            <ToggleRow
               title="Standard: aktiviert (Ja)"
-              hint={checkboxBehaviorHint(field.fieldName)}
               value={readCheckboxDefault(field)}
               disabled={readOnly}
               onValueChange={(value) => onChange({ defaultValue: writeCheckboxDefault(value) })}
@@ -126,28 +115,25 @@ export function SetupFieldCard({
               value={field.defaultValue || ''}
               editable={!readOnly}
               onChangeText={(defaultValue) => onChange({ defaultValue })}
-              placeholder="Optional — wird beim Start des BTB gesetzt"
+              placeholder="Optional"
             />
           )}
 
-          <SettingRow
+          <ToggleRow
             title="Pflichtfeld"
-            hint="Muss vor dem Export ausgefüllt sein"
             value={Boolean(field.required)}
             disabled={readOnly}
             onValueChange={(required) => onChange({ required })}
           />
-          <SettingRow
+          <ToggleRow
             title="Im Assistenten ausblenden"
-            hint="Feld wird nicht angezeigt, bleibt aber im PDF"
             value={Boolean(field.skipped)}
             disabled={readOnly}
             onValueChange={(skipped) => onChange({ skipped })}
           />
           {!checkboxField ? (
-            <SettingRow
-              title="Mehrzeiliges Eingabefeld"
-              hint="Größeres Textfeld für längere Einträge"
+            <ToggleRow
+              title="Mehrzeilig"
               value={Boolean(field.multiline)}
               disabled={readOnly}
               onValueChange={(multiline) => onChange({ multiline })}
@@ -161,6 +147,18 @@ export function SetupFieldCard({
             onChangeText={(hint) => onChange({ hint })}
             multiline
           />
+
+          <View style={styles.techBlock}>
+            <Text style={styles.techHeading}>Technische Informationen</Text>
+            <Text style={styles.techLine}>fieldName: {field.fieldName || '—'}</Text>
+            <Text style={styles.techLine}>fieldId: {field.fieldId}</Text>
+            <Text style={styles.techLine}>page: {field.page ?? '—'}</Text>
+            <Text style={styles.techLine}>type: {field.type || typeLabel.toLowerCase()}</Text>
+          </View>
+
+          {checkboxField ? (
+            <Text style={styles.checkboxHint}>{checkboxBehaviorHint(field.fieldName)}</Text>
+          ) : null}
         </View>
       )}
     </Pressable>
@@ -169,16 +167,16 @@ export function SetupFieldCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.panel,
-    padding: spacing.sm,
+    padding: spacing.md,
     gap: spacing.sm
   },
   cardActive: {
     borderColor: colors.accent,
-    backgroundColor: 'rgba(47, 111, 237, 0.06)'
+    backgroundColor: 'rgba(47, 111, 237, 0.05)'
   },
   header: {
     flexDirection: 'row',
@@ -188,11 +186,27 @@ const styles = StyleSheet.create({
   },
   heading: {
     flex: 1,
-    gap: 4
+    gap: spacing.xxs
   },
   title: {
     ...typography.bodyStrong,
-    color: colors.ink
+    color: colors.ink,
+    fontSize: 17
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap'
+  },
+  typeBadge: {
+    ...typography.caption,
+    color: colors.accent2,
+    backgroundColor: colors.badgeBg,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 999,
+    overflow: 'hidden'
   },
   meta: {
     ...typography.caption,
@@ -201,49 +215,59 @@ const styles = StyleSheet.create({
   chevron: {
     ...typography.caption,
     color: colors.muted,
-    marginTop: 2
+    marginTop: 4
   },
-  body: {
-    gap: spacing.xs,
-    paddingTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: colors.border
-  },
-  settingRow: {
+  collapsedFlags: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    paddingVertical: spacing.xs
+    flexWrap: 'wrap',
+    gap: spacing.sm
   },
-  settingCopy: {
-    flex: 1,
-    gap: 2
+  flagOn: {
+    ...typography.caption,
+    color: colors.accent2,
+    fontFamily: 'SpaceGrotesk_600SemiBold'
   },
-  settingTitle: {
-    ...typography.bodyStrong,
-    color: colors.ink
-  },
-  settingHint: {
+  flagMuted: {
     ...typography.caption,
     color: colors.muted
   },
-  pillRow: {
+  body: {
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border
+  },
+  toggleRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xxs
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: spacing.touchMin,
+    gap: spacing.sm
   },
-  pill: {
-    borderRadius: 999,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    backgroundColor: colors.badgeBg
+  toggleTitle: {
+    ...typography.bodyStrong,
+    color: colors.ink,
+    flex: 1
   },
-  pillText: {
+  techBlock: {
+    gap: 4,
+    padding: spacing.sm,
+    borderRadius: 10,
+    backgroundColor: colors.panelElevated,
+    borderWidth: 1,
+    borderColor: colors.border
+  },
+  techHeading: {
     ...typography.caption,
-    color: colors.accent
+    color: colors.muted,
+    marginBottom: 2
   },
-  pillNeutral: {
+  techLine: {
+    ...typography.caption,
+    color: colors.muted,
+    fontFamily: 'Courier'
+  },
+  checkboxHint: {
     ...typography.caption,
     color: colors.muted
   }

@@ -117,6 +117,7 @@ export default function SetupMappingScreen() {
 
       {!loading && setupModel ? (
         <SetupMappingStep
+          templateName={templateName}
           pdfPath={pdfPath}
           detectedFields={detectedFields}
           mappingFields={mappingFields}

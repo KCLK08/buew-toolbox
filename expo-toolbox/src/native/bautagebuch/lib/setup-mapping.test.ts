@@ -10,6 +10,8 @@ import {
   rebuildSectionsFromWizard,
   resolveCurrentMappingIndex,
   resolveOverlayPlacement,
+  checkMappingTransition,
+  getMappingCompletionSummary,
   sortMappingFields,
   withWizardState
 } from './setup-mapping';
@@ -108,6 +110,39 @@ test('resolveCurrentMappingIndex prefers first unassigned field', () => {
   );
   const wizard = getWizardState(model);
   assert.equal(resolveCurrentMappingIndex(fields, wizard), 1);
+});
+
+test('checkMappingTransition reports deferred fields', () => {
+  const fields = sortMappingFields([field('a'), field('b')]);
+  let model = withWizardState(
+    {},
+    {
+      groups: [{ sectionId: 'g1', label: 'G1' }],
+      assignments: { a: 'g1' },
+      deferredFieldIds: ['b']
+    }
+  );
+  const check = checkMappingTransition(model, fields);
+  assert.equal(check.unassignedCount, 1);
+  assert.ok(check.issues.some((issue) => issue.includes('1 Felder')));
+});
+
+test('getMappingCompletionSummary aggregates group counts', () => {
+  const fields = sortMappingFields([field('a'), field('b'), field('c')]);
+  const model = withWizardState(
+    {},
+    {
+      groups: [
+        { sectionId: 'g1', label: 'Kopfdaten' },
+        { sectionId: 'g2', label: 'Sonstiges' }
+      ],
+      assignments: { a: 'g1', b: 'g1', c: 'g2' }
+    }
+  );
+  const summary = getMappingCompletionSummary(model, fields);
+  assert.equal(summary.totalFields, 3);
+  assert.equal(summary.groupCount, 2);
+  assert.equal(summary.groups.find((g) => g.sectionId === 'g1')?.fieldCount, 2);
 });
 
 console.log(`\n${passed} tests passed`);
