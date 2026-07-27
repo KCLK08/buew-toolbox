@@ -48,7 +48,12 @@ export function AppLoadingScreen({ onFinish, minDurationMs = 1600 }: Props) {
     <View style={[styles.root, { paddingTop: insets.top, paddingBottom: systemBottomInset(insets) }]}>
       <Animated.View style={[styles.content, { opacity: fade, transform: [{ scale }] }]}>
         <View style={styles.logoWrap}>
-          <Image source={appIcon} style={styles.logo} accessibilityLabel="BÜW Toolbox" />
+          <Image
+            source={appIcon}
+            style={styles.logo}
+            resizeMode="contain"
+            accessibilityLabel="BÜW Toolbox"
+          />
         </View>
         <Text style={styles.title}>BÜW Toolbox</Text>
         <Text style={styles.subtitle}>Digitale Baustellendokumentation</Text>
@@ -75,8 +80,8 @@ const styles = StyleSheet.create({
     maxWidth: 320
   },
   logoWrap: {
-    width: 88,
-    height: 88,
+    width: 84,
+    height: 84,
     borderRadius: 22,
     backgroundColor: colors.panelElevated,
     borderWidth: 1,
@@ -84,6 +89,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,
+    padding: spacing.sm,
+    overflow: 'hidden',
     shadowColor: '#1A1916',
     shadowOpacity: 0.1,
     shadowRadius: 16,
@@ -91,9 +98,8 @@ const styles = StyleSheet.create({
     elevation: 3
   },
   logo: {
-    width: 64,
-    height: 64,
-    borderRadius: 14
+    width: 56,
+    height: 56
   },
   title: {
     ...typography.display,
