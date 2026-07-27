@@ -1,7 +1,8 @@
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { PrimaryButton, SingleLineText, StatusBadge } from '../../../components/mobile';
-import { colors, spacing, typography } from '../../../constants/theme';
+import { colors, shadows, spacing, typography } from '../../../constants/theme';
 import type { BautagebuchTemplate } from '../types';
 
 type Props = {
