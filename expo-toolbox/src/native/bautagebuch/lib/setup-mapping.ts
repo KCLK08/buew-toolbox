@@ -277,11 +277,34 @@ export function listSetupSections(setupModel: Record<string, unknown>): Array<{
   fields: SetupFieldConfig[];
 }> {
   const singleSections = Array.isArray(setupModel.single_sections) ? setupModel.single_sections : [];
-  return singleSections.map((section) => ({
-    sectionId: String(section?.sectionId || ''),
-    label: String(section?.label || 'Gruppe'),
-    fields: (Array.isArray(section?.fields) ? section.fields : []) as SetupFieldConfig[]
-  }));
+  const byId = new Map(
+    singleSections.map((section) => [
+      String(section?.sectionId || ''),
+      {
+        sectionId: String(section?.sectionId || ''),
+        label: String(section?.label || 'Gruppe'),
+        fields: (Array.isArray(section?.fields) ? section.fields : []) as SetupFieldConfig[]
+      }
+    ])
+  );
+
+  const orderedIds = (Array.isArray(setupModel.section_order) ? setupModel.section_order : [])
+    .filter((entry) => String(entry?.kind || '') === 'single')
+    .map((entry) => String(entry?.id || ''))
+    .filter(Boolean);
+
+  const seen = new Set<string>();
+  const sections = [];
+  for (const sectionId of orderedIds) {
+    const section = byId.get(sectionId);
+    if (!section || seen.has(sectionId)) continue;
+    seen.add(sectionId);
+    sections.push(section);
+  }
+  for (const [sectionId, section] of byId) {
+    if (!seen.has(sectionId)) sections.push(section);
+  }
+  return sections;
 }
 
 export function updateSetupField(

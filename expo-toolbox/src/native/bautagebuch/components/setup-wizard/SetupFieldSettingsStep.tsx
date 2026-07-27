@@ -6,6 +6,11 @@ import { SingleLineText } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
 import { listSetupSections, updateSetupField } from '../../lib/setup-mapping';
+import {
+  listOrderedSections,
+  moveSectionInSetupModel,
+  sectionEntryKey
+} from '../../lib/setup-section-order';
 import type { DetectedField, SetupFieldConfig } from '../../types';
 import { PreviewOverlayPanel } from '../PreviewOverlayPanel';
 import { SetupPdfFieldPreview } from '../SetupPdfFieldPreview';
@@ -13,6 +18,7 @@ import { SetupFieldCard } from './SetupFieldCard';
 import { SetupFieldsIntro } from './SetupFieldsIntro';
 import { SetupGroupNav } from './SetupGroupNav';
 import { SetupGroupPickerSheet } from './SetupGroupPickerSheet';
+import { SetupSectionOrderCard } from './SetupSectionOrderCard';
 import { SetupValidationList } from './SetupValidationList';
 
 type Props = {
@@ -42,6 +48,7 @@ export function SetupFieldSettingsStep({
   const { width } = useWindowDimensions();
   const isTablet = width >= 900;
   const sections = useMemo(() => listSetupSections(setupModel), [setupModel]);
+  const orderedSections = useMemo(() => listOrderedSections(setupModel), [setupModel]);
   const [activeSectionId, setActiveSectionId] = useState(sections[0]?.sectionId || '');
   const [activeFieldId, setActiveFieldId] = useState<string | null>(
     sections[0]?.fields[0]?.fieldId || null
@@ -127,6 +134,20 @@ export function SetupFieldSettingsStep({
             templateName={templateName}
             fieldCount={fieldCount}
             groupCount={sections.length}
+          />
+
+          <SetupSectionOrderCard
+            sections={orderedSections}
+            selectedKey={
+              activeSection ? sectionEntryKey({ kind: 'single', id: activeSection.sectionId }) : null
+            }
+            readOnly={readOnly}
+            onMove={(index, direction) =>
+              onChange(moveSectionInSetupModel(setupModel, index, direction))
+            }
+            onSelect={(entry) => {
+              if (entry.kind === 'single') selectSection(entry.id);
+            }}
           />
 
           {fieldPreviewPinned && pdfPath && activeField && !showPreview ? (

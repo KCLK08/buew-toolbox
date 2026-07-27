@@ -133,7 +133,7 @@ export default function BautagebuchConfigTabScreen() {
   return (
     <Screen
       title="Vorlagen-Setup"
-      subtitle="PDF-Vorlagen verwalten und konfigurieren"
+      subtitle="Vorlagen importieren und konfigurieren"
       toolboxBack
       reserveTabBarSpace
       refreshing={loading}

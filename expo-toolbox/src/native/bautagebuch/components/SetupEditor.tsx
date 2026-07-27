@@ -6,7 +6,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryButton, TextField } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
 import { systemBottomInset } from '../../../navigation/systemInsets';
-import { validateSetupModel, syncSectionOrder } from '../lib/setup-model.js';
+import { validateSetupModel } from '../lib/setup-model.js';
+import {
+  listOrderedSections,
+  moveSectionInSetupModel,
+  sectionEntryKey
+} from '../lib/setup-section-order';
+import { SetupSectionOrderCard } from './setup-wizard/SetupSectionOrderCard';
 import {
   checkboxBehaviorHint,
   isCheckboxField,
@@ -148,27 +154,7 @@ export function SetupEditor({
   const insets = useSafeAreaInsets();
   const singleSections = (setupModel.single_sections || []) as SetupSingleSection[];
   const tableSections = (setupModel.table_sections || []) as SetupTableSection[];
-  const sectionOrder = useMemo(() => syncSectionOrder(setupModel), [setupModel]);
-  const orderedSections = useMemo(
-    () =>
-      sectionOrder.map((entry) => {
-        if (entry.kind === 'single') {
-          const section = singleSections.find((item) => item.sectionId === entry.id);
-          return {
-            ...entry,
-            label: section?.label || entry.id,
-            typeLabel: 'Gruppe'
-          };
-        }
-        const table = tableSections.find((item) => item.tableId === entry.id);
-        return {
-          ...entry,
-          label: table?.label || entry.id,
-          typeLabel: 'Tabelle'
-        };
-      }),
-    [sectionOrder, singleSections, tableSections]
-  );
+  const orderedSections = useMemo(() => listOrderedSections(setupModel), [setupModel]);
   const validationErrors = useMemo(() => validateSetupModel(setupModel), [setupModel]);
 
   const [mode, setMode] = useState<'single' | 'table'>(() =>
@@ -178,8 +164,6 @@ export function SetupEditor({
   const [activeTableId, setActiveTableId] = useState(tableSections[0]?.tableId || '');
   const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
-  const [orderExpanded, setOrderExpanded] = useState(false);
-
   const activeSingle = singleSections.find((section) => section.sectionId === activeSingleId) || singleSections[0];
   const activeTable = tableSections.find((table) => table.tableId === activeTableId) || tableSections[0];
 
@@ -243,16 +227,12 @@ export function SetupEditor({
     onChange(mutateSetupModel(setupModel, mutator));
   };
 
-  const moveSectionInOrder = (index: number, direction: -1 | 1) => {
-    updateModel((model) => {
-      const order = syncSectionOrder(model);
-      const nextIndex = index + direction;
-      if (nextIndex < 0 || nextIndex >= order.length) return;
-      const next = [...order];
-      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
-      model.section_order = next;
-    });
-  };
+  const selectedSectionKey =
+    mode === 'single' && activeSingle
+      ? sectionEntryKey({ kind: 'single', id: activeSingle.sectionId })
+      : mode === 'table' && activeTable
+        ? sectionEntryKey({ kind: 'table', id: activeTable.tableId })
+        : null;
 
   const updateSingleField = (sectionId: string, fieldId: string, patch: Partial<SetupField>) => {
     updateModel((model) => {
@@ -352,7 +332,7 @@ export function SetupEditor({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.intro}>
+        <View style={styles.introCard}>
           <Text style={styles.templateName}>{templateName}</Text>
           <Text style={styles.muted}>
             Abschnitt wählen, Feld antippen und Einstellungen direkt darunter anpassen.
@@ -379,69 +359,22 @@ export function SetupEditor({
           </Text>
         ) : null}
 
-        {orderedSections.length > 1 ? (
-          <View style={styles.orderSection}>
-            <Pressable
-              style={styles.orderToggleHeader}
-              onPress={() => setOrderExpanded((value) => !value)}
-            >
-              <View style={styles.orderToggleCopy}>
-                <Text style={styles.sectionLabel}>Reihenfolge im Bautagebuch</Text>
-                <Text style={styles.muted}>{orderedSections.length} Abschnitte</Text>
-              </View>
-              <Text style={styles.orderToggleIcon}>{orderExpanded ? '▲' : '▼'}</Text>
-            </Pressable>
-            {orderExpanded ? (
-              <>
-                <Text style={styles.muted}>
-                  Gruppen und Tabellen frei anordnen — die Reihenfolge gilt im Assistenten.
-                </Text>
-                {orderedSections.map((entry, index) => {
-              const selected =
-                entry.kind === 'single'
-                  ? mode === 'single' && activeSingle?.sectionId === entry.id
-                  : mode === 'table' && activeTable?.tableId === entry.id;
-              return (
-              <Pressable
-                key={`${entry.kind}:${entry.id}`}
-                style={[styles.orderRow, selected ? styles.orderRowActive : null]}
-                onPress={() => {
-                  if (entry.kind === 'single') {
-                    setMode('single');
-                    setActiveSingleId(entry.id);
-                  } else {
-                    setMode('table');
-                    setActiveTableId(entry.id);
-                  }
-                }}
-              >
-                <View style={styles.orderMeta}>
-                  <Text style={styles.orderTitle} numberOfLines={1}>
-                    {entry.label}
-                  </Text>
-                  <Text style={styles.orderType}>{entry.typeLabel}</Text>
-                </View>
-                <View style={styles.row}>
-                  <PrimaryButton
-                    label="↑"
-                    variant="ghost"
-                    disabled={index === 0}
-                    onPress={() => moveSectionInOrder(index, -1)}
-                  />
-                  <PrimaryButton
-                    label="↓"
-                    variant="ghost"
-                    disabled={index === orderedSections.length - 1}
-                    onPress={() => moveSectionInOrder(index, 1)}
-                  />
-                </View>
-              </Pressable>
-            );
-            })}
-              </>
-            ) : null}
-          </View>
-        ) : null}
+        <SetupSectionOrderCard
+          sections={orderedSections}
+          selectedKey={selectedSectionKey}
+          onMove={(index, direction) =>
+            onChange(moveSectionInSetupModel(setupModel, index, direction))
+          }
+          onSelect={(entry) => {
+            if (entry.kind === 'single') {
+              setMode('single');
+              setActiveSingleId(entry.id);
+            } else {
+              setMode('table');
+              setActiveTableId(entry.id);
+            }
+          }}
+        />
 
         <View style={styles.modeRow}>
           <PrimaryButton
@@ -762,12 +695,17 @@ const styles = StyleSheet.create({
     flex: 1
   },
   editorContent: {
-    gap: spacing.sm,
+    gap: spacing.md,
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.pageX
   },
-  intro: {
-    gap: 4
+  introCard: {
+    gap: spacing.xxs,
+    padding: spacing.md,
+    borderRadius: spacing.cardRadius,
+    backgroundColor: colors.panelElevated,
+    borderWidth: 1,
+    borderColor: colors.border
   },
   templateName: {
     ...typography.bodyStrong,
@@ -791,7 +729,12 @@ const styles = StyleSheet.create({
   },
   modeRow: {
     flexDirection: 'row',
-    gap: spacing.xs
+    gap: spacing.xs,
+    padding: spacing.xxs,
+    borderRadius: 12,
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border
   },
   sectionLabel: {
     ...typography.label,
@@ -849,7 +792,7 @@ const styles = StyleSheet.create({
   },
   fieldCardActive: {
     borderColor: colors.accent,
-    backgroundColor: 'rgba(47, 111, 237, 0.06)'
+    backgroundColor: colors.badgeBg
   },
   fieldCardHeader: {
     flexDirection: 'row',
@@ -872,24 +815,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border
   },
-  orderSection: {
-    gap: spacing.xs
-  },
-  orderToggleHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    paddingVertical: spacing.xs
-  },
-  orderToggleCopy: {
-    flex: 1,
-    gap: 2
-  },
-  orderToggleIcon: {
-    ...typography.bodyStrong,
-    color: colors.muted
-  },
   selectorCard: {
     gap: 4,
     padding: spacing.sm,
@@ -900,7 +825,7 @@ const styles = StyleSheet.create({
   },
   selectorCardActive: {
     borderColor: colors.accent,
-    backgroundColor: 'rgba(47, 111, 237, 0.08)'
+    backgroundColor: colors.badgeBg
   },
   selectorTitle: {
     ...typography.bodyStrong,
@@ -931,33 +856,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.xs,
     alignItems: 'center'
-  },
-  orderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.panel
-  },
-  orderRowActive: {
-    borderColor: colors.accent,
-    backgroundColor: 'rgba(47, 111, 237, 0.08)'
-  },
-  orderMeta: {
-    flex: 1,
-    gap: 2
-  },
-  orderTitle: {
-    ...typography.bodyStrong,
-    color: colors.ink
-  },
-  orderType: {
-    ...typography.caption,
-    color: colors.muted
   },
   settingRow: {
     flexDirection: 'row',

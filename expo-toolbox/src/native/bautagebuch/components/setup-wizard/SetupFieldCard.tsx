@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
   },
   cardActive: {
     borderColor: colors.accent,
-    backgroundColor: 'rgba(47, 111, 237, 0.05)'
+    backgroundColor: colors.badgeBg
   },
   header: {
     flexDirection: 'row',
