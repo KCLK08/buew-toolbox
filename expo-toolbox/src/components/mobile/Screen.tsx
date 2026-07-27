@@ -15,7 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../constants/theme';
 import { KeyboardScrollProvider, useKeyboardScroll } from '../../contexts/KeyboardScrollContext';
-import { tabBarBottomInset, tabBarReservedHeight } from '../../navigation/appTabBar';
+import { tabBarReservedHeight } from '../../navigation/appTabBar';
+import { systemBottomInset } from '../../navigation/systemInsets';
 
 type Props = {
   title: string;
@@ -55,7 +56,7 @@ function ScreenScrollBody({
 }) {
   const keyboardScroll = useKeyboardScroll();
   const scrollRef = useRef<ScrollView>(null);
-  const safeBottom = tabBarBottomInset(insets);
+  const safeBottom = systemBottomInset(insets);
 
   if (!scroll) {
     return <View style={[styles.content, styles.flex, contentStyle]}>{children}</View>;
@@ -79,7 +80,7 @@ function ScreenScrollBody({
         {
           paddingBottom: Math.max(
             spacing.pageBottom,
-            safeBottom + (reserveTabBarSpace ? tabBarReservedHeight(insets) + spacing.sm : spacing.lg)
+            reserveTabBarSpace ? tabBarReservedHeight(insets) + spacing.sm : safeBottom + spacing.lg
           )
         },
         contentStyle
@@ -117,7 +118,7 @@ export function Screen({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const headerHeight = spacing.touchMin + 8 + spacing.xs;
-  const safeBottom = tabBarBottomInset(insets);
+  const safeBottom = systemBottomInset(insets);
   const footerBarHeight = compactFooter ? 52 : spacing.touchMin + 8;
   const footerInset = footer ? footerBarHeight + spacing.sm + safeBottom : safeBottom;
   const showHeaderBack = showBack || toolboxBack;

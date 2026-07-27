@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } fr
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../../../constants/theme';
+import { systemBottomInset } from '../../../../navigation/systemInsets';
 import { listSetupSections, updateSetupField } from '../../lib/setup-mapping';
 import type { DetectedField, SetupFieldConfig } from '../../types';
 import { PreviewOverlayPanel } from '../PreviewOverlayPanel';
@@ -119,7 +120,7 @@ export function SetupFieldSettingsStep({
           style={styles.fieldScroll}
           contentContainerStyle={[
             styles.fieldScrollContent,
-            { paddingBottom: Math.max(insets.bottom + spacing.xl, spacing.xxl) }
+            { paddingBottom: systemBottomInset(insets) + spacing.xl }
           ]}
           keyboardShouldPersistTaps="handled"
         >

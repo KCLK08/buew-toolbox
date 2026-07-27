@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton, TextField } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
+import { systemBottomInset } from '../../../navigation/systemInsets';
 import { validateSetupModel, syncSectionOrder } from '../lib/setup-model.js';
 import {
   checkboxBehaviorHint,
@@ -346,7 +347,7 @@ export function SetupEditor({
         style={styles.editorScroll}
         contentContainerStyle={[
           styles.editorContent,
-          { paddingBottom: Math.max(insets.bottom + spacing.xl, spacing.xxl) }
+          { paddingBottom: systemBottomInset(insets) + spacing.xl }
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}

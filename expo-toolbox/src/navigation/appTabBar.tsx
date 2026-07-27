@@ -1,18 +1,13 @@
-import { Platform } from 'react-native';
 import type { BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
 
 import { colors, spacing, typography } from '../constants/theme';
+import { tabBarBottomInset } from './systemInsets';
 
 /** Visible tab content area (icon + label), excluding safe-area padding. */
 export const TAB_BAR_CONTENT_HEIGHT = 54;
 export const TAB_BAR_TOP_PADDING = 10;
 
-export function tabBarBottomInset(insets: { bottom: number }) {
-  if (Platform.OS === 'android') {
-    return Math.max(insets.bottom, 28);
-  }
-  return Math.max(insets.bottom, spacing.sm);
-}
+export { tabBarBottomInset } from './systemInsets';
 
 export function tabBarTotalHeight(insets: { bottom: number }) {
   return TAB_BAR_CONTENT_HEIGHT + TAB_BAR_TOP_PADDING + tabBarBottomInset(insets);
@@ -39,7 +34,7 @@ export function createAppTabScreenOptions(insets: { bottom: number }): BottomTab
       fontSize: 11,
       lineHeight: 14,
       marginTop: 2,
-      marginBottom: 2
+      marginBottom: 0
     },
     tabBarIconStyle: {
       marginBottom: 0
