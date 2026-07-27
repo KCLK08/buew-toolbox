@@ -12,9 +12,11 @@ type Props = {
   pdfPath: string | null;
   loading?: boolean;
   error?: string | null;
+  /** Bumps when the file at pdfPath was regenerated in place (same URI). */
+  reloadKey?: string | number;
 };
 
-export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Props) {
+export function PdfPreviewPanel({ pdfPath, loading = false, error = null, reloadKey = 0 }: Props) {
   const webViewRef = useRef<WebView>(null);
   const [html, setHtml] = useState<string | null>(null);
   const [readBusy, setReadBusy] = useState(false);
@@ -28,6 +30,8 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
   useEffect(() => {
     let cancelled = false;
     if (!pdfPath) {
+      setHtml(null);
+      setRenderError(null);
       return undefined;
     }
 
@@ -47,6 +51,7 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
       .catch((readError) => {
         console.error('PDF preview setup failed', readError);
         if (!cancelled) {
+          setHtml(null);
           setRenderError(PDF_PREVIEW_LOAD_ERROR);
         }
       })
@@ -57,7 +62,7 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
     return () => {
       cancelled = true;
     };
-  }, [pdfPath]);
+  }, [pdfPath, reloadKey]);
 
   const goToPage = (page: number) => {
     webViewRef.current?.postMessage(JSON.stringify({ type: 'setPage', page }));
