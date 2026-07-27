@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../../../constants/theme';
@@ -8,10 +8,13 @@ import type { DetectedField, SetupFieldConfig } from '../../types';
 import { PreviewOverlayPanel } from '../PreviewOverlayPanel';
 import { SetupPdfFieldPreview } from '../SetupPdfFieldPreview';
 import { SetupFieldCard } from './SetupFieldCard';
+import { SetupFieldsIntro } from './SetupFieldsIntro';
 import { SetupGroupNav } from './SetupGroupNav';
+import { SetupGroupPickerSheet } from './SetupGroupPickerSheet';
 import { SetupValidationList } from './SetupValidationList';
 
 type Props = {
+  templateName: string;
   pdfPath: string | null;
   detectedFields: DetectedField[];
   setupModel: Record<string, unknown>;
@@ -23,6 +26,7 @@ type Props = {
 };
 
 export function SetupFieldSettingsStep({
+  templateName,
   pdfPath,
   detectedFields,
   setupModel,
@@ -40,6 +44,8 @@ export function SetupFieldSettingsStep({
   const [activeFieldId, setActiveFieldId] = useState<string | null>(
     sections[0]?.fields[0]?.fieldId || null
   );
+  const [groupSheetOpen, setGroupSheetOpen] = useState(false);
+  const [fieldPreviewPinned, setFieldPreviewPinned] = useState(false);
 
   const activeSection = sections.find((section) => section.sectionId === activeSectionId) || sections[0];
   const activeField =
@@ -47,6 +53,7 @@ export function SetupFieldSettingsStep({
     activeSection?.fields[0] ||
     null;
 
+  const fieldCount = sections.reduce((sum, section) => sum + section.fields.length, 0);
   const groupItems = sections.map((section) => ({
     sectionId: section.sectionId,
     label: section.label,
@@ -62,26 +69,51 @@ export function SetupFieldSettingsStep({
     }
   }, [sections, activeSectionId]);
 
+  const handleFieldPress = (fieldId: string, expanded: boolean) => {
+    const nextExpanded = !expanded;
+    setActiveFieldId(nextExpanded ? fieldId : null);
+    if (nextExpanded && pdfPath) {
+      setFieldPreviewPinned(true);
+    }
+  };
+
   const handleFieldChange = (field: SetupFieldConfig, patch: Partial<SetupFieldConfig>) => {
     setActiveFieldId(field.fieldId);
+    setFieldPreviewPinned(true);
     onChange(updateSetupField(setupModel, activeSection?.sectionId || '', field.fieldId, patch));
   };
+
+  const selectSection = (sectionId: string) => {
+    setActiveSectionId(sectionId);
+    const section = sections.find((entry) => entry.sectionId === sectionId);
+    setActiveFieldId(section?.fields[0]?.fieldId || null);
+  };
+
+  const activeGroupLabel =
+    groupItems.find((group) => group.sectionId === activeSection?.sectionId)?.label || 'Gruppe';
 
   return (
     <View style={styles.root}>
       <View style={[styles.body, isTablet ? styles.bodyTablet : null]}>
-        <View style={isTablet ? styles.sideNav : null}>
-          <SetupGroupNav
-            groups={groupItems}
-            activeSectionId={activeSection?.sectionId || ''}
-            horizontal={!isTablet}
-            onSelect={(sectionId) => {
-              setActiveSectionId(sectionId);
-              const section = sections.find((entry) => entry.sectionId === sectionId);
-              setActiveFieldId(section?.fields[0]?.fieldId || null);
-            }}
-          />
-        </View>
+        {isTablet ? (
+          <View style={styles.sideNav}>
+            <SetupGroupNav
+              groups={groupItems}
+              activeSectionId={activeSection?.sectionId || ''}
+              horizontal={false}
+              onSelect={selectSection}
+            />
+          </View>
+        ) : (
+          <View style={styles.mobileGroupBar}>
+            <Pressable style={styles.groupPickerBtn} onPress={() => setGroupSheetOpen(true)}>
+              <Text style={styles.groupPickerLabel}>Gruppe auswählen</Text>
+              <Text style={styles.groupPickerValue} numberOfLines={1}>
+                {activeGroupLabel}
+              </Text>
+            </Pressable>
+          </View>
+        )}
 
         <ScrollView
           style={styles.fieldScroll}
@@ -91,6 +123,26 @@ export function SetupFieldSettingsStep({
           ]}
           keyboardShouldPersistTaps="handled"
         >
+          <SetupFieldsIntro
+            templateName={templateName}
+            fieldCount={fieldCount}
+            groupCount={sections.length}
+          />
+
+          {fieldPreviewPinned && pdfPath && activeField && !showPreview ? (
+            <View style={styles.pinnedPreview}>
+              <SetupPdfFieldPreview
+                variant="pinned"
+                emphasizeActiveHighlight
+                pdfPath={pdfPath}
+                detectedFields={detectedFields}
+                activeFieldId={activeField.fieldId}
+                activeFieldLabel={activeField.label || activeField.fieldName || null}
+                activeFieldPage={activeField.page || 1}
+              />
+            </View>
+          ) : null}
+
           {activeSection ? (
             <Text style={styles.sectionTitle}>{activeSection.label}</Text>
           ) : null}
@@ -104,7 +156,7 @@ export function SetupFieldSettingsStep({
                 detectedFields={detectedFields}
                 expanded={expanded}
                 readOnly={readOnly}
-                onPress={() => setActiveFieldId(expanded ? null : field.fieldId)}
+                onPress={() => handleFieldPress(field.fieldId, expanded)}
                 onChange={(patch) => handleFieldChange(field, patch)}
               />
             );
@@ -118,6 +170,14 @@ export function SetupFieldSettingsStep({
           />
         </ScrollView>
       </View>
+
+      <SetupGroupPickerSheet
+        visible={groupSheetOpen}
+        groups={groupItems}
+        activeSectionId={activeSection?.sectionId || ''}
+        onSelect={selectSection}
+        onClose={() => setGroupSheetOpen(false)}
+      />
 
       {showPreview && pdfPath ? (
         <PreviewOverlayPanel title="PDF-Vorschau" onClose={onClosePreview}>
@@ -152,6 +212,32 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderRightColor: colors.border
   },
+  mobileGroupBar: {
+    paddingHorizontal: spacing.pageX,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.panel
+  },
+  groupPickerBtn: {
+    minHeight: spacing.touchMin + 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.panelElevated,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: 2,
+    justifyContent: 'center'
+  },
+  groupPickerLabel: {
+    ...typography.caption,
+    color: colors.muted
+  },
+  groupPickerValue: {
+    ...typography.bodyStrong,
+    color: colors.ink
+  },
   fieldScroll: {
     flex: 1
   },
@@ -162,5 +248,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...typography.subtitle,
     color: colors.ink
+  },
+  pinnedPreview: {
+    minHeight: 220,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border
   }
 });

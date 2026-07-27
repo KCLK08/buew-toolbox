@@ -414,3 +414,63 @@ export function resolveSetupEntryPath(
   }
   return `/bautagebuch/setup/${templateId}/mapping` as Href;
 }
+
+export type MappingCompletionSummary = {
+  totalFields: number;
+  groupCount: number;
+  groups: Array<{ sectionId: string; label: string; fieldCount: number }>;
+  unassignedCount: number;
+  assignedCount: number;
+};
+
+export function getMappingCompletionSummary(
+  setupModel: Record<string, unknown>,
+  mappingFields: MappingField[]
+): MappingCompletionSummary {
+  const wizard = getWizardState(setupModel);
+  const groups = wizard.groups.map((group) => ({
+    sectionId: group.sectionId,
+    label: group.label,
+    fieldCount: mappingFields.filter(
+      (field) => wizard.assignments[field.fieldId] === group.sectionId
+    ).length
+  }));
+
+  return {
+    totalFields: mappingFields.length,
+    groupCount: wizard.groups.length,
+    groups,
+    unassignedCount: wizard.deferredFieldIds.length,
+    assignedCount: Object.keys(wizard.assignments).length
+  };
+}
+
+export type MappingTransitionCheck = {
+  hasGroups: boolean;
+  hasAssignedFields: boolean;
+  unassignedCount: number;
+  issues: string[];
+};
+
+export function checkMappingTransition(
+  setupModel: Record<string, unknown>,
+  mappingFields: MappingField[]
+): MappingTransitionCheck {
+  const wizard = getWizardState(setupModel);
+  const hasGroups = wizard.groups.length > 0;
+  const hasAssignedFields = Object.keys(wizard.assignments).length > 0;
+  const unassignedCount = wizard.deferredFieldIds.length;
+  const issues: string[] = [];
+
+  if (!hasGroups) {
+    issues.push('Es wurden noch keine Gruppen erstellt.');
+  }
+  if (mappingFields.length > 0 && !hasAssignedFields && unassignedCount === 0) {
+    issues.push('Es wurden noch keine Felder Gruppen zugeordnet.');
+  }
+  if (unassignedCount > 0) {
+    issues.push(`${unassignedCount} Felder wurden keiner Gruppe zugeordnet.`);
+  }
+
+  return { hasGroups, hasAssignedFields, unassignedCount, issues };
+}

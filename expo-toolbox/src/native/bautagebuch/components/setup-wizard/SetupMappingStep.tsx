@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '../../../../components/mobile';
@@ -7,7 +7,9 @@ import { colors, spacing, typography } from '../../../../constants/theme';
 import {
   assignFieldToGroup,
   addWizardGroup,
+  checkMappingTransition,
   deferField,
+  getMappingCompletionSummary,
   getMappingProgress,
   getNextUnassignedIndex,
   getWizardState,
@@ -19,9 +21,12 @@ import {
 import type { DetectedField } from '../../types';
 import { SetupPdfFieldPreview } from '../SetupPdfFieldPreview';
 import { GroupOverlayCards } from './GroupOverlayCards';
+import { SetupMappingCompletion } from './SetupMappingCompletion';
+import { SetupMappingValidation } from './SetupMappingValidation';
 import { SetupProgressHeader } from './SetupProgressHeader';
 
 type Props = {
+  templateName: string;
   pdfPath: string | null;
   detectedFields: DetectedField[];
   mappingFields: MappingField[];
@@ -32,6 +37,7 @@ type Props = {
 };
 
 export function SetupMappingStep({
+  templateName,
   pdfPath,
   detectedFields,
   mappingFields,
@@ -44,7 +50,8 @@ export function SetupMappingStep({
   const indexSyncedRef = useRef(false);
   const wizard = useMemo(() => getWizardState(setupModel), [setupModel]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
-  const [completionShown, setCompletionShown] = useState(false);
+  const [showCompletion, setShowCompletion] = useState(false);
+  const [showValidation, setShowValidation] = useState(false);
 
   const currentIndex = resolveCurrentMappingIndex(mappingFields, wizard);
   const currentField = mappingFields[currentIndex] || null;
@@ -56,6 +63,14 @@ export function SetupMappingStep({
   const mappingDone = isMappingComplete(mappingFields, wizard);
   const hasGroups = wizard.groups.length > 0;
   const fieldNumber = currentField ? currentIndex + 1 : 0;
+  const completionSummary = useMemo(
+    () => getMappingCompletionSummary(setupModel, mappingFields),
+    [setupModel, mappingFields]
+  );
+  const transitionCheck = useMemo(
+    () => checkMappingTransition(setupModel, mappingFields),
+    [setupModel, mappingFields]
+  );
 
   useEffect(() => {
     if (indexSyncedRef.current || mappingFields.length === 0) return;
@@ -73,25 +88,10 @@ export function SetupMappingStep({
   }, [mappingFields, wizard, setupModel, onChange]);
 
   useEffect(() => {
-    if (!mappingDone || completionShown) return;
-    setCompletionShown(true);
-    Alert.alert(
-      'Alle Felder wurden zugeordnet',
-      'Du kannst jetzt die Feldeinstellungen vornehmen oder später fortsetzen.',
-      [
-        {
-          text: 'Später fortsetzen',
-          style: 'cancel',
-          onPress: onFinishLater
-        },
-        {
-          text: 'Zu Feldern wechseln',
-          onPress: () => onComplete(setupModel)
-        }
-      ],
-      { cancelable: false }
-    );
-  }, [mappingDone, completionShown, onComplete, onFinishLater, setupModel]);
+    if (mappingDone) {
+      setShowCompletion(true);
+    }
+  }, [mappingDone]);
 
   const advanceAfterChange = (next: Record<string, unknown>) => {
     const nextWizard = getWizardState(next);
@@ -99,6 +99,7 @@ export function SetupMappingStep({
 
     if (isMappingComplete(mappingFields, nextWizard)) {
       onChange(next);
+      setShowCompletion(true);
       return;
     }
 
@@ -153,11 +154,41 @@ export function SetupMappingStep({
     advanceAfterChange(next);
   };
 
-  const handleGoToFields = () => {
+  const proceedToFields = () => {
+    if (transitionCheck.issues.length > 0) {
+      setShowValidation(true);
+      return;
+    }
     onComplete(setupModel);
   };
 
   const footerBottom = Math.max(insets.bottom, spacing.md);
+
+  if (showCompletion && mappingDone) {
+    return (
+      <View style={styles.root}>
+        <SetupMappingCompletion
+          templateName={templateName}
+          summary={completionSummary}
+          onConfigureFields={proceedToFields}
+          onFinishLater={onFinishLater}
+        />
+        {showValidation ? (
+          <SetupMappingValidation
+            check={transitionCheck}
+            onBackToMapping={() => {
+              setShowValidation(false);
+              setShowCompletion(false);
+            }}
+            onContinueAnyway={() => {
+              setShowValidation(false);
+              onComplete(setupModel);
+            }}
+          />
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -224,7 +255,7 @@ export function SetupMappingStep({
         </View>
 
         {mappingDone ? (
-          <PrimaryButton label="Zu Feldern wechseln" onPress={handleGoToFields} />
+          <PrimaryButton label="Felder konfigurieren" onPress={proceedToFields} />
         ) : (
           <PrimaryButton label="Später fortsetzen" variant="ghost" onPress={onFinishLater} />
         )}

@@ -8,9 +8,16 @@ import { SetupEditor } from '../../../../src/native/bautagebuch/components/Setup
 import { SetupFieldSettingsStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupFieldSettingsStep';
 import { getDetectedFields, saveSetupModel } from '../../../../src/native/bautagebuch/db/database';
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
-import { hasTableSections, getWizardState } from '../../../../src/native/bautagebuch/lib/setup-mapping';
+import {
+  hasTableSections,
+  getWizardState,
+  listSetupSections
+} from '../../../../src/native/bautagebuch/lib/setup-mapping';
 import { validateSetupModel } from '../../../../src/native/bautagebuch/lib/setup-model.js';
-import { getTemplateBundle } from '../../../../src/native/bautagebuch/services/templateService';
+import {
+  getTemplateBundle,
+  setActiveTemplateId
+} from '../../../../src/native/bautagebuch/services/templateService';
 
 export default function SetupFieldsScreen() {
   const router = useRouter();
@@ -74,6 +81,43 @@ export default function SetupFieldsScreen() {
     schedule(next);
   };
 
+  const showFinishDialog = (readyModel: Record<string, unknown>) => {
+    const sections = listSetupSections(readyModel);
+    const fieldCount = sections.reduce((sum, section) => sum + section.fields.length, 0);
+    const groupCount = sections.length;
+
+    Alert.alert(
+      'Vorlage fertig eingerichtet',
+      `Die Vorlage kann jetzt für neue Bautagebücher verwendet werden.\n\nFelder: ${fieldCount}\nGruppen: ${groupCount}`,
+      [
+        {
+          text: 'Später aktivieren',
+          style: 'cancel',
+          onPress: () => router.replace('/bautagebuch/config')
+        },
+        {
+          text: 'Vorlage aktivieren',
+          onPress: () => {
+            void (async () => {
+              try {
+                if (templateId) {
+                  await setActiveTemplateId(templateId);
+                }
+                router.replace('/bautagebuch/config');
+              } catch (err) {
+                Alert.alert(
+                  'Aktivieren',
+                  err instanceof Error ? err.message : 'Vorlage konnte nicht aktiviert werden.'
+                );
+                router.replace('/bautagebuch/config');
+              }
+            })();
+          }
+        }
+      ]
+    );
+  };
+
   const handleFinish = async () => {
     if (!templateId || !setupModel) return;
     setSaving(true);
@@ -91,8 +135,8 @@ export default function SetupFieldsScreen() {
         updatedAt: new Date().toISOString()
       };
       await saveSetupModel(templateId, readyModel, 'ready');
-      Alert.alert('Setup abgeschlossen', 'Die Vorlage ist jetzt startbereit und kann aktiviert werden.');
-      router.replace('/bautagebuch/config');
+      setSetupModel(readyModel);
+      showFinishDialog(readyModel);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Setup konnte nicht abgeschlossen werden.');
     } finally {
@@ -111,7 +155,7 @@ export default function SetupFieldsScreen() {
           />
         ) : null}
         <PrimaryButton
-          label={saving ? 'Wird abgeschlossen…' : 'Setup abschließen'}
+          label={saving ? 'Wird gespeichert…' : '✓ Vorlage speichern'}
           disabled={saving || validationIssues.length > 0}
           onPress={() => void handleFinish()}
         />
@@ -164,6 +208,7 @@ export default function SetupFieldsScreen() {
 
       {!loading && setupModel && !useLegacyEditor ? (
         <SetupFieldSettingsStep
+          templateName={templateName}
           pdfPath={pdfPath}
           detectedFields={detectedFields}
           setupModel={setupModel}
