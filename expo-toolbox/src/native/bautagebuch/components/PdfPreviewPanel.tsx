@@ -5,7 +5,8 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { PrimaryButton } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
-import { buildSimplePdfPreviewHtml } from '../lib/pdf-preview-html';
+import { loadPdfPreviewAssets } from '../lib/pdf-preview-assets';
+import { buildSimplePdfPreviewHtml, PDF_PREVIEW_LOAD_ERROR } from '../lib/pdf-preview-html';
 
 type Props = {
   pdfPath: string | null;
@@ -32,17 +33,21 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
 
     setReadBusy(true);
     setRenderError(null);
-    void FileSystem.readAsStringAsync(pdfPath, {
-      encoding: FileSystem.EncodingType.Base64
-    })
-      .then((base64) => {
+    void Promise.all([
+      FileSystem.readAsStringAsync(pdfPath, {
+        encoding: FileSystem.EncodingType.Base64
+      }),
+      loadPdfPreviewAssets()
+    ])
+      .then(([base64, assets]) => {
         if (cancelled) return;
-        setHtml(buildSimplePdfPreviewHtml(base64));
+        setHtml(buildSimplePdfPreviewHtml({ base64, ...assets }));
         setPreviewState({ page: 1, pageCount: 1, ready: false });
       })
       .catch((readError) => {
+        console.error('PDF preview setup failed', readError);
         if (!cancelled) {
-          setRenderError(readError instanceof Error ? readError.message : 'PDF konnte nicht gelesen werden.');
+          setRenderError(PDF_PREVIEW_LOAD_ERROR);
         }
       })
       .finally(() => {
@@ -69,7 +74,8 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
       };
       if (payload.type !== 'state') return;
       if (payload.error) {
-        setRenderError(payload.error);
+        console.error('PDF preview render error', payload.error);
+        setRenderError(PDF_PREVIEW_LOAD_ERROR);
         return;
       }
       setRenderError(null);
@@ -78,8 +84,9 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
         pageCount: Number(payload.pageCount || 1),
         ready: Boolean(payload.ready)
       });
-    } catch {
-      setRenderError('PDF-Vorschau konnte nicht dargestellt werden.');
+    } catch (messageError) {
+      console.error('PDF preview message parse failed', messageError);
+      setRenderError(PDF_PREVIEW_LOAD_ERROR);
     }
   };
 
@@ -127,8 +134,14 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
           domStorageEnabled
           setBuiltInZoomControls={false}
           onMessage={onWebMessage}
-          onError={() => setRenderError('PDF-Vorschau konnte nicht geladen werden.')}
-          onHttpError={() => setRenderError('PDF-Vorschau konnte nicht geladen werden.')}
+          onError={(event) => {
+            console.error('PDF preview WebView error', event.nativeEvent);
+            setRenderError(PDF_PREVIEW_LOAD_ERROR);
+          }}
+          onHttpError={(event) => {
+            console.error('PDF preview WebView HTTP error', event.nativeEvent);
+            setRenderError(PDF_PREVIEW_LOAD_ERROR);
+          }}
         />
         {showUpdateOverlay ? (
           <View style={styles.updateOverlay} pointerEvents="none">
