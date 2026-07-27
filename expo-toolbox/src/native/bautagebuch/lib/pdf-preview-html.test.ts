@@ -79,20 +79,20 @@ test('buildSimplePdfPreviewHtml embeds local worker and renderer boot helpers', 
 });
 
 test('offline simulation: bundled asset files exist for pdf.js 3.11.174', () => {
-  const corePath = path.join(assetsDir, 'pdf.min.js');
-  const workerPath = path.join(assetsDir, 'pdf.worker.min.js');
+  const corePath = path.join(assetsDir, 'pdf.min.bundle');
+  const workerPath = path.join(assetsDir, 'pdf.worker.min.bundle');
   const core = readFileSync(corePath, 'utf8');
   const worker = readFileSync(workerPath, 'utf8');
 
-  assert.ok(core.length > 100_000, 'pdf.min.js should be bundled locally');
-  assert.ok(worker.length > 500_000, 'pdf.worker.min.js should be bundled locally');
+  assert.ok(core.length > 100_000, 'pdf.min.bundle should be bundled locally');
+  assert.ok(worker.length > 500_000, 'pdf.worker.min.bundle should be bundled locally');
   assert.match(core, /pdfjsLib|pdf\.js/i);
   assert.match(worker, /worker/i);
   assert.equal(PDFJS_VERSION, '3.11.174');
 });
 
 test('offline simulation: local core can be injected without network script tags', () => {
-  const core = readFileSync(path.join(assetsDir, 'pdf.min.js'), 'utf8');
+  const core = readFileSync(path.join(assetsDir, 'pdf.min.bundle'), 'utf8');
   const html = buildFieldPreviewHtml({
     base64: 'UEZERg==',
     pdfJsSource: core.slice(0, 4096),
