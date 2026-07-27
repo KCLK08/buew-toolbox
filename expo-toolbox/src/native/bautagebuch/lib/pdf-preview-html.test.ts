@@ -76,6 +76,18 @@ test('buildSimplePdfPreviewHtml embeds local worker and renderer boot helpers', 
   assertNoCdnUrls(html);
   assert.match(html, /GlobalWorkerOptions\.workerSrc = 'file:\/\/\/offline\/pdf\.worker\.min\.js'/);
   assert.match(html, /showPreviewError\('PDF preview boot failed'/);
+  assert.match(html, /id="overlay"/);
+});
+
+test('preview boot uses blob worker when workerSource is bundled', () => {
+  const html = buildFieldPreviewHtml({
+    base64: 'UEZERg==',
+    ...mockAssets,
+    workerSource: '/* pdf.worker */'
+  });
+
+  assert.match(html, /URL\.createObjectURL\(workerBlob\)/);
+  assert.match(html, /GlobalWorkerOptions\.workerSrc = URL\.createObjectURL/);
 });
 
 test('offline simulation: bundled asset files exist for pdf.js 3.11.174', () => {

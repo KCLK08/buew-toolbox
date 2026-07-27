@@ -48,6 +48,7 @@ export default function BautagebuchRunScreen() {
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewRevision, setPreviewRevision] = useState(0);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { schedule, flush } = useRunAutosave(id);
 
@@ -107,6 +108,7 @@ export default function BautagebuchRunScreen() {
       await flush();
       const path = await generateRunPreviewPdfPath(run.runId);
       setPreviewPath(path);
+      setPreviewRevision((value) => value + 1);
     } catch (err) {
       setPreviewError(err instanceof Error ? err.message : 'Vorschau fehlgeschlagen.');
     } finally {
@@ -308,7 +310,12 @@ export default function BautagebuchRunScreen() {
       overlay={
         showPreview ? (
           <PreviewOverlayPanel title="Live-PDF-Vorschau" onClose={() => setShowPreview(false)}>
-            <PdfPreviewPanel pdfPath={previewPath} loading={previewLoading} error={previewError} />
+            <PdfPreviewPanel
+              pdfPath={previewPath}
+              loading={previewLoading}
+              error={previewError}
+              reloadKey={previewRevision}
+            />
           </PreviewOverlayPanel>
         ) : null
       }

@@ -40,7 +40,10 @@ async function loadPdfPreviewAssetsUncached(): Promise<PdfPreviewRuntimeAssets> 
     throw new Error('PDF preview worker asset URI unavailable');
   }
 
-  const pdfJsSource = await FileSystem.readAsStringAsync(coreUri);
+  const [pdfJsSource, workerSource] = await Promise.all([
+    FileSystem.readAsStringAsync(coreUri),
+    FileSystem.readAsStringAsync(workerSrc)
+  ]);
 
-  return { pdfJsSource, workerSrc };
+  return { pdfJsSource, workerSrc, workerSource };
 }
