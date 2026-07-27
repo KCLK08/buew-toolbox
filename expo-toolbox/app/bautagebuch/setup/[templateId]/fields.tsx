@@ -92,7 +92,7 @@ export default function SetupFieldsScreen() {
       };
       await saveSetupModel(templateId, readyModel, 'ready');
       Alert.alert('Setup abgeschlossen', 'Die Vorlage ist jetzt startbereit und kann aktiviert werden.');
-      router.replace('/bautagebuch/setup');
+      router.replace('/bautagebuch/config');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Setup konnte nicht abgeschlossen werden.');
     } finally {

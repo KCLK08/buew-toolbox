@@ -48,7 +48,15 @@ export default function SiteReportDashboardScreen() {
   const recentExports = exportsList.slice(0, 3);
 
   return (
-    <Screen title="SiteReport" subtitle="Baustellen-Protokolle" scroll refreshing={loading} onRefresh={load}>
+    <Screen
+      title="SiteReport"
+      subtitle="Baustellen-Protokolle"
+      toolboxBack
+      reserveTabBarSpace
+      scroll
+      refreshing={loading}
+      onRefresh={load}
+    >
       <PrimaryActionCard
         title="Neues Protokoll starten"
         subtitle="In 3 Schritten: Projekt, Format und erste Einträge"

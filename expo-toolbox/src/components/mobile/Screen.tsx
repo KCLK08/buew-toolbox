@@ -26,6 +26,10 @@ type Props = {
   subtitle?: string;
   scroll?: boolean;
   showBack?: boolean;
+  toolboxBack?: boolean;
+  backLabel?: string;
+  onBack?: () => void;
+  reserveTabBarSpace?: boolean;
   rightAction?: ReactNode;
   footer?: ReactNode;
   overlay?: ReactNode;
@@ -41,7 +45,8 @@ function ScreenScrollBody({
   contentStyle,
   refreshing,
   onRefresh,
-  insets
+  insets,
+  reserveTabBarSpace
 }: {
   children: ReactNode;
   scroll: boolean;
@@ -49,6 +54,7 @@ function ScreenScrollBody({
   refreshing?: boolean;
   onRefresh?: () => void;
   insets: { bottom: number };
+  reserveTabBarSpace?: boolean;
 }) {
   const keyboardScroll = useKeyboardScroll();
   const scrollRef = useRef<ScrollView>(null);
@@ -73,7 +79,12 @@ function ScreenScrollBody({
       scrollEventThrottle={16}
       contentContainerStyle={[
         styles.content,
-        { paddingBottom: Math.max(spacing.pageBottom, safeBottom + spacing.tabBarBody + spacing.lg) },
+        {
+          paddingBottom: Math.max(
+            spacing.pageBottom,
+            safeBottom + (reserveTabBarSpace ? spacing.tabBarBody + spacing.lg : spacing.lg)
+          )
+        },
         contentStyle
       ]}
       showsVerticalScrollIndicator={false}
@@ -94,6 +105,10 @@ export function Screen({
   children,
   scroll = true,
   showBack = false,
+  toolboxBack = false,
+  backLabel,
+  onBack,
+  reserveTabBarSpace = false,
   rightAction,
   footer,
   overlay,
@@ -108,20 +123,23 @@ export function Screen({
   const safeBottom = bottomInset(insets);
   const footerBarHeight = compactFooter ? 52 : spacing.touchMin + 8;
   const footerInset = footer ? footerBarHeight + spacing.sm + safeBottom : safeBottom;
+  const showHeaderBack = showBack || toolboxBack;
+  const resolvedBackLabel = backLabel || (toolboxBack ? '‹ Toolbox' : '‹ Zurück');
+  const handleBack = onBack || (toolboxBack ? () => router.replace('/') : () => router.back());
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View style={styles.headerSide}>
-          {showBack ? (
+          {showHeaderBack ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Zurück"
+              accessibilityLabel={toolboxBack ? 'Zurück zur Toolbox' : 'Zurück'}
               hitSlop={8}
-              onPress={() => router.back()}
+              onPress={handleBack}
               style={styles.backBtn}
             >
-              <Text style={styles.backLabel}>‹ Zurück</Text>
+              <Text style={styles.backLabel}>{resolvedBackLabel}</Text>
             </Pressable>
           ) : (
             <View style={styles.backPlaceholder} />
@@ -153,6 +171,7 @@ export function Screen({
               refreshing={refreshing}
               onRefresh={onRefresh}
               insets={insets}
+              reserveTabBarSpace={reserveTabBarSpace}
             >
               {children}
             </ScreenScrollBody>

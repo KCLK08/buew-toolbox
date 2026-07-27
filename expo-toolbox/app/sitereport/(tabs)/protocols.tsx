@@ -99,7 +99,15 @@ export default function ProtocolsListScreen() {
   };
 
   return (
-    <Screen title="Protokolle" subtitle={`${protocols.length} gespeichert`} showBack scroll refreshing={loading} onRefresh={load}>
+    <Screen
+      title="Protokolle"
+      subtitle={`${protocols.length} gespeichert`}
+      toolboxBack
+      reserveTabBarSpace
+      scroll
+      refreshing={loading}
+      onRefresh={load}
+    >
       {protocols.length > 0 ? (
         <>
           <SearchFieldPlaceholder placeholder="Protokolle durchsuchen… (bald verfügbar)" />
@@ -114,9 +122,9 @@ export default function ProtocolsListScreen() {
         <EmptyState
           icon="📋"
           title="Keine Protokolle"
-          description="Starte ein neues Protokoll vom Dashboard."
-          actionLabel="Zum Dashboard"
-          onAction={() => router.push('/(tabs)/sitereport')}
+          description="Starte ein neues Protokoll vom Home-Tab."
+          actionLabel="Zum Home-Tab"
+          onAction={() => router.push('/sitereport')}
         />
       ) : (
         protocols.map((protocol) => {

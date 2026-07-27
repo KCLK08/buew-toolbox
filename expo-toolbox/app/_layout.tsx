@@ -67,15 +67,8 @@ function RootLayoutContent() {
           <StatusBar style="dark" />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
             <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="bautagebuch/run/[id]" />
-            <Stack.Screen name="bautagebuch/setup" />
-            <Stack.Screen name="sitereport/new-protocol" />
-            <Stack.Screen name="sitereport/protocol/[id]" />
-            <Stack.Screen name="sitereport/protocol/[id]/edit" />
-            <Stack.Screen name="sitereport/protocol/[id]/wizard" />
-            <Stack.Screen name="sitereport/protocols/index" />
-            <Stack.Screen name="sitereport/exports/index" />
-            <Stack.Screen name="sitereport/format-builder" />
+            <Stack.Screen name="bautagebuch" />
+            <Stack.Screen name="sitereport" />
           </Stack>
         </ToastProvider>
       )}

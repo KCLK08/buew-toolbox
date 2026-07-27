@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 
-import { Card, StatusBadge } from '../../../components/mobile';
+import { PrimaryButton, StatusBadge } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
 import type { BautagebuchRun } from '../types';
 
@@ -15,6 +15,22 @@ type Props = {
   onRename: () => void;
   onDelete: () => void;
 };
+
+function formatShortUpdated(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const time = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  if (date.toDateString() === now.toDateString()) {
+    return `Heute, ${time}`;
+  }
+  return date.toLocaleString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
 
 function SwipeAction({
   label,
@@ -44,10 +60,6 @@ export function BautagebuchRunCard({
   onRename,
   onDelete
 }: Props) {
-  const dateLabel =
-    run.title.match(/\d{4}-\d{2}-\d{2}/)?.[0] ||
-    new Date(run.createdAt).toLocaleDateString('de-DE');
-
   const renderRightActions = (): ReactNode => (
     <View style={styles.swipeRow}>
       <SwipeAction label="Umbenennen" tone="accent" onPress={onRename} />
@@ -57,36 +69,31 @@ export function BautagebuchRunCard({
 
   return (
     <Swipeable renderRightActions={selectionMode ? undefined : renderRightActions} overshootRight={false}>
-      <Pressable onPress={selectionMode ? onToggleSelect : onPress}>
-        <Card style={selected ? { ...styles.card, ...styles.cardSelected } : styles.card}>
-          <View style={styles.headerRow}>
-            <View style={styles.titleBlock}>
-              <Text style={styles.title} numberOfLines={2}>
-                {run.title}
-              </Text>
-              <Text style={styles.meta}>{dateLabel}</Text>
-            </View>
-            <StatusBadge
-              label={run.status === 'completed' ? 'Abgeschlossen' : 'Entwurf'}
-              tone={run.status === 'completed' ? 'success' : 'neutral'}
-            />
+      <Pressable onPress={selectionMode ? onToggleSelect : undefined}>
+        <View style={[styles.card, selected ? styles.cardSelected : null]}>
+          <View style={styles.titleBlock}>
+            <Text style={styles.title} numberOfLines={2}>
+              {run.title}
+            </Text>
+            <Text style={styles.updated}>{formatShortUpdated(run.updatedAt)}</Text>
           </View>
-          <Text style={styles.updated}>
-            Zuletzt geändert/bearbeitet am:{' '}
-            {new Date(run.updatedAt).toLocaleString('de-DE', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })}
-          </Text>
+
           {!selectionMode ? (
-            <Text style={styles.hint}>Nach links wischen für Aktionen · Tippen zum Öffnen</Text>
+            <View style={styles.actionRow}>
+              <StatusBadge
+                label={run.status === 'completed' ? 'Abgeschlossen' : 'Entwurf'}
+                tone={run.status === 'completed' ? 'success' : 'neutral'}
+              />
+              <PrimaryButton label="Öffnen" compact variant="secondary" onPress={onPress} />
+            </View>
           ) : (
             <Text style={styles.hint}>{selected ? '✓ Ausgewählt' : 'Tippen zum Auswählen'}</Text>
           )}
-        </Card>
+
+          {!selectionMode ? (
+            <Text style={styles.hint}>Nach links wischen für Umbenennen oder Löschen</Text>
+          ) : null}
+        </View>
       </Pressable>
     </Swipeable>
   );
@@ -94,48 +101,52 @@ export function BautagebuchRunCard({
 
 const styles = StyleSheet.create({
   card: {
-    gap: spacing.sm
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.panel
   },
   cardSelected: {
     borderColor: colors.accent,
     backgroundColor: colors.badgeBg
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing.sm
-  },
   titleBlock: {
-    flex: 1,
-    gap: 4
+    gap: 2
   },
   title: {
     ...typography.bodyStrong,
-    color: colors.ink
-  },
-  meta: {
-    ...typography.caption,
-    color: colors.muted
+    color: colors.ink,
+    fontSize: 15
   },
   updated: {
     ...typography.caption,
-    color: colors.muted
+    color: colors.muted,
+    fontSize: 12
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm
   },
   hint: {
     ...typography.caption,
-    color: colors.muted
+    color: colors.muted,
+    fontSize: 11
   },
   swipeRow: {
     flexDirection: 'row',
-    marginBottom: spacing.sm
+    marginBottom: spacing.xs
   },
   swipeAction: {
-    width: 96,
+    width: 88,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
-    borderRadius: 12
+    marginLeft: 6,
+    borderRadius: 10
   },
   swipeAccent: {
     backgroundColor: colors.accent
@@ -146,6 +157,7 @@ const styles = StyleSheet.create({
   swipeLabel: {
     ...typography.caption,
     color: colors.white,
-    fontFamily: 'SpaceGrotesk_600SemiBold'
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    fontSize: 11
   }
 });

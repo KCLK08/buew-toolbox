@@ -86,7 +86,15 @@ export default function ExportsCenterScreen() {
   };
 
   return (
-    <Screen title="Exporte" subtitle="Export-Center" showBack scroll refreshing={loading} onRefresh={load}>
+    <Screen
+      title="Exporte"
+      subtitle="Export-Center"
+      toolboxBack
+      reserveTabBarSpace
+      scroll
+      refreshing={loading}
+      onRefresh={load}
+    >
       {exportsList.length > 0 ? (
         <SectionHeader
           title={`${exportsList.length} Export${exportsList.length === 1 ? '' : 'e'}`}
