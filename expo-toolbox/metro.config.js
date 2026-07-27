@@ -9,6 +9,8 @@ const edgeToEdgeJs = path.resolve(
   'node_modules/react-native-is-edge-to-edge/dist/index.js'
 );
 const pdfWorkerAsset = path.resolve(projectRoot, 'assets/pdf.worker.min.mjs');
+const pdfPreviewCoreAsset = path.resolve(projectRoot, 'assets/pdfjs/pdf.min.js');
+const pdfPreviewWorkerAsset = path.resolve(projectRoot, 'assets/pdfjs/pdf.worker.min.js');
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(projectRoot);
@@ -22,6 +24,15 @@ function targetsPdfWorkerAsset(moduleName) {
     moduleName.endsWith('/assets/pdf.worker.min.mjs') ||
     moduleName.endsWith('assets/pdf.worker.min.mjs') ||
     (moduleName.includes('pdfjs-dist') && moduleName.includes('worker') && moduleName.endsWith('.mjs'))
+  );
+}
+
+function targetsPdfPreviewAssets(moduleName) {
+  return (
+    moduleName.endsWith('/assets/pdfjs/pdf.min.js') ||
+    moduleName.endsWith('assets/pdfjs/pdf.min.js') ||
+    moduleName.endsWith('/assets/pdfjs/pdf.worker.min.js') ||
+    moduleName.endsWith('assets/pdfjs/pdf.worker.min.js')
   );
 }
 
@@ -73,6 +84,17 @@ config.resolver = {
       }
 
       return resolved;
+    }
+
+    if (targetsPdfPreviewAssets(moduleName)) {
+      const filePath = moduleName.includes('pdf.worker.min.js')
+        ? pdfPreviewWorkerAsset
+        : pdfPreviewCoreAsset;
+
+      return {
+        type: 'assetFiles',
+        filePaths: [filePath]
+      };
     }
 
     if (defaultResolveRequest) {

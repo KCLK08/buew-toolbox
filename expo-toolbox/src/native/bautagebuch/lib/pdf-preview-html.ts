@@ -1,7 +1,7 @@
-/** pdf.js 3.11.174 — kept in sync with WebView preview runtime. */
+/** pdf.js 3.11.174 — bundled locally under assets/pdfjs/ (no CDN). */
 export const PDFJS_VERSION = '3.11.174';
 
-export const PDFJS_CDN_BASE = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}`;
+export const PDF_PREVIEW_LOAD_ERROR = 'PDF Vorschau konnte nicht geladen werden';
 
 export type PreviewHtmlMode = 'default' | 'mapping' | 'overlay' | 'pinned';
 
@@ -11,7 +11,12 @@ export type PreviewHighlight = {
   rect: number[];
 };
 
-export type BuildPreviewHtmlOptions = {
+export type PdfPreviewRuntimeAssets = {
+  pdfJsSource: string;
+  workerSrc: string;
+};
+
+export type BuildPreviewHtmlOptions = PdfPreviewRuntimeAssets & {
   base64: string;
   highlights?: PreviewHighlight[];
   mode?: PreviewHtmlMode;
@@ -19,23 +24,87 @@ export type BuildPreviewHtmlOptions = {
   highQuality?: boolean;
 };
 
-/**
- * Offline bundling (not migrated — see STEP_2 doc):
- * - assets/pdf.worker.min.mjs (exists)
- * - assets/pdf.min.js (copy from CDN, same version)
- * Inject via readAsStringAsync + inline <script> instead of CDN src.
- */
-export function pdfJsScriptTags(): string {
-  return `<script src="${PDFJS_CDN_BASE}/pdf.min.js"></script>`;
+export type BuildSimplePreviewHtmlOptions = PdfPreviewRuntimeAssets & {
+  base64: string;
+};
+
+/** Prevents inline script content from prematurely closing the parent script tag. */
+export function escapeInlineScript(source: string): string {
+  return source.replace(/<\/script/gi, '<\\/script');
 }
 
-export function pdfJsWorkerSrc(): string {
-  return `${PDFJS_CDN_BASE}/pdf.worker.min.js`;
+/** Escapes a value embedded in a single-quoted JavaScript string literal. */
+export function escapeJsStringLiteral(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+export function buildPdfJsInlineScript(pdfJsSource: string): string {
+  return `<script>\n${escapeInlineScript(pdfJsSource)}\n</script>`;
+}
+
+function previewErrorStyles(): string {
+  return `
+      #errorState {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(242, 240, 235, 0.96);
+        font: 15px/1.45 system-ui, sans-serif;
+        color: #8b3a32;
+        text-align: center;
+      }
+      #errorState.visible { display: flex; }`;
+}
+
+function previewBootHelpers(errorMessage: string, workerSrc: string): string {
+  const safeWorkerSrc = escapeJsStringLiteral(workerSrc);
+  const safeErrorMessage = escapeJsStringLiteral(errorMessage);
+
+  return `
+      const PREVIEW_ERROR = '${safeErrorMessage}';
+
+      function post(payload) {
+        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+          window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+        }
+      }
+
+      function showPreviewError(context, error) {
+        console.error(context, error);
+        const errorEl = document.getElementById('errorState');
+        if (errorEl) errorEl.classList.add('visible');
+        post({
+          type: 'state',
+          page: 1,
+          pageCount: 1,
+          ready: false,
+          error: PREVIEW_ERROR
+        });
+      }
+
+      const pdfjsLib = window.pdfjsLib;
+      if (!pdfjsLib) {
+        showPreviewError('PDF preview worker bootstrap failed', new Error('pdf.js core missing'));
+      } else {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '${safeWorkerSrc}';
+      }`;
 }
 
 export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string {
   const {
     base64,
+    pdfJsSource,
+    workerSrc,
     highlights = [],
     mode = 'default',
     highlightActive = false,
@@ -44,14 +113,13 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
 
   const mappingMode = mode === 'mapping';
   const highlightsJson = JSON.stringify(highlights);
-  const workerSrc = pdfJsWorkerSrc();
 
   return `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    ${pdfJsScriptTags()}
+    ${buildPdfJsInlineScript(pdfJsSource)}
     <style>
       * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       html, body {
@@ -106,9 +174,11 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
         pointer-events: none; opacity: 0; transition: opacity 0.3s;
       }
       #zoomHint.visible { opacity: 1; }
+      ${previewErrorStyles()}
     </style>
   </head>
   <body>
+    <div id="errorState">${PDF_PREVIEW_LOAD_ERROR}</div>
     <div id="viewport">
       <div id="wrap">
         <canvas id="canvas"></canvas>
@@ -120,9 +190,7 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
       const mappingMode = ${mappingMode ? 'true' : 'false'};
       const highlightActive = ${highlightActive ? 'true' : 'false'};
       const highQuality = ${highQuality ? 'true' : 'false'};
-      const pdfjsLib = window.pdfjsLib;
-      if (!pdfjsLib) throw new Error('pdf.js nicht geladen');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = '${workerSrc}';
+      ${previewBootHelpers(PDF_PREVIEW_LOAD_ERROR, workerSrc)}
 
       const highlights = ${highlightsJson};
       let pdfDoc = null;
@@ -139,12 +207,6 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
       const viewport = document.getElementById('viewport');
       const wrap = document.getElementById('wrap');
       const zoomHint = document.getElementById('zoomHint');
-
-      function post(payload) {
-        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-          window.ReactNativeWebView.postMessage(JSON.stringify(payload));
-        }
-      }
 
       function pageHighlights(pageNumber) {
         return highlights.filter((entry) => Number(entry.page || 1) === pageNumber);
@@ -247,58 +309,63 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
       }
 
       async function renderPage(pageNumber) {
-        if (!pdfDoc) return;
+        if (!pdfDoc || !pdfjsLib) return;
         const started = performance.now();
-        const safePage = Math.min(Math.max(pageNumber, 1), pdfDoc.numPages);
-        currentPage = safePage;
-        const page = await pdfDoc.getPage(safePage);
-        const canvas = document.getElementById('canvas');
-        const context = canvas.getContext('2d');
-        const baseViewport = page.getViewport({ scale: 1 });
-        const dpr = Math.min(window.devicePixelRatio || 1, highQuality ? 4 : 3);
-        const maxCssWidth = Math.min(window.innerWidth || 860, mappingMode ? window.innerWidth : 860);
-        const fitScale = maxCssWidth / baseViewport.width;
-        const qualityBoost = highQuality ? 1.25 : 1;
-        const scaleCap = mappingMode ? 3.6 : highQuality ? 3.4 : 2.6;
-        viewportScale = Math.min(fitScale, scaleCap) * qualityBoost;
+        try {
+          const safePage = Math.min(Math.max(pageNumber, 1), pdfDoc.numPages);
+          currentPage = safePage;
+          const page = await pdfDoc.getPage(safePage);
+          const canvas = document.getElementById('canvas');
+          const context = canvas.getContext('2d');
+          const baseViewport = page.getViewport({ scale: 1 });
+          const dpr = Math.min(window.devicePixelRatio || 1, highQuality ? 4 : 3);
+          const maxCssWidth = Math.min(window.innerWidth || 860, mappingMode ? window.innerWidth : 860);
+          const fitScale = maxCssWidth / baseViewport.width;
+          const qualityBoost = highQuality ? 1.25 : 1;
+          const scaleCap = mappingMode ? 3.6 : highQuality ? 3.4 : 2.6;
+          viewportScale = Math.min(fitScale, scaleCap) * qualityBoost;
 
-        let pixelScale = viewportScale * dpr;
-        const pixelArea = baseViewport.width * baseViewport.height * pixelScale * pixelScale;
-        if (pixelArea > MAX_CANVAS_PIXELS) {
-          pixelScale = Math.sqrt(MAX_CANVAS_PIXELS / (baseViewport.width * baseViewport.height));
+          let pixelScale = viewportScale * dpr;
+          const pixelArea = baseViewport.width * baseViewport.height * pixelScale * pixelScale;
+          if (pixelArea > MAX_CANVAS_PIXELS) {
+            pixelScale = Math.sqrt(MAX_CANVAS_PIXELS / (baseViewport.width * baseViewport.height));
+          }
+
+          const viewportObj = page.getViewport({ scale: pixelScale });
+          canvas.width = Math.ceil(viewportObj.width);
+          canvas.height = Math.ceil(viewportObj.height);
+          canvas.style.width = Math.ceil(viewportObj.width / dpr) + 'px';
+          canvas.style.height = Math.ceil(viewportObj.height / dpr) + 'px';
+
+          if (renderTask) {
+            try { renderTask.cancel(); } catch (_) {}
+          }
+          renderTask = page.render({ canvasContext: context, viewport: viewportObj });
+          await renderTask.promise;
+          renderTask = null;
+
+          drawOverlay(safePage, viewportObj);
+          resetPinchZoom();
+
+          if (mappingMode && activeFieldId) {
+            requestAnimationFrame(() => scrollActiveFieldErgonomic());
+          }
+
+          post({
+            type: 'state',
+            page: safePage,
+            pageCount: pdfDoc.numPages,
+            ready: true,
+            error: null,
+            renderMs: Math.round(performance.now() - started)
+          });
+        } catch (error) {
+          showPreviewError('PDF preview render failed', error);
         }
-
-        const viewportObj = page.getViewport({ scale: pixelScale });
-        canvas.width = Math.ceil(viewportObj.width);
-        canvas.height = Math.ceil(viewportObj.height);
-        canvas.style.width = Math.ceil(viewportObj.width / dpr) + 'px';
-        canvas.style.height = Math.ceil(viewportObj.height / dpr) + 'px';
-
-        if (renderTask) {
-          try { renderTask.cancel(); } catch (_) {}
-        }
-        renderTask = page.render({ canvasContext: context, viewport: viewportObj });
-        await renderTask.promise;
-        renderTask = null;
-
-        drawOverlay(safePage, viewportObj);
-        resetPinchZoom();
-
-        if (mappingMode && activeFieldId) {
-          requestAnimationFrame(() => scrollActiveFieldErgonomic());
-        }
-
-        post({
-          type: 'state',
-          page: safePage,
-          pageCount: pdfDoc.numPages,
-          ready: true,
-          error: null,
-          renderMs: Math.round(performance.now() - started)
-        });
       }
 
       async function boot() {
+        if (!pdfjsLib) return;
         try {
           const data = atob('${base64}');
           const bytes = new Uint8Array(data.length);
@@ -306,13 +373,7 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
           pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
           await renderPage(1);
         } catch (error) {
-          post({
-            type: 'state',
-            page: 1,
-            pageCount: 1,
-            ready: false,
-            error: error && error.message ? error.message : 'PDF-Vorschau fehlgeschlagen'
-          });
+          showPreviewError('PDF preview boot failed', error);
         }
       }
 
@@ -334,8 +395,8 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
           if (message.type === 'resetZoom') {
             resetPinchZoom();
           }
-        } catch {
-          // Ignore malformed commands.
+        } catch (error) {
+          console.error('PDF preview command failed', error);
         }
       }
 
@@ -347,68 +408,77 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
 </html>`;
 }
 
-export function buildSimplePdfPreviewHtml(base64: string): string {
-  const workerSrc = pdfJsWorkerSrc();
+export function buildSimplePdfPreviewHtml(options: BuildSimplePreviewHtmlOptions | string): string {
+  const resolved =
+    typeof options === 'string'
+      ? null
+      : options;
+
+  if (!resolved) {
+    throw new Error('buildSimplePdfPreviewHtml requires bundled pdf.js assets');
+  }
+
+  const { base64, pdfJsSource, workerSrc } = resolved;
+
   return `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    ${pdfJsScriptTags()}
+    ${buildPdfJsInlineScript(pdfJsSource)}
     <style>
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #f2f0eb; }
       #viewport { width: 100%; height: 100%; overflow: auto; -webkit-overflow-scrolling: touch; }
       #wrap { position: relative; display: flex; justify-content: center; padding: 8px 0; }
       canvas { display: block; max-width: 100%; height: auto; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+      ${previewErrorStyles()}
     </style>
   </head>
   <body>
+    <div id="errorState">${PDF_PREVIEW_LOAD_ERROR}</div>
     <div id="viewport"><div id="wrap"><canvas id="canvas"></canvas></div></div>
     <script>
-      const pdfjsLib = window.pdfjsLib;
-      if (!pdfjsLib) throw new Error('pdf.js nicht geladen');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = '${workerSrc}';
+      ${previewBootHelpers(PDF_PREVIEW_LOAD_ERROR, workerSrc)}
       let pdfDoc = null;
       let currentPage = 1;
       let renderTask = null;
       const MAX_CANVAS_PIXELS = 12000000;
 
-      function post(payload) {
-        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-          window.ReactNativeWebView.postMessage(JSON.stringify(payload));
-        }
-      }
-
       async function renderPage(pageNumber) {
-        if (!pdfDoc) return;
-        const safePage = Math.min(Math.max(pageNumber, 1), pdfDoc.numPages);
-        currentPage = safePage;
-        const page = await pdfDoc.getPage(safePage);
-        const canvas = document.getElementById('canvas');
-        const context = canvas.getContext('2d');
-        const baseViewport = page.getViewport({ scale: 1 });
-        const dpr = Math.min(window.devicePixelRatio || 1, 3);
-        const maxCssWidth = Math.min(window.innerWidth || 860, window.innerWidth);
-        const fitScale = maxCssWidth / baseViewport.width;
-        let pixelScale = Math.min(fitScale, 3.2) * dpr;
-        const pixelArea = baseViewport.width * baseViewport.height * pixelScale * pixelScale;
-        if (pixelArea > MAX_CANVAS_PIXELS) {
-          pixelScale = Math.sqrt(MAX_CANVAS_PIXELS / (baseViewport.width * baseViewport.height));
+        if (!pdfDoc || !pdfjsLib) return;
+        try {
+          const safePage = Math.min(Math.max(pageNumber, 1), pdfDoc.numPages);
+          currentPage = safePage;
+          const page = await pdfDoc.getPage(safePage);
+          const canvas = document.getElementById('canvas');
+          const context = canvas.getContext('2d');
+          const baseViewport = page.getViewport({ scale: 1 });
+          const dpr = Math.min(window.devicePixelRatio || 1, 3);
+          const maxCssWidth = Math.min(window.innerWidth || 860, window.innerWidth);
+          const fitScale = maxCssWidth / baseViewport.width;
+          let pixelScale = Math.min(fitScale, 3.2) * dpr;
+          const pixelArea = baseViewport.width * baseViewport.height * pixelScale * pixelScale;
+          if (pixelArea > MAX_CANVAS_PIXELS) {
+            pixelScale = Math.sqrt(MAX_CANVAS_PIXELS / (baseViewport.width * baseViewport.height));
+          }
+          const viewport = page.getViewport({ scale: pixelScale });
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          canvas.style.width = Math.ceil(viewport.width / pixelScale * Math.min(fitScale, 3.2)) + 'px';
+          canvas.style.height = Math.ceil(viewport.height / pixelScale * Math.min(fitScale, 3.2)) + 'px';
+          if (renderTask) { try { renderTask.cancel(); } catch (_) {} }
+          renderTask = page.render({ canvasContext: context, viewport });
+          await renderTask.promise;
+          renderTask = null;
+          post({ type: 'state', page: safePage, pageCount: pdfDoc.numPages, ready: true, error: null });
+        } catch (error) {
+          showPreviewError('PDF preview render failed', error);
         }
-        const viewport = page.getViewport({ scale: pixelScale });
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        canvas.style.width = Math.ceil(viewport.width / pixelScale * Math.min(fitScale, 3.2)) + 'px';
-        canvas.style.height = Math.ceil(viewport.height / pixelScale * Math.min(fitScale, 3.2)) + 'px';
-        if (renderTask) { try { renderTask.cancel(); } catch (_) {} }
-        renderTask = page.render({ canvasContext: context, viewport });
-        await renderTask.promise;
-        renderTask = null;
-        post({ type: 'state', page: safePage, pageCount: pdfDoc.numPages, ready: true, error: null });
       }
 
       async function boot() {
+        if (!pdfjsLib) return;
         try {
           const data = atob('${base64}');
           const bytes = new Uint8Array(data.length);
@@ -416,7 +486,7 @@ export function buildSimplePdfPreviewHtml(base64: string): string {
           pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
           await renderPage(1);
         } catch (error) {
-          post({ type: 'state', page: 1, pageCount: 1, ready: false, error: error && error.message ? error.message : 'PDF-Vorschau fehlgeschlagen' });
+          showPreviewError('PDF preview boot failed', error);
         }
       }
 
@@ -425,7 +495,9 @@ export function buildSimplePdfPreviewHtml(base64: string): string {
           const message = typeof raw === 'string' ? JSON.parse(raw) : raw;
           if (!message || message.type !== 'setPage') return;
           void renderPage(Number(message.page || 1));
-        } catch {}
+        } catch (error) {
+          console.error('PDF preview command failed', error);
+        }
       }
 
       document.addEventListener('message', (event) => handleCommand(event.data));

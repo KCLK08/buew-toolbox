@@ -6,8 +6,10 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { PrimaryButton } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
+import { loadPdfPreviewAssets } from '../lib/pdf-preview-assets';
 import {
   buildFieldPreviewHtml,
+  PDF_PREVIEW_LOAD_ERROR,
   type PreviewHtmlMode
 } from '../lib/pdf-preview-html';
 import {
@@ -56,6 +58,7 @@ export function SetupPdfFieldPreview({
   const [html, setHtml] = useState<string | null>(null);
   const [readBusy, setReadBusy] = useState(false);
   const [useFallback, setUseFallback] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [previewState, setPreviewState] = useState<PreviewState>({
     page: 1,
     pageCount: 1,
@@ -98,14 +101,19 @@ export function SetupPdfFieldPreview({
 
     setReadBusy(true);
     setUseFallback(false);
-    void FileSystem.readAsStringAsync(pdfPath, {
-      encoding: FileSystem.EncodingType.Base64
-    })
-      .then((base64) => {
+    setLoadError(null);
+    void Promise.all([
+      FileSystem.readAsStringAsync(pdfPath, {
+        encoding: FileSystem.EncodingType.Base64
+      }),
+      loadPdfPreviewAssets()
+    ])
+      .then(([base64, assets]) => {
         if (cancelled) return;
         setHtml(
           buildFieldPreviewHtml({
             base64,
+            ...assets,
             highlights,
             mode: htmlMode,
             highlightActive,
@@ -114,9 +122,11 @@ export function SetupPdfFieldPreview({
         );
         setPreviewState({ page: 1, pageCount: 1, ready: false, error: null });
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error('PDF preview setup failed', error);
         if (!cancelled) {
           setHtml(null);
+          setLoadError(PDF_PREVIEW_LOAD_ERROR);
           setUseFallback(true);
         }
       })
@@ -157,6 +167,8 @@ export function SetupPdfFieldPreview({
       };
       if (payload.type !== 'state') return;
       if (payload.error) {
+        console.error('PDF preview render error', payload.error);
+        setLoadError(PDF_PREVIEW_LOAD_ERROR);
         setUseFallback(true);
         return;
       }
@@ -167,7 +179,9 @@ export function SetupPdfFieldPreview({
         error: payload.error || null,
         renderMs: payload.renderMs
       });
-    } catch {
+    } catch (error) {
+      console.error('PDF preview message parse failed', error);
+      setLoadError(PDF_PREVIEW_LOAD_ERROR);
       setUseFallback(true);
     }
   };
@@ -182,7 +196,7 @@ export function SetupPdfFieldPreview({
   }
 
   if (useFallback || !html) {
-    return <PdfPreviewPanel pdfPath={pdfPath} error={previewState.error} />;
+    return <PdfPreviewPanel pdfPath={pdfPath} error={loadError || previewState.error} />;
   }
 
   const banner = mapping
@@ -233,8 +247,16 @@ export function SetupPdfFieldPreview({
           allowsInlineMediaPlayback
           setBuiltInZoomControls={false}
           onMessage={onWebMessage}
-          onError={() => setUseFallback(true)}
-          onHttpError={() => setUseFallback(true)}
+          onError={(event) => {
+            console.error('PDF preview WebView error', event.nativeEvent);
+            setLoadError(PDF_PREVIEW_LOAD_ERROR);
+            setUseFallback(true);
+          }}
+          onHttpError={(event) => {
+            console.error('PDF preview WebView HTTP error', event.nativeEvent);
+            setLoadError(PDF_PREVIEW_LOAD_ERROR);
+            setUseFallback(true);
+          }}
         />
       </View>
       {!mapping ? (
