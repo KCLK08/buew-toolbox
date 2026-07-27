@@ -5,110 +5,13 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { PrimaryButton } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
+import { buildSimplePdfPreviewHtml } from '../lib/pdf-preview-html';
 
 type Props = {
   pdfPath: string | null;
   loading?: boolean;
   error?: string | null;
 };
-
-function buildPreviewHtml(base64: string) {
-  return `<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=4.0" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <style>
-      * { box-sizing: border-box; }
-      html, body { margin: 0; padding: 0; background: #f2f0eb; min-height: 100%; }
-      #wrap { position: relative; min-height: 320px; display: flex; justify-content: center; padding: 8px 0; }
-      canvas { display: block; max-width: 100%; height: auto; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
-    </style>
-  </head>
-  <body>
-    <div id="wrap">
-      <canvas id="canvas"></canvas>
-    </div>
-    <script>
-      const pdfjsLib = window.pdfjsLib;
-      if (!pdfjsLib) {
-        throw new Error('pdf.js nicht geladen');
-      }
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-
-      let pdfDoc = null;
-      let currentPage = 1;
-      let renderTask = null;
-
-      function post(payload) {
-        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-          window.ReactNativeWebView.postMessage(JSON.stringify(payload));
-        }
-      }
-
-      async function renderPage(pageNumber) {
-        if (!pdfDoc) return;
-        const safePage = Math.min(Math.max(pageNumber, 1), pdfDoc.numPages);
-        currentPage = safePage;
-        const page = await pdfDoc.getPage(safePage);
-        const canvas = document.getElementById('canvas');
-        const context = canvas.getContext('2d');
-        const baseViewport = page.getViewport({ scale: 1 });
-        const dpr = Math.min(window.devicePixelRatio || 1, 3);
-        const maxCssWidth = Math.min(window.innerWidth || 860, 860);
-        const fitScale = maxCssWidth / baseViewport.width;
-        const scale = fitScale * dpr;
-        const viewport = page.getViewport({ scale });
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        canvas.style.width = Math.ceil(viewport.width / dpr) + 'px';
-        canvas.style.height = Math.ceil(viewport.height / dpr) + 'px';
-        if (renderTask) {
-          try { renderTask.cancel(); } catch (_) {}
-        }
-        renderTask = page.render({ canvasContext: context, viewport });
-        await renderTask.promise;
-        renderTask = null;
-        post({ type: 'state', page: safePage, pageCount: pdfDoc.numPages, ready: true, error: null });
-      }
-
-      async function boot() {
-        try {
-          const data = atob('${base64}');
-          const bytes = new Uint8Array(data.length);
-          for (let i = 0; i < data.length; i += 1) bytes[i] = data.charCodeAt(i);
-          pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
-          await renderPage(1);
-        } catch (error) {
-          post({
-            type: 'state',
-            page: 1,
-            pageCount: 1,
-            ready: false,
-            error: error && error.message ? error.message : 'PDF-Vorschau fehlgeschlagen'
-          });
-        }
-      }
-
-      function handleCommand(raw) {
-        try {
-          const message = typeof raw === 'string' ? JSON.parse(raw) : raw;
-          if (!message || message.type !== 'setPage') return;
-          void renderPage(Number(message.page || 1));
-        } catch {
-          // Ignore malformed commands.
-        }
-      }
-
-      document.addEventListener('message', (event) => handleCommand(event.data));
-      window.addEventListener('message', (event) => handleCommand(event.data));
-      void boot();
-    </script>
-  </body>
-</html>`;
-}
 
 export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Props) {
   const webViewRef = useRef<WebView>(null);
@@ -134,7 +37,7 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
     })
       .then((base64) => {
         if (cancelled) return;
-        setHtml(buildPreviewHtml(base64));
+        setHtml(buildSimplePdfPreviewHtml(base64));
         setPreviewState({ page: 1, pageCount: 1, ready: false });
       })
       .catch((readError) => {
@@ -218,9 +121,11 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
           source={{ html }}
           style={styles.webview}
           originWhitelist={['*']}
-          scrollEnabled
+          scrollEnabled={false}
+          bounces={false}
           javaScriptEnabled
           domStorageEnabled
+          setBuiltInZoomControls={false}
           onMessage={onWebMessage}
           onError={() => setRenderError('PDF-Vorschau konnte nicht geladen werden.')}
           onHttpError={() => setRenderError('PDF-Vorschau konnte nicht geladen werden.')}
@@ -259,10 +164,11 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null }: Prop
 }
 
 const styles = StyleSheet.create({
-  root: { gap: spacing.sm },
+  root: { flex: 1, gap: spacing.sm, minHeight: 0 },
   banner: { ...typography.label, color: colors.accent2 },
   panel: {
-    minHeight: 360,
+    flex: 1,
+    minHeight: 280,
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
@@ -271,7 +177,7 @@ const styles = StyleSheet.create({
   },
   webview: {
     flex: 1,
-    minHeight: 360,
+    minHeight: 280,
     backgroundColor: colors.panel
   },
   updateOverlay: {
@@ -291,6 +197,7 @@ const styles = StyleSheet.create({
   pageLabel: { ...typography.caption, color: colors.muted, minWidth: 110, textAlign: 'center' },
   center: {
     minHeight: 200,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,

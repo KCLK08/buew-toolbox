@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../../constants/theme';
 
@@ -10,30 +11,37 @@ type Props = {
 };
 
 export function PreviewOverlayPanel({ title = 'Live-Vorschau', onClose, children }: Props) {
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, spacing.sm);
+  const topInset = Math.max(insets.top, spacing.xs);
+
   return (
     <View style={styles.overlay}>
-      <View style={styles.panel}>
+      <View
+        style={[
+          styles.panel,
+          {
+            marginTop: topInset,
+            marginBottom: bottomInset,
+            marginHorizontal: spacing.xs
+          }
+        ]}
+      >
         <View style={styles.header}>
           <Text style={styles.title}>{title}</Text>
           {onClose ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Vorschau schließen"
-              hitSlop={8}
+              hitSlop={12}
+              style={styles.closeBtn}
               onPress={onClose}
             >
               <Text style={styles.close}>Schließen</Text>
             </Pressable>
           ) : null}
         </View>
-        <ScrollView
-          style={styles.body}
-          contentContainerStyle={styles.bodyContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {children}
-        </ScrollView>
+        <View style={styles.body}>{children}</View>
       </View>
     </View>
   );
@@ -42,8 +50,7 @@ export function PreviewOverlayPanel({ title = 'Live-Vorschau', onClose, children
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(26, 25, 22, 0.45)',
-    padding: spacing.sm,
+    backgroundColor: 'rgba(26, 25, 22, 0.42)',
     zIndex: 20
   },
   panel: {
@@ -59,26 +66,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    minHeight: spacing.touchMin,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.panelElevated
   },
   title: {
     ...typography.label,
-    color: colors.ink
-  },
-  close: {
-    ...typography.caption,
-    color: colors.accent,
-    fontFamily: 'SpaceGrotesk_600SemiBold'
-  },
-  body: {
+    color: colors.ink,
     flex: 1
   },
-  bodyContent: {
-    padding: spacing.sm,
-    gap: spacing.sm
+  closeBtn: {
+    minHeight: spacing.touchMin,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs
+  },
+  close: {
+    ...typography.bodyStrong,
+    color: colors.accent
+  },
+  body: {
+    flex: 1,
+    minHeight: 0
   }
 });

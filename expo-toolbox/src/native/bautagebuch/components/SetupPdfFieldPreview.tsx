@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Dimensions, StyleSheet, Text, View } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { PrimaryButton } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
+import {
+  buildFieldPreviewHtml,
+  type PreviewHtmlMode
+} from '../lib/pdf-preview-html';
+import {
+  previewScrollOverlayPlacement,
+  resolvePreviewOverlayPlacement
+} from '../lib/pdf-preview-overlay';
 import type { DetectedField } from '../types';
 import { PdfPreviewPanel } from './PdfPreviewPanel';
 
@@ -19,192 +28,14 @@ type Props = {
 };
 
 const PINNED_PREVIEW_HEIGHT = Math.max(220, Math.round(Dimensions.get('window').height * 0.34));
-const MAPPING_PREVIEW_HEIGHT = Math.max(360, Math.round(Dimensions.get('window').height * 0.62));
-const OVERLAY_PREVIEW_HEIGHT = Math.max(420, Math.round(Dimensions.get('window').height * 0.72));
 
 type PreviewState = {
   page: number;
   pageCount: number;
   ready: boolean;
   error: string | null;
+  renderMs?: number;
 };
-
-function buildPreviewHtml(
-  base64: string,
-  highlights: Array<{ fieldId: string; page: number; rect: number[] }>,
-  mappingMode = false,
-  highlightActive = false,
-  highQuality = false
-) {
-  const highlightsJson = JSON.stringify(highlights);
-  return `<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=4.0" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <style>
-      * { box-sizing: border-box; }
-      html, body { margin: 0; padding: 0; background: #f2f0eb; height: 100%; }
-      #wrap { position: relative; min-height: 320px; display: flex; justify-content: center; padding: 8px 0; }
-      canvas { display: block; max-width: 100%; height: auto; background: #fff; }
-      #overlay { position: absolute; inset: 0; pointer-events: none; }
-      .highlight {
-        position: absolute;
-        border: 2px solid rgba(47, 111, 237, 0.55);
-        background: rgba(47, 111, 237, 0.12);
-        border-radius: 4px;
-      }
-      .highlight.active {
-        border-color: rgba(196, 75, 50, 0.95);
-        background: rgba(196, 75, 50, 0.2);
-        box-shadow: 0 0 0 3px rgba(196, 75, 50, 0.25);
-        animation: pulse 1.2s ease-in-out infinite;
-        z-index: 3;
-      }
-      .highlight.dim {
-        background: rgba(26, 25, 22, 0.28);
-        border-color: rgba(26, 25, 22, 0.18);
-      }
-      @keyframes pulse {
-        0%, 100% { transform: scale(1); opacity: 1; }
-        50% { transform: scale(1.02); opacity: 0.92; }
-      }
-    </style>
-  </head>
-  <body>
-    <div id="wrap">
-      <canvas id="canvas"></canvas>
-      <div id="overlay"></div>
-    </div>
-    <script>
-      const mappingMode = ${mappingMode ? 'true' : 'false'};
-      const highlightActive = ${highlightActive ? 'true' : 'false'};
-      const highQuality = ${highQuality ? 'true' : 'false'};
-      const pdfjsLib = window.pdfjsLib;
-      if (!pdfjsLib) {
-        throw new Error('pdf.js nicht geladen');
-      }
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-
-      const highlights = ${highlightsJson};
-      let pdfDoc = null;
-      let currentPage = 1;
-      let activeFieldId = '';
-      let viewportScale = 1;
-
-      function post(payload) {
-        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-          window.ReactNativeWebView.postMessage(JSON.stringify(payload));
-        }
-      }
-
-      function pageHighlights(pageNumber) {
-        return highlights.filter((entry) => Number(entry.page || 1) === pageNumber);
-      }
-
-      function drawOverlay(pageNumber, viewport) {
-        const overlay = document.getElementById('overlay');
-        overlay.innerHTML = '';
-        overlay.style.width = viewport.width + 'px';
-        overlay.style.height = viewport.height + 'px';
-
-        for (const entry of pageHighlights(pageNumber)) {
-          if (!Array.isArray(entry.rect) || entry.rect.length < 4) continue;
-          const [x1, y1, x2, y2] = entry.rect;
-          const left = Math.min(x1, x2) * viewportScale;
-          const top = (viewport.height / viewportScale - Math.max(y1, y2)) * viewportScale;
-          const width = Math.abs(x2 - x1) * viewportScale;
-          const height = Math.abs(y2 - y1) * viewportScale;
-          const box = document.createElement('div');
-          const isActive = entry.fieldId === activeFieldId;
-          let className = 'highlight';
-          if (isActive) className += ' active';
-          else if ((mappingMode || highlightActive) && activeFieldId) className += ' dim';
-          box.className = className;
-          box.style.left = left + 'px';
-          box.style.top = top + 'px';
-          box.style.width = width + 'px';
-          box.style.height = height + 'px';
-          overlay.appendChild(box);
-        }
-      }
-
-      async function renderPage(pageNumber) {
-        if (!pdfDoc) return;
-        const safePage = Math.min(Math.max(pageNumber, 1), pdfDoc.numPages);
-        currentPage = safePage;
-        const page = await pdfDoc.getPage(safePage);
-        const canvas = document.getElementById('canvas');
-        const context = canvas.getContext('2d');
-        const baseViewport = page.getViewport({ scale: 1 });
-        const dpr = Math.min(window.devicePixelRatio || 1, 3);
-        const maxCssWidth = Math.min(window.innerWidth || 860, 860);
-        const fitScale = maxCssWidth / baseViewport.width;
-        const qualityBoost = highQuality ? 1.15 : 1;
-        viewportScale = Math.min(fitScale, mappingMode ? 2.8 : highQuality ? 3.2 : 2.4) * qualityBoost;
-        const scale = viewportScale * dpr;
-        const viewport = page.getViewport({ scale });
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        canvas.style.width = Math.ceil(viewport.width / dpr) + 'px';
-        canvas.style.height = Math.ceil(viewport.height / dpr) + 'px';
-        await page.render({ canvasContext: context, viewport }).promise;
-        drawOverlay(safePage, viewport);
-        if (mappingMode && activeFieldId) {
-          requestAnimationFrame(() => {
-            const active = document.querySelector('.highlight.active');
-            if (active && typeof active.scrollIntoView === 'function') {
-              active.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-            }
-          });
-        }
-        post({ type: 'state', page: safePage, pageCount: pdfDoc.numPages, ready: true, error: null });
-      }
-
-      async function boot() {
-        try {
-          const data = atob('${base64}');
-          const bytes = new Uint8Array(data.length);
-          for (let i = 0; i < data.length; i += 1) bytes[i] = data.charCodeAt(i);
-          pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
-          await renderPage(1);
-        } catch (error) {
-          post({
-            type: 'state',
-            page: 1,
-            pageCount: 1,
-            ready: false,
-            error: error && error.message ? error.message : 'PDF-Vorschau fehlgeschlagen'
-          });
-        }
-      }
-
-      function handleCommand(raw) {
-        try {
-          const message = typeof raw === 'string' ? JSON.parse(raw) : raw;
-          if (!message || !message.type) return;
-          if (message.type === 'setPage') {
-            void renderPage(Number(message.page || 1));
-          }
-          if (message.type === 'setActive') {
-            activeFieldId = String(message.fieldId || '');
-            const page = Number(message.page || currentPage || 1);
-            void renderPage(page);
-          }
-        } catch {
-          // Ignore malformed commands.
-        }
-      }
-
-      document.addEventListener('message', (event) => handleCommand(event.data));
-      window.addEventListener('message', (event) => handleCommand(event.data));
-      void boot();
-    </script>
-  </body>
-</html>`;
-}
 
 export function SetupPdfFieldPreview({
   pdfPath,
@@ -215,6 +46,7 @@ export function SetupPdfFieldPreview({
   variant = 'default',
   emphasizeActiveHighlight = false
 }: Props) {
+  const insets = useSafeAreaInsets();
   const pinned = variant === 'pinned';
   const mapping = variant === 'mapping';
   const overlay = variant === 'overlay';
@@ -243,6 +75,19 @@ export function SetupPdfFieldPreview({
     [detectedFields]
   );
 
+  const activeFieldRect = useMemo(() => {
+    if (!activeFieldId) return null;
+    const match = detectedFields.find((field) => field.fieldId === activeFieldId);
+    return Array.isArray(match?.rect) ? match.rect : null;
+  }, [activeFieldId, detectedFields]);
+
+  const overlayPlacement = useMemo(
+    () => previewScrollOverlayPlacement(resolvePreviewOverlayPlacement(activeFieldRect)),
+    [activeFieldRect]
+  );
+
+  const htmlMode: PreviewHtmlMode = mapping ? 'mapping' : overlay ? 'overlay' : pinned ? 'pinned' : 'default';
+
   useEffect(() => {
     let cancelled = false;
     if (!pdfPath) {
@@ -258,7 +103,15 @@ export function SetupPdfFieldPreview({
     })
       .then((base64) => {
         if (cancelled) return;
-        setHtml(buildPreviewHtml(base64, highlights, mapping, highlightActive, highQuality));
+        setHtml(
+          buildFieldPreviewHtml({
+            base64,
+            highlights,
+            mode: htmlMode,
+            highlightActive,
+            highQuality
+          })
+        );
         setPreviewState({ page: 1, pageCount: 1, ready: false, error: null });
       })
       .catch(() => {
@@ -274,7 +127,7 @@ export function SetupPdfFieldPreview({
     return () => {
       cancelled = true;
     };
-  }, [pdfPath, highlights, mapping, highlightActive, highQuality]);
+  }, [pdfPath, highlights, htmlMode, highlightActive, highQuality]);
 
   useEffect(() => {
     if (!previewState.ready || useFallback) return;
@@ -282,10 +135,11 @@ export function SetupPdfFieldPreview({
       JSON.stringify({
         type: 'setActive',
         fieldId: activeFieldId || '',
-        page: Number(activeFieldPage || previewState.page || 1)
+        page: Number(activeFieldPage || previewState.page || 1),
+        overlayPlacement
       })
     );
-  }, [activeFieldId, activeFieldPage, previewState.ready, useFallback]);
+  }, [activeFieldId, activeFieldPage, overlayPlacement, previewState.ready, useFallback]);
 
   const goToPage = (page: number) => {
     webViewRef.current?.postMessage(JSON.stringify({ type: 'setPage', page }));
@@ -299,6 +153,7 @@ export function SetupPdfFieldPreview({
         pageCount?: number;
         ready?: boolean;
         error?: string | null;
+        renderMs?: number;
       };
       if (payload.type !== 'state') return;
       if (payload.error) {
@@ -309,7 +164,8 @@ export function SetupPdfFieldPreview({
         page: Number(payload.page || 1),
         pageCount: Number(payload.pageCount || 1),
         ready: Boolean(payload.ready),
-        error: payload.error || null
+        error: payload.error || null,
+        renderMs: payload.renderMs
       });
     } catch {
       setUseFallback(true);
@@ -332,10 +188,10 @@ export function SetupPdfFieldPreview({
   const banner = mapping
     ? activeFieldLabel || 'Feld zuordnen'
     : activeFieldLabel
-    ? `Aktiv: ${activeFieldLabel}${activeFieldPage ? ` · Seite ${activeFieldPage}` : ''}`
-    : pinned
-      ? 'Feld oder Spalte antippen — Markierung in der PDF zeigt die Position.'
-      : 'Feld in der Liste antippen, um die zugehörige PDF-Seite zu sehen.';
+      ? `Aktiv: ${activeFieldLabel}${activeFieldPage ? ` · Seite ${activeFieldPage}` : ''}`
+      : pinned
+        ? 'Feld oder Spalte antippen — Markierung in der PDF zeigt die Position.'
+        : 'Feld in der Liste antippen, um die zugehörige PDF-Seite zu sehen.';
 
   return (
     <View
@@ -343,7 +199,7 @@ export function SetupPdfFieldPreview({
         styles.root,
         pinned ? styles.rootPinned : null,
         mapping ? styles.rootMapping : null,
-        overlay ? styles.rootOverlay : null
+        overlay ? [styles.rootOverlay, { paddingBottom: Math.max(insets.bottom, 0) }] : null
       ]}
     >
       {!mapping ? (
@@ -369,14 +225,20 @@ export function SetupPdfFieldPreview({
             overlay ? styles.webviewOverlay : null
           ]}
           originWhitelist={['*']}
-          scrollEnabled
+          scrollEnabled={false}
+          bounces={false}
+          overScrollMode="never"
+          javaScriptEnabled
+          domStorageEnabled
+          allowsInlineMediaPlayback
+          setBuiltInZoomControls={false}
           onMessage={onWebMessage}
           onError={() => setUseFallback(true)}
           onHttpError={() => setUseFallback(true)}
         />
       </View>
       {!mapping ? (
-        <View style={styles.controls}>
+        <View style={[styles.controls, overlay ? { paddingBottom: Math.max(insets.bottom, spacing.xs) } : null]}>
           <PrimaryButton
             label="◀"
             variant="ghost"
@@ -396,11 +258,12 @@ export function SetupPdfFieldPreview({
       ) : null}
       {highlights.length === 0 && !pinned && !mapping ? (
         <Text style={styles.hint}>
-          Feld-Overlays sind ohne Positionsdaten nicht verfügbar. Seitennavigation und Feld-Banner funktionieren weiterhin.
+          Feld-Overlays sind ohne Positionsdaten nicht verfügbar. Seitennavigation und Feld-Banner funktionieren
+          weiterhin.
         </Text>
       ) : null}
       {pinned && !mapping ? (
-        <Text style={styles.legend}>Markierung: aktives Feld · Seite mit Pfeilen wechseln</Text>
+        <Text style={styles.legend}>Markierung: aktives Feld · Seite mit Pfeilen wechseln · Zwei Finger zum Zoomen</Text>
       ) : null}
     </View>
   );
@@ -418,11 +281,13 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 0,
     paddingHorizontal: 0,
-    paddingTop: 0
+    paddingTop: 0,
+    minHeight: 0
   },
   rootOverlay: {
     flex: 1,
-    gap: spacing.xs
+    gap: spacing.xs,
+    minHeight: 0
   },
   banner: { ...typography.caption, color: colors.accent2 },
   bannerPinned: {
@@ -446,12 +311,13 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     borderRadius: 0,
-    borderWidth: 0
+    borderWidth: 0,
+    backgroundColor: '#f2f0eb'
   },
   panelOverlay: {
     flex: 1,
-    minHeight: OVERLAY_PREVIEW_HEIGHT,
-    borderRadius: 10
+    borderRadius: 10,
+    minHeight: 0
   },
   webview: {
     flex: 1,
@@ -464,11 +330,12 @@ const styles = StyleSheet.create({
   },
   webviewMapping: {
     flex: 1,
-    minHeight: 0
+    minHeight: 0,
+    backgroundColor: '#f2f0eb'
   },
   webviewOverlay: {
     flex: 1,
-    minHeight: OVERLAY_PREVIEW_HEIGHT - 2
+    minHeight: 0
   },
   controls: {
     flexDirection: 'row',
