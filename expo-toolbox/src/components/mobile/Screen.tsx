@@ -15,10 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../constants/theme';
 import { KeyboardScrollProvider, useKeyboardScroll } from '../../contexts/KeyboardScrollContext';
-
-function bottomInset(insets: { bottom: number }) {
-  return Math.max(insets.bottom, Platform.OS === 'android' ? 20 : spacing.xs);
-}
+import { tabBarBottomInset, tabBarReservedHeight } from '../../navigation/appTabBar';
 
 type Props = {
   title: string;
@@ -58,7 +55,7 @@ function ScreenScrollBody({
 }) {
   const keyboardScroll = useKeyboardScroll();
   const scrollRef = useRef<ScrollView>(null);
-  const safeBottom = bottomInset(insets);
+  const safeBottom = tabBarBottomInset(insets);
 
   if (!scroll) {
     return <View style={[styles.content, styles.flex, contentStyle]}>{children}</View>;
@@ -82,7 +79,7 @@ function ScreenScrollBody({
         {
           paddingBottom: Math.max(
             spacing.pageBottom,
-            safeBottom + (reserveTabBarSpace ? spacing.tabBarBody + spacing.lg : spacing.lg)
+            safeBottom + (reserveTabBarSpace ? tabBarReservedHeight(insets) + spacing.sm : spacing.lg)
           )
         },
         contentStyle
@@ -120,12 +117,22 @@ export function Screen({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const headerHeight = spacing.touchMin + 8 + spacing.xs;
-  const safeBottom = bottomInset(insets);
+  const safeBottom = tabBarBottomInset(insets);
   const footerBarHeight = compactFooter ? 52 : spacing.touchMin + 8;
   const footerInset = footer ? footerBarHeight + spacing.sm + safeBottom : safeBottom;
   const showHeaderBack = showBack || toolboxBack;
   const resolvedBackLabel = backLabel || (toolboxBack ? '‹ Toolbox' : '‹ Zurück');
-  const handleBack = onBack || (toolboxBack ? () => router.replace('/') : () => router.back());
+  const handleBack =
+    onBack ||
+    (toolboxBack
+      ? () => {
+          if (router.canGoBack()) {
+            router.back();
+            return;
+          }
+          router.replace('/');
+        }
+      : () => router.back());
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>

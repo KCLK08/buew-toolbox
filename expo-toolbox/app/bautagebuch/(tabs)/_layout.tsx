@@ -8,7 +8,7 @@ export default function BautagebuchTabsLayout() {
   const insets = useSafeAreaInsets();
 
   return (
-    <Tabs screenOptions={createAppTabScreenOptions(insets)}>
+    <Tabs backBehavior="none" screenOptions={createAppTabScreenOptions(insets)}>
       <Tabs.Screen
         name="btbs"
         options={{

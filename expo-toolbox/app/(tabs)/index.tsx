@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,10 +8,7 @@ import { HomeHeader } from '../../src/components/toolbox/HomeHeader';
 import { ToolboxBackground } from '../../src/components/ToolboxBackground';
 import { spacing } from '../../src/constants/theme';
 import { TOOLBOX_TOOLS } from '../../src/constants/tools';
-
-function bottomInset(insets: { bottom: number }) {
-  return Math.max(insets.bottom, Platform.OS === 'android' ? 20 : spacing.xs);
-}
+import { tabBarBottomInset } from '../../src/navigation/appTabBar';
 
 export default function ToolboxHomeScreen() {
   const router = useRouter();
@@ -31,7 +28,7 @@ export default function ToolboxHomeScreen() {
       <ScrollView
         contentContainerStyle={{
           paddingTop: Math.max(spacing.pageTop, insets.top + 16),
-          paddingBottom: Math.max(spacing.pageBottom, bottomInset(insets) + spacing.xl),
+          paddingBottom: Math.max(spacing.pageBottom, tabBarBottomInset(insets) + spacing.xl),
           paddingHorizontal: spacing.pageX,
           gap: spacing.lg
         }}
