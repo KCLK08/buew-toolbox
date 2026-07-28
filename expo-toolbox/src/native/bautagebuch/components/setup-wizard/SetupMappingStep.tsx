@@ -25,27 +25,34 @@ import { GroupOverlayCards } from './GroupOverlayCards';
 import { SetupMappingCompletion } from './SetupMappingCompletion';
 import { SetupMappingValidation } from './SetupMappingValidation';
 import { SetupProgressHeader } from './SetupProgressHeader';
+import { SetupTemplateRenameControl } from './SetupTemplateRenameControl';
 
 type Props = {
+  templateId: string;
   templateName: string;
   pdfPath: string | null;
   detectedFields: DetectedField[];
   mappingFields: MappingField[];
   setupModel: Record<string, unknown>;
+  readOnly?: boolean;
   onChange: (next: Record<string, unknown>) => void;
   onComplete: (nextModel: Record<string, unknown>) => void;
   onFinishLater: () => void;
+  onTemplateRenamed: (nextName: string) => void;
 };
 
 export function SetupMappingStep({
+  templateId,
   templateName,
   pdfPath,
   detectedFields,
   mappingFields,
   setupModel,
+  readOnly = false,
   onChange,
   onComplete,
-  onFinishLater
+  onFinishLater,
+  onTemplateRenamed
 }: Props) {
   const insets = useSafeAreaInsets();
   const indexSyncedRef = useRef(false);
@@ -169,10 +176,13 @@ export function SetupMappingStep({
     return (
       <View style={styles.root}>
         <SetupMappingCompletion
+          templateId={templateId}
           templateName={templateName}
+          readOnly={readOnly}
           summary={completionSummary}
           onConfigureFields={proceedToFields}
           onFinishLater={onFinishLater}
+          onTemplateRenamed={onTemplateRenamed}
         />
         {showValidation ? (
           <SetupMappingValidation
@@ -193,6 +203,15 @@ export function SetupMappingStep({
 
   return (
     <View style={styles.root}>
+      <View style={styles.templateBar}>
+        <SetupTemplateRenameControl
+          templateId={templateId}
+          templateName={templateName}
+          readOnly={readOnly}
+          onRenamed={onTemplateRenamed}
+          variant="title"
+        />
+      </View>
       <SetupProgressHeader
         progress={progress}
         fieldNumber={fieldNumber}
@@ -268,6 +287,14 @@ export function SetupMappingStep({
 const styles = StyleSheet.create({
   root: {
     flex: 1
+  },
+  templateBar: {
+    paddingHorizontal: spacing.pageX,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xxs,
+    backgroundColor: colors.panel,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
   },
   canvas: {
     flex: 1,

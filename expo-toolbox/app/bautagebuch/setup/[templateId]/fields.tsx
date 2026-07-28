@@ -232,6 +232,7 @@ export default function SetupFieldsScreen() {
           error={error}
           embedded
           onActiveFieldChange={setPreviewField}
+          onTemplateRenamed={setTemplateName}
           onSelectEdit={() => undefined}
           onSetActive={() => undefined}
           onImport={() => undefined}
@@ -240,6 +241,7 @@ export default function SetupFieldsScreen() {
 
       {!loading && setupModel && !useLegacyEditor ? (
         <SetupFieldSettingsStep
+          templateId={String(templateId)}
           templateName={templateName}
           pdfPath={pdfPath}
           detectedFields={detectedFields}
@@ -249,6 +251,7 @@ export default function SetupFieldsScreen() {
           showPreview={showPreview}
           onActiveFieldChange={setPreviewField}
           onChange={handleChange}
+          onTemplateRenamed={setTemplateName}
         />
       ) : null}
     </Screen>

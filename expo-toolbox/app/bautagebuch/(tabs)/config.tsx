@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { PrimaryButton, Screen, TextField } from '../../../src/components/mobile';
+import { PrimaryButton, Screen } from '../../../src/components/mobile';
 import { colors, spacing, typography } from '../../../src/constants/theme';
 import { TemplateOverviewList } from '../../../src/native/bautagebuch/components/setup-wizard/TemplateOverviewList';
 import { getSetupModel } from '../../../src/native/bautagebuch/db/database';
@@ -14,7 +14,6 @@ import {
   ensureBuiltinTemplate,
   importTemplateFromDocument,
   listManagedTemplates,
-  renameTemplate,
   resolveActiveTemplateId,
   setActiveTemplateId
 } from '../../../src/native/bautagebuch/services/templateService';
@@ -26,8 +25,6 @@ export default function BautagebuchConfigTabScreen() {
   const [activeTemplateId, setActiveTemplateIdState] = useState('');
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [renameTemplateId, setRenameTemplateId] = useState<string | null>(null);
-  const [renameName, setRenameName] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -132,29 +129,6 @@ export default function BautagebuchConfigTabScreen() {
     );
   };
 
-  const openRename = (templateId: string) => {
-    const template = templates.find((entry) => entry.templateId === templateId);
-    setRenameTemplateId(templateId);
-    setRenameName(template?.templateName || '');
-  };
-
-  const handleRename = async () => {
-    if (!renameTemplateId) return;
-    const trimmed = renameName.trim();
-    if (!trimmed) {
-      Alert.alert('Umbenennen', 'Bitte einen Namen eingeben.');
-      return;
-    }
-    try {
-      await renameTemplate(renameTemplateId, trimmed);
-      setRenameTemplateId(null);
-      setRenameName('');
-      await load();
-    } catch (err) {
-      Alert.alert('Umbenennen', err instanceof Error ? err.message : 'Umbenennen fehlgeschlagen.');
-    }
-  };
-
   return (
     <Screen
       title="Vorlagen-Setup"
@@ -182,25 +156,11 @@ export default function BautagebuchConfigTabScreen() {
           onOpen={(templateId) => void navigateToTemplate(templateId)}
           onContinueSetup={(templateId) => void navigateToTemplate(templateId)}
           onActivate={(templateId) => void handleActivate(templateId)}
-          onRename={openRename}
           onArchive={(templateId) => void handleArchive(templateId)}
           onDelete={handleDelete}
           canDelete={(template) => canDeleteTemplate(template, activeTemplateId)}
         />
       ) : null}
-
-      <Modal visible={Boolean(renameTemplateId)} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Vorlage umbenennen</Text>
-            <TextField label="Name" value={renameName} onChangeText={setRenameName} autoCapitalize="sentences" />
-            <View style={styles.modalActions}>
-              <PrimaryButton label="Abbrechen" variant="ghost" onPress={() => setRenameTemplateId(null)} />
-              <PrimaryButton label="Speichern" onPress={() => void handleRename()} />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </Screen>
   );
 }
@@ -221,28 +181,5 @@ const styles = StyleSheet.create({
     color: colors.danger,
     paddingHorizontal: spacing.pageX,
     paddingBottom: spacing.sm
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: colors.overlay,
-    justifyContent: 'center',
-    padding: spacing.xl
-  },
-  modalCard: {
-    backgroundColor: colors.panelElevated,
-    borderRadius: spacing.cardRadius,
-    padding: spacing.md,
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  modalTitle: {
-    ...typography.subtitle,
-    color: colors.ink
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.xs
   }
 });

@@ -27,6 +27,7 @@ type SetupPreviewField = {
 };
 
 type Props = {
+  templateId: string;
   templateName: string;
   pdfPath: string | null;
   detectedFields: DetectedField[];
@@ -36,9 +37,11 @@ type Props = {
   showPreview?: boolean;
   onActiveFieldChange?: (field: SetupPreviewField | null) => void;
   onChange: (next: Record<string, unknown>) => void;
+  onTemplateRenamed: (nextName: string) => void;
 };
 
 export function SetupFieldSettingsStep({
+  templateId,
   templateName,
   pdfPath,
   detectedFields,
@@ -47,7 +50,8 @@ export function SetupFieldSettingsStep({
   readOnly = false,
   showPreview = false,
   onActiveFieldChange,
-  onChange
+  onChange,
+  onTemplateRenamed
 }: Props) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -154,9 +158,12 @@ export function SetupFieldSettingsStep({
           keyboardShouldPersistTaps="handled"
         >
           <SetupFieldsIntro
+            templateId={templateId}
             templateName={templateName}
             fieldCount={fieldCount}
             groupCount={sections.length}
+            readOnly={readOnly}
+            onRenamed={onTemplateRenamed}
           />
 
           <SetupSectionOrderCard
