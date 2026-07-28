@@ -3,12 +3,18 @@ import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { BottomSheet, BottomSheetOption } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
-import { type BtbListFilters, type BtbSortOrder } from '../../lib/btb-filter';
+import {
+  type BtbListFilters,
+  type BtbSortOrder,
+  type ProjectListItem
+} from '../../lib/btb-filter';
+import { formatRunCount } from '../../lib/group-runs-by-calendar';
 
-type FilterSheet = 'sort' | 'view' | null;
+type FilterSheet = 'sort' | 'view' | 'project' | null;
 
 type Props = {
   filters: BtbListFilters;
+  projects: ProjectListItem[];
   onChange: (next: BtbListFilters) => void;
 };
 
@@ -34,10 +40,16 @@ function FilterChip({
   );
 }
 
-export function BTBFilterBar({ filters, onChange }: Props) {
+export function BTBFilterBar({ filters, projects, onChange }: Props) {
   const [sheet, setSheet] = useState<FilterSheet>(null);
 
   const patch = (partial: Partial<BtbListFilters>) => onChange({ ...filters, ...partial });
+
+  const selectedProjectLabel =
+    projects.find((entry) => entry.projectKey === filters.projectKey)?.projectLabel ?? null;
+  const projectChipLabel = selectedProjectLabel
+    ? `Projekt: ${selectedProjectLabel}`
+    : 'Projekt: Alle';
 
   return (
     <>
@@ -52,6 +64,11 @@ export function BTBFilterBar({ filters, onChange }: Props) {
           onPress={() => setSheet('view')}
         />
         <FilterChip
+          label={projectChipLabel}
+          active={Boolean(filters.projectKey)}
+          onPress={() => setSheet('project')}
+        />
+        <FilterChip
           label={filters.sortOrder === 'newest' ? 'Sortieren: Neueste' : 'Sortieren: Älteste'}
           onPress={() => setSheet('sort')}
         />
@@ -63,7 +80,7 @@ export function BTBFilterBar({ filters, onChange }: Props) {
           description="Jahr → KW → Projekt → BTB"
           selected={filters.groupMode === 'calendar'}
           onPress={() => {
-            patch({ groupMode: 'calendar', projectKey: null });
+            patch({ groupMode: 'calendar' });
             setSheet(null);
           }}
         />
@@ -72,10 +89,34 @@ export function BTBFilterBar({ filters, onChange }: Props) {
           description="Projektliste mit Drill-down"
           selected={filters.groupMode === 'project'}
           onPress={() => {
-            patch({ groupMode: 'project', projectKey: null });
+            patch({ groupMode: 'project' });
             setSheet(null);
           }}
         />
+      </BottomSheet>
+
+      <BottomSheet visible={sheet === 'project'} title="Projekt filtern" onClose={() => setSheet(null)}>
+        <BottomSheetOption
+          label="Alle Projekte"
+          description="Kein Projektfilter aktiv"
+          selected={!filters.projectKey}
+          onPress={() => {
+            patch({ projectKey: null });
+            setSheet(null);
+          }}
+        />
+        {projects.map((project) => (
+          <BottomSheetOption
+            key={project.projectKey}
+            label={project.projectLabel}
+            description={formatRunCount(project.runCount)}
+            selected={filters.projectKey === project.projectKey}
+            onPress={() => {
+              patch({ projectKey: project.projectKey });
+              setSheet(null);
+            }}
+          />
+        ))}
       </BottomSheet>
 
       <BottomSheet visible={sheet === 'sort'} title="Sortierung" onClose={() => setSheet(null)}>
