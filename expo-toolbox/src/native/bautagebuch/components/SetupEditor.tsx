@@ -204,7 +204,7 @@ export function SetupEditor({
 
   useEffect(() => {
     if (!onActiveFieldChange) return;
-    if (!activeField?.fieldId) {
+    if (!activeFieldId || !activeField?.fieldId) {
       onActiveFieldChange(null);
       return;
     }
@@ -213,7 +213,7 @@ export function SetupEditor({
       label: activeFieldLabel,
       page: activeFieldPage
     });
-  }, [activeField, activeFieldLabel, activeFieldPage, onActiveFieldChange]);
+  }, [activeFieldId, activeField, activeFieldLabel, activeFieldPage, onActiveFieldChange]);
 
   useEffect(() => {
     if (mode !== 'single' || !activeSingle) return;

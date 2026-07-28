@@ -7,6 +7,7 @@ export type PreviewHtmlMode = 'default' | 'mapping' | 'overlay' | 'pinned';
 
 export type PreviewHighlight = {
   fieldId: string;
+  fieldName?: string;
   page: number;
   rect: number[];
 };
@@ -241,7 +242,9 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
           const width = Math.abs(x2 - x1) * viewportScale;
           const height = Math.abs(y2 - y1) * viewportScale;
           const box = document.createElement('div');
-          const isActive = entry.fieldId === activeFieldId;
+          const isActive =
+            String(entry.fieldId) === String(activeFieldId) ||
+            String(entry.fieldName || '') === String(activeFieldId);
           let className = 'highlight';
           if (isActive) className += ' active';
           else if ((mappingMode || highlightActive) && activeFieldId) className += ' dim';
@@ -706,21 +709,28 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         return highlights.filter((entry) => Number(entry.page || 1) === pageNumber);
       }
 
-      function drawPageOverlay(pageNumber, overlayEl, viewportObj, viewportScale) {
+      function matchesActive(entry) {
+        const active = String(activeFieldId || '');
+        if (!active) return false;
+        return String(entry.fieldId) === active || String(entry.fieldName || '') === active;
+      }
+
+      function drawPageOverlay(pageNumber, overlayEl, meta) {
         overlayEl.innerHTML = '';
-        const dpr = Math.min(window.devicePixelRatio || 1, highQuality ? 3 : 2);
-        overlayEl.style.width = Math.ceil(viewportObj.width / dpr) + 'px';
-        overlayEl.style.height = Math.ceil(viewportObj.height / dpr) + 'px';
+        overlayEl.style.width = Math.ceil(meta.cssWidth) + 'px';
+        overlayEl.style.height = Math.ceil(meta.cssHeight) + 'px';
+        const scale = meta.cssScale;
+        const pdfHeight = meta.baseViewportHeight;
 
         for (const entry of pageHighlights(pageNumber)) {
           if (!Array.isArray(entry.rect) || entry.rect.length < 4) continue;
           const [x1, y1, x2, y2] = entry.rect;
-          const left = Math.min(x1, x2) * viewportScale;
-          const top = (viewportObj.height / viewportScale - Math.max(y1, y2)) * viewportScale;
-          const width = Math.abs(x2 - x1) * viewportScale;
-          const height = Math.abs(y2 - y1) * viewportScale;
+          const left = Math.min(x1, x2) * scale;
+          const top = (pdfHeight - Math.max(y1, y2)) * scale;
+          const width = Math.abs(x2 - x1) * scale;
+          const height = Math.abs(y2 - y1) * scale;
           const box = document.createElement('div');
-          const isActive = entry.fieldId === activeFieldId;
+          const isActive = matchesActive(entry);
           let className = 'highlight';
           if (isActive) className += ' active';
           else if (highlightActive && activeFieldId) className += ' dim';
@@ -739,7 +749,7 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           const meta = pageMeta.get(pageNumber);
           const overlayEl = sheet.querySelector('.overlay');
           if (!meta || !overlayEl) continue;
-          drawPageOverlay(pageNumber, overlayEl, meta.viewportObj, meta.viewportScale);
+          drawPageOverlay(pageNumber, overlayEl, meta);
         }
       }
 
@@ -826,8 +836,17 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         canvas.style.height = Math.ceil(viewportObj.height / dpr) + 'px';
 
         await page.render({ canvasContext: context, viewport: viewportObj }).promise;
-        pageMeta.set(pageNumber, { viewportObj, viewportScale });
-        drawPageOverlay(pageNumber, overlay, viewportObj, viewportScale);
+        const cssWidth = viewportObj.width / dpr;
+        const cssHeight = viewportObj.height / dpr;
+        const cssScale = cssWidth / baseViewport.width;
+        const meta = {
+          cssWidth,
+          cssHeight,
+          cssScale,
+          baseViewportHeight: baseViewport.height
+        };
+        pageMeta.set(pageNumber, meta);
+        drawPageOverlay(pageNumber, overlay, meta);
       }
 
       async function boot() {
@@ -844,6 +863,10 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
             await renderPageSheet(pageNumber);
           }
           resetPinchZoom();
+          refreshAllOverlays();
+          if (activeFieldId) {
+            requestAnimationFrame(() => scrollToActiveField());
+          }
           post({
             type: 'state',
             page: 1,
@@ -876,6 +899,7 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         }
       }
 
+      window.__applyPreviewCommand = handleCommand;
       document.addEventListener('message', (event) => handleCommand(event.data));
       window.addEventListener('message', (event) => handleCommand(event.data));
       void boot();

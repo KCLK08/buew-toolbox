@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Dimensions, StyleSheet, Text, View } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
@@ -70,12 +70,23 @@ export function SetupPdfFieldPreview({
       detectedFields
         .filter((field) => Array.isArray(field.rect) && field.rect.length >= 4)
         .map((field) => ({
-          fieldId: field.fieldId,
+          fieldId: String(field.fieldId),
+          fieldName: String(field.fieldName || ''),
           page: Number(field.page || 1),
           rect: field.rect as number[]
         })),
     [detectedFields]
   );
+
+  const resolvedActiveFieldId = useMemo(() => {
+    if (!activeFieldId) return '';
+    const needle = String(activeFieldId);
+    const direct = detectedFields.find((field) => String(field.fieldId) === needle);
+    if (direct) return String(direct.fieldId);
+    const byName = detectedFields.find((field) => String(field.fieldName || '') === needle);
+    if (byName) return String(byName.fieldId);
+    return needle;
+  }, [activeFieldId, detectedFields]);
 
   const activeFieldRect = useMemo(() => {
     if (!activeFieldId) return null;
@@ -141,17 +152,30 @@ export function SetupPdfFieldPreview({
     };
   }, [pdfPath, highlights, htmlMode, highlightActive, highQuality, overlay]);
 
+  const postPreviewCommand = useCallback((payload: Record<string, unknown>) => {
+    const json = JSON.stringify(payload);
+    webViewRef.current?.postMessage(json);
+    webViewRef.current?.injectJavaScript(
+      `(function(){try{if(window.__applyPreviewCommand){window.__applyPreviewCommand(${JSON.stringify(json)});}}catch(e){}})();true;`
+    );
+  }, []);
+
   useEffect(() => {
     if (!previewState.ready || useFallback) return;
-    webViewRef.current?.postMessage(
-      JSON.stringify({
-        type: 'setActive',
-        fieldId: activeFieldId || '',
-        page: Number(activeFieldPage || previewState.page || 1),
-        overlayPlacement
-      })
-    );
-  }, [activeFieldId, activeFieldPage, overlayPlacement, previewState.ready, useFallback]);
+    postPreviewCommand({
+      type: 'setActive',
+      fieldId: resolvedActiveFieldId,
+      page: Number(activeFieldPage || previewState.page || 1),
+      overlayPlacement
+    });
+  }, [
+    resolvedActiveFieldId,
+    activeFieldPage,
+    overlayPlacement,
+    previewState.ready,
+    useFallback,
+    postPreviewCommand
+  ]);
 
   const goToPage = (page: number) => {
     webViewRef.current?.postMessage(JSON.stringify({ type: 'setPage', page }));
@@ -202,13 +226,15 @@ export function SetupPdfFieldPreview({
   }
 
   const showPageControls = !mapping && !overlay;
-  const showBanner = !mapping && !overlay;
+  const showBanner = !mapping;
 
   const banner = activeFieldLabel
     ? `Aktiv: ${activeFieldLabel}${activeFieldPage ? ` · Seite ${activeFieldPage}` : ''}`
-    : pinned
-      ? 'Feld oder Spalte antippen — Markierung in der PDF zeigt die Position.'
-      : 'Feld in der Liste antippen, um die zugehörige PDF-Seite zu sehen.';
+    : overlay
+      ? 'Feld in der Liste auswählen — die Markierung zeigt die PDF-Position.'
+      : pinned
+        ? 'Feld oder Spalte antippen — Markierung in der PDF zeigt die Position.'
+        : 'Feld in der Liste antippen, um die zugehörige PDF-Seite zu sehen.';
 
   return (
     <View
@@ -220,7 +246,14 @@ export function SetupPdfFieldPreview({
       ]}
     >
       {showBanner ? (
-        <Text style={[styles.banner, pinned ? styles.bannerPinned : null]} numberOfLines={2}>
+        <Text
+          style={[
+            styles.banner,
+            pinned || overlay ? styles.bannerPinned : null,
+            overlay ? styles.bannerOverlay : null
+          ]}
+          numberOfLines={2}
+        >
           {banner}
         </Text>
       ) : null}
@@ -250,6 +283,14 @@ export function SetupPdfFieldPreview({
           allowsInlineMediaPlayback
           setBuiltInZoomControls={false}
           onMessage={onWebMessage}
+          onLoadEnd={() => {
+            postPreviewCommand({
+              type: 'setActive',
+              fieldId: resolvedActiveFieldId,
+              page: Number(activeFieldPage || previewState.page || 1),
+              overlayPlacement
+            });
+          }}
           onError={(event) => {
             console.error('PDF preview WebView error', event.nativeEvent);
             setLoadError(PDF_PREVIEW_LOAD_ERROR);
@@ -311,12 +352,17 @@ const styles = StyleSheet.create({
   },
   rootOverlay: {
     flex: 1,
-    minHeight: 0
+    minHeight: 0,
+    gap: spacing.xxs
   },
   banner: { ...typography.caption, color: colors.accent2 },
   bannerPinned: {
     ...typography.label,
     color: colors.ink
+  },
+  bannerOverlay: {
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xxs
   },
   panel: {
     minHeight: 360,
