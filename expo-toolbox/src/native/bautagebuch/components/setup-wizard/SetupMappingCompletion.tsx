@@ -3,19 +3,26 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 import type { MappingCompletionSummary } from '../../lib/setup-mapping';
+import { SetupTemplateRenameControl } from './SetupTemplateRenameControl';
 
 type Props = {
+  templateId: string;
   templateName: string;
   summary: MappingCompletionSummary;
+  readOnly?: boolean;
   onConfigureFields: () => void;
   onFinishLater: () => void;
+  onTemplateRenamed: (nextName: string) => void;
 };
 
 export function SetupMappingCompletion({
+  templateId,
   templateName,
   summary,
+  readOnly = false,
   onConfigureFields,
-  onFinishLater
+  onFinishLater,
+  onTemplateRenamed
 }: Props) {
   return (
     <ScrollView
@@ -32,7 +39,12 @@ export function SetupMappingCompletion({
       <View style={styles.statsCard}>
         <View style={styles.statRow}>
           <Text style={styles.statLabel}>Vorlage</Text>
-          <Text style={styles.statValue}>{templateName}</Text>
+          <SetupTemplateRenameControl
+            templateId={templateId}
+            templateName={templateName}
+            readOnly={readOnly}
+            onRenamed={onTemplateRenamed}
+          />
         </View>
         <View style={styles.statRow}>
           <Text style={styles.statLabel}>Erkannte Felder</Text>

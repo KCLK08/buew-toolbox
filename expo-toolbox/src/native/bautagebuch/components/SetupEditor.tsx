@@ -23,6 +23,7 @@ import {
 import { mutateSetupModel } from '../hooks/useSetupAutosave';
 import type { BautagebuchTemplate, DetectedField } from '../types';
 import { SetupTemplateManager } from './SetupTemplateManager';
+import { SetupTemplateRenameControl } from './setup-wizard/SetupTemplateRenameControl';
 
 type SetupPreviewField = {
   fieldId: string;
@@ -87,6 +88,7 @@ type Props = {
   error?: string | null;
   embedded?: boolean;
   onActiveFieldChange?: (field: SetupPreviewField | null) => void;
+  onTemplateRenamed?: (nextName: string) => void;
 };
 
 
@@ -152,7 +154,8 @@ export function SetupEditor({
   error,
   embedded = false,
   showPreview = false,
-  onActiveFieldChange
+  onActiveFieldChange,
+  onTemplateRenamed
 }: Props) {
   const insets = useSafeAreaInsets();
   const singleSections = (setupModel.single_sections || []) as SetupSingleSection[];
@@ -349,7 +352,16 @@ export function SetupEditor({
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.introCard}>
-          <Text style={styles.templateName}>{templateName}</Text>
+          {embedded && onTemplateRenamed ? (
+            <SetupTemplateRenameControl
+              templateId={editingTemplateId}
+              templateName={templateName}
+              onRenamed={onTemplateRenamed}
+              variant="title"
+            />
+          ) : (
+            <Text style={styles.templateName}>{templateName}</Text>
+          )}
           <Text style={styles.muted}>
             Abschnitt wählen, Feld antippen und Einstellungen direkt darunter anpassen.
           </Text>

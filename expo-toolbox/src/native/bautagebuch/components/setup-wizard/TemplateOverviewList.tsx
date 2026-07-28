@@ -14,7 +14,6 @@ type Props = {
   onOpen: (templateId: string) => void;
   onContinueSetup: (templateId: string) => void;
   onActivate: (templateId: string) => void;
-  onRename?: (templateId: string) => void;
   onArchive?: (templateId: string) => void;
   onDelete?: (templateId: string) => void;
   canDelete?: (template: BautagebuchTemplate) => boolean;
@@ -27,14 +26,11 @@ function actionForTemplate(
   if (template.status === 'archived') {
     return { label: 'Nur ansehen', variant: 'ghost', action: 'view' };
   }
-  if (isActive && template.status === 'ready') {
-    return { label: 'Öffnen', variant: 'secondary', action: 'open' };
-  }
-  if (template.status === 'ready') {
-    return { label: 'Aktivieren', variant: 'primary', action: 'activate' };
-  }
   if (template.status === 'draft' || template.status === 'in_progress') {
     return { label: 'Setup fortsetzen', variant: 'primary', action: 'continue' };
+  }
+  if (template.status === 'ready') {
+    return { label: 'Öffnen', variant: isActive ? 'secondary' : 'primary', action: 'open' };
   }
   return { label: 'Öffnen', variant: 'secondary', action: 'open' };
 }
@@ -47,7 +43,6 @@ export function TemplateOverviewList({
   onOpen,
   onContinueSetup,
   onActivate,
-  onRename,
   onArchive,
   onDelete,
   canDelete
@@ -124,9 +119,9 @@ export function TemplateOverviewList({
 
               <View style={styles.actionRow}>
                 <PrimaryButton label={action.label} variant={action.variant} onPress={handleAction} />
-                {onRename ? (
-                  <Pressable style={styles.linkBtn} onPress={() => onRename(template.templateId)}>
-                    <Text style={styles.linkLabel}>Umbenennen</Text>
+                {template.status === 'ready' && !isActive ? (
+                  <Pressable style={styles.linkBtn} onPress={() => onActivate(template.templateId)}>
+                    <Text style={styles.linkLabel}>Aktivieren</Text>
                   </Pressable>
                 ) : null}
                 {onArchive && template.status !== 'archived' && !isActive ? (

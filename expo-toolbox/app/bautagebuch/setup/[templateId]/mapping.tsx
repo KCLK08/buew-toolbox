@@ -20,6 +20,7 @@ export default function SetupMappingScreen() {
   const { templateId } = useLocalSearchParams<{ templateId: string }>();
   const [loading, setLoading] = useState(true);
   const [templateName, setTemplateName] = useState('');
+  const [templateStatus, setTemplateStatus] = useState('');
   const [pdfPath, setPdfPath] = useState<string | null>(null);
   const [detectedFields, setDetectedFields] = useState<Awaited<ReturnType<typeof getDetectedFields>>>([]);
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
@@ -43,6 +44,7 @@ export default function SetupMappingScreen() {
 
       const initialized = ensureWizardInitialized(bundle.setupModel);
       setTemplateName(bundle.template.templateName);
+      setTemplateStatus(bundle.template.status);
       setPdfPath(bundle.template.pdfPath);
       setDetectedFields(fields);
       setSetupModel(initialized);
@@ -98,6 +100,8 @@ export default function SetupMappingScreen() {
     router.back();
   };
 
+  const readOnly = templateStatus === 'archived';
+
   return (
     <Screen
       title="Schritt 1"
@@ -118,14 +122,17 @@ export default function SetupMappingScreen() {
 
       {!loading && setupModel ? (
         <SetupMappingStep
+          templateId={String(templateId)}
           templateName={templateName}
           pdfPath={pdfPath}
           detectedFields={detectedFields}
           mappingFields={mappingFields}
           setupModel={setupModel}
+          readOnly={readOnly}
           onChange={handleChange}
           onComplete={handleComplete}
           onFinishLater={() => void handleFinishLater()}
+          onTemplateRenamed={setTemplateName}
         />
       ) : null}
     </Screen>

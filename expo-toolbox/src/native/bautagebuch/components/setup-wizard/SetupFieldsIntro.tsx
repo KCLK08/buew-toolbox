@@ -1,16 +1,26 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import { SingleLineText } from '../../../../components/mobile';
 import { colors, shadows, spacing, typography } from '../../../../constants/theme';
+import { SetupTemplateRenameControl } from './SetupTemplateRenameControl';
 
 type Props = {
+  templateId: string;
   templateName: string;
   fieldCount: number;
   groupCount: number;
+  readOnly?: boolean;
+  onRenamed: (nextName: string) => void;
 };
 
-export function SetupFieldsIntro({ templateName, fieldCount, groupCount }: Props) {
+export function SetupFieldsIntro({
+  templateId,
+  templateName,
+  fieldCount,
+  groupCount,
+  readOnly = false,
+  onRenamed
+}: Props) {
   return (
     <View style={styles.root}>
       <View style={styles.stepRow}>
@@ -27,9 +37,12 @@ export function SetupFieldsIntro({ templateName, fieldCount, groupCount }: Props
         <Text style={styles.summaryHeading}>Vorlagenübersicht</Text>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>PDF</Text>
-          <View style={styles.summaryValueWrap}>
-            <SingleLineText style={styles.summaryValue}>{templateName}</SingleLineText>
-          </View>
+          <SetupTemplateRenameControl
+            templateId={templateId}
+            templateName={templateName}
+            readOnly={readOnly}
+            onRenamed={onRenamed}
+          />
         </View>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Felder</Text>
@@ -94,10 +107,5 @@ const styles = StyleSheet.create({
     ...typography.bodyStrong,
     color: colors.ink,
     textAlign: 'right'
-  },
-  summaryValueWrap: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'flex-end'
   }
 });
