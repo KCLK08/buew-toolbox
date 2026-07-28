@@ -49,7 +49,7 @@ export type ProjectFirstTree = {
 };
 
 export const DEFAULT_BTB_FILTERS: BtbListFilters = {
-  groupMode: 'calendar',
+  groupMode: 'project',
   projectKey: null,
   sortOrder: 'newest'
 };
@@ -69,6 +69,27 @@ function sortRuns(runs: BautagebuchRun[], sortOrder: BtbSortOrder): BautagebuchR
     const rightTs = new Date(right.updatedAt || right.createdAt).getTime();
     return sortOrder === 'newest' ? rightTs - leftTs : leftTs - rightTs;
   });
+}
+
+export function filterRunsByProject(
+  runs: BautagebuchRun[],
+  setupModel: Record<string, unknown> | null | undefined,
+  projectKey: string | null
+): BautagebuchRun[] {
+  if (!projectKey) return runs;
+  const projectFieldKey = resolveProjectFieldKey(setupModel);
+  return runs.filter(
+    (run) =>
+      (projectKeyFromLabel(resolveProjectLabel(run, projectFieldKey)) || 'ohne-projekt') === projectKey
+  );
+}
+
+export function resolveProjectLabelByKey(
+  projectKey: string | null,
+  projects: ProjectListItem[]
+): string | null {
+  if (!projectKey) return null;
+  return projects.find((entry) => entry.projectKey === projectKey)?.projectLabel ?? null;
 }
 
 export function listProjectsFromRuns(

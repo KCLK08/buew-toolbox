@@ -13,6 +13,7 @@ import {
   buildCalendarTree,
   buildProjectFirstTree,
   DEFAULT_BTB_FILTERS,
+  filterRunsByProject,
   listProjectsFromRuns,
   type BtbListFilters
 } from '../../../src/native/bautagebuch/lib/btb-filter';
@@ -40,13 +41,17 @@ export default function BautagebuchBtbsScreen() {
   const [renameTitle, setRenameTitle] = useState('');
   const expansionInitialized = useRef(false);
 
-  const visibleRuns = useMemo(
+  const searchFilteredRuns = useMemo(
     () => filterRunsBySearchQuery(runs, searchQuery),
     [runs, searchQuery]
   );
+  const visibleRuns = useMemo(
+    () => filterRunsByProject(searchFilteredRuns, setupModel, filters.projectKey),
+    [searchFilteredRuns, setupModel, filters.projectKey]
+  );
   const projectOptions = useMemo(
-    () => listProjectsFromRuns(visibleRuns, setupModel),
-    [visibleRuns, setupModel]
+    () => listProjectsFromRuns(searchFilteredRuns, setupModel),
+    [searchFilteredRuns, setupModel]
   );
   const calendarTree = useMemo(
     () => buildCalendarTree(visibleRuns, setupModel, filters),
@@ -128,6 +133,7 @@ export default function BautagebuchBtbsScreen() {
 
   const showProjectList = filters.groupMode === 'project' && !filters.projectKey;
   const hasSearchQuery = searchQuery.trim().length > 0;
+  const hasProjectFilter = Boolean(filters.projectKey);
   const subtitle = buildSubtitle(runs.length, visibleRuns.length, searchQuery);
 
   return (
@@ -168,7 +174,7 @@ export default function BautagebuchBtbsScreen() {
                 returnKeyType="search"
                 clearButtonMode="while-editing"
               />
-              <BTBFilterBar filters={filters} onChange={setFilters} />
+              <BTBFilterBar filters={filters} projects={projectOptions} onChange={setFilters} />
             </>
           ) : null}
 
@@ -185,10 +191,14 @@ export default function BautagebuchBtbsScreen() {
               title="Noch keine BTB-Läufe"
               description="Wechsle zum Home-Tab, um dein erstes Bautagebuch zu starten."
             />
-          ) : visibleRuns.length === 0 && hasSearchQuery ? (
+          ) : visibleRuns.length === 0 && (hasSearchQuery || hasProjectFilter) ? (
             <EmptyState
               title="Keine Treffer"
-              description={`Kein Bautagebuch enthält „${searchQuery.trim()}“.`}
+              description={
+                hasSearchQuery
+                  ? `Kein Bautagebuch enthält „${searchQuery.trim()}“.`
+                  : 'Für dieses Projekt sind keine Bautagebücher vorhanden.'
+              }
             />
           ) : showProjectList ? (
             <ProjectFilterList
