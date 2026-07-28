@@ -4,7 +4,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { PrimaryButton, Screen } from '../../../../src/components/mobile';
 import { colors, spacing, typography } from '../../../../src/constants/theme';
+import { PreviewOverlayPanel } from '../../../../src/native/bautagebuch/components/PreviewOverlayPanel';
 import { SetupEditor } from '../../../../src/native/bautagebuch/components/SetupEditor';
+import { SetupPdfFieldPreview } from '../../../../src/native/bautagebuch/components/SetupPdfFieldPreview';
 import { SetupFieldSettingsStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupFieldSettingsStep';
 import { getDetectedFields, saveSetupModel } from '../../../../src/native/bautagebuch/db/database';
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
@@ -19,6 +21,12 @@ import {
   setActiveTemplateId
 } from '../../../../src/native/bautagebuch/services/templateService';
 
+export type SetupPreviewField = {
+  fieldId: string;
+  label: string;
+  page: number;
+};
+
 export default function SetupFieldsScreen() {
   const router = useRouter();
   const { templateId } = useLocalSearchParams<{ templateId: string }>();
@@ -32,6 +40,7 @@ export default function SetupFieldsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [previewField, setPreviewField] = useState<SetupPreviewField | null>(null);
   const { schedule, flush } = useSetupAutosave(String(templateId || ''));
 
   const load = useCallback(async () => {
@@ -149,20 +158,27 @@ export default function SetupFieldsScreen() {
       <View style={styles.footer}>
         {pdfPath ? (
           <PrimaryButton
-            label={showPreview ? 'Vorschau ausblenden' : 'Vorschau einblenden'}
-            variant="secondary"
+            compact
+            label={showPreview ? 'Vorschau aus' : 'Vorschau ein'}
+            variant="ghost"
             onPress={() => setShowPreview((value) => !value)}
+            style={styles.footerSide}
           />
-        ) : null}
+        ) : (
+          <View style={styles.footerSide} />
+        )}
         <PrimaryButton
-          label={saving ? 'Wird gespeichert…' : '✓ Vorlage speichern'}
+          compact
+          label={saving ? 'Speichern…' : 'Vorlage speichern'}
           disabled={saving || validationIssues.length > 0}
           onPress={() => void handleFinish()}
+          style={styles.footerPrimary}
         />
       </View>
     ) : pdfPath && !loading && setupModel ? (
       <PrimaryButton
-        label={showPreview ? 'Vorschau ausblenden' : 'Vorschau einblenden'}
+        compact
+        label={showPreview ? 'Vorschau aus' : 'Vorschau ein'}
         variant="secondary"
         onPress={() => setShowPreview((value) => !value)}
       />
@@ -175,7 +191,23 @@ export default function SetupFieldsScreen() {
       showBack
       scroll={false}
       scrollableHeader
+      compactFooter
       contentStyle={styles.screenContent}
+      overlay={
+        showPreview && pdfPath ? (
+          <PreviewOverlayPanel title="Live-PDF-Vorschau" onClose={() => setShowPreview(false)}>
+            <SetupPdfFieldPreview
+              variant="overlay"
+              emphasizeActiveHighlight
+              pdfPath={pdfPath}
+              detectedFields={detectedFields}
+              activeFieldId={previewField?.fieldId || null}
+              activeFieldLabel={previewField?.label || null}
+              activeFieldPage={previewField?.page || 1}
+            />
+          </PreviewOverlayPanel>
+        ) : null
+      }
       footer={footer}
     >
       {loading ? (
@@ -199,8 +231,7 @@ export default function SetupFieldsScreen() {
           onChange={handleChange}
           error={error}
           embedded
-          showPreview={showPreview}
-          onClosePreview={() => setShowPreview(false)}
+          onActiveFieldChange={setPreviewField}
           onSelectEdit={() => undefined}
           onSetActive={() => undefined}
           onImport={() => undefined}
@@ -216,7 +247,7 @@ export default function SetupFieldsScreen() {
           validationIssues={validationIssues}
           readOnly={readOnly}
           showPreview={showPreview}
-          onClosePreview={() => setShowPreview(false)}
+          onActiveFieldChange={setPreviewField}
           onChange={handleChange}
         />
       ) : null}
@@ -246,6 +277,14 @@ const styles = StyleSheet.create({
     padding: spacing.pageX
   },
   footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm
+  },
+  footerSide: {
+    flex: 1
+  },
+  footerPrimary: {
+    flex: 1.4
   }
 });

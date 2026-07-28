@@ -12,7 +12,6 @@ import {
   sectionEntryKey
 } from '../../lib/setup-section-order';
 import type { DetectedField, SetupFieldConfig } from '../../types';
-import { PreviewOverlayPanel } from '../PreviewOverlayPanel';
 import { SetupPdfFieldPreview } from '../SetupPdfFieldPreview';
 import { SetupFieldCard } from './SetupFieldCard';
 import { SetupFieldsIntro } from './SetupFieldsIntro';
@@ -20,6 +19,12 @@ import { SetupGroupNav } from './SetupGroupNav';
 import { SetupGroupPickerSheet } from './SetupGroupPickerSheet';
 import { SetupSectionOrderCard } from './SetupSectionOrderCard';
 import { SetupValidationList } from './SetupValidationList';
+
+type SetupPreviewField = {
+  fieldId: string;
+  label: string;
+  page: number;
+};
 
 type Props = {
   templateName: string;
@@ -29,7 +34,7 @@ type Props = {
   validationIssues: string[];
   readOnly?: boolean;
   showPreview?: boolean;
-  onClosePreview?: () => void;
+  onActiveFieldChange?: (field: SetupPreviewField | null) => void;
   onChange: (next: Record<string, unknown>) => void;
 };
 
@@ -41,7 +46,7 @@ export function SetupFieldSettingsStep({
   validationIssues,
   readOnly = false,
   showPreview = false,
-  onClosePreview,
+  onActiveFieldChange,
   onChange
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -77,6 +82,19 @@ export function SetupFieldSettingsStep({
       setActiveFieldId(sections[0].fields[0]?.fieldId || null);
     }
   }, [sections, activeSectionId]);
+
+  useEffect(() => {
+    if (!onActiveFieldChange) return;
+    if (!activeField) {
+      onActiveFieldChange(null);
+      return;
+    }
+    onActiveFieldChange({
+      fieldId: activeField.fieldId,
+      label: activeField.label || activeField.fieldName || activeField.fieldId,
+      page: activeField.page || 1
+    });
+  }, [activeField, onActiveFieldChange]);
 
   const handleFieldPress = (fieldId: string, expanded: boolean) => {
     const nextExpanded = !expanded;
@@ -200,19 +218,6 @@ export function SetupFieldSettingsStep({
         onClose={() => setGroupSheetOpen(false)}
       />
 
-      {showPreview && pdfPath ? (
-        <PreviewOverlayPanel title="PDF-Vorschau" onClose={onClosePreview}>
-          <SetupPdfFieldPreview
-            variant="overlay"
-            emphasizeActiveHighlight
-            pdfPath={pdfPath}
-            detectedFields={detectedFields}
-            activeFieldId={activeField?.fieldId || null}
-            activeFieldLabel={activeField?.label || activeField?.fieldName || null}
-            activeFieldPage={activeField?.page || 1}
-          />
-        </PreviewOverlayPanel>
-      ) : null}
     </View>
   );
 }
