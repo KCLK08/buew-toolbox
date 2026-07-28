@@ -85,16 +85,21 @@ export function SetupFieldSettingsStep({
 
   useEffect(() => {
     if (!onActiveFieldChange) return;
-    if (!activeField) {
+    if (!activeFieldId) {
+      onActiveFieldChange(null);
+      return;
+    }
+    const field = activeSection?.fields.find((entry) => entry.fieldId === activeFieldId);
+    if (!field) {
       onActiveFieldChange(null);
       return;
     }
     onActiveFieldChange({
-      fieldId: activeField.fieldId,
-      label: activeField.label || activeField.fieldName || activeField.fieldId,
-      page: activeField.page || 1
+      fieldId: field.fieldId,
+      label: field.label || field.fieldName || field.fieldId,
+      page: field.page || 1
     });
-  }, [activeField, onActiveFieldChange]);
+  }, [activeFieldId, activeSection, onActiveFieldChange]);
 
   const handleFieldPress = (fieldId: string, expanded: boolean) => {
     const nextExpanded = !expanded;

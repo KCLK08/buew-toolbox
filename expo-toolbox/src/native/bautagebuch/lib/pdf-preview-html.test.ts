@@ -107,12 +107,14 @@ test('buildScrollableFieldPreviewHtml uses scrollable layout with field overlays
   const html = buildScrollableFieldPreviewHtml({
     base64: 'UEZERg==',
     ...mockAssets,
-    highlights: [{ fieldId: 'f1', page: 1, rect: [10, 10, 50, 50] }],
+    highlights: [{ fieldId: 'f1', fieldName: 'Text1', page: 1, rect: [10, 10, 50, 50] }],
     highlightActive: true
   });
 
   assert.match(html, /renderPageSheet/);
   assert.match(html, /\.overlay/);
+  assert.match(html, /__applyPreviewCommand/);
+  assert.match(html, /matchesActive/);
   assert.match(html, /Scrollen · Zwei Finger zum Zoomen/);
   assert.doesNotMatch(html, /setPage/);
   assert.doesNotMatch(html, /Seite/);
