@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   assignFieldToGroup,
+  assignFieldToTableCell,
   deferField,
   ensureWizardInitialized,
   getMappingProgress,
@@ -154,6 +155,65 @@ test('getMappingCompletionSummary aggregates group counts', () => {
   assert.equal(summary.totalFields, 3);
   assert.equal(summary.groupCount, 2);
   assert.equal(summary.groups.find((g) => g.sectionId === 'g1')?.fieldCount, 2);
+});
+
+test('isMappingComplete treats table assignments as handled', () => {
+  const fields = sortMappingFields([field('a')]);
+  const model = withWizardState(
+    {},
+    {
+      groups: [{ sectionId: 'g1', label: 'G1' }],
+      tables: [
+        {
+          tableId: 'tbl_1',
+          label: 'Personal',
+          rowCount: 1,
+          columns: [{ columnId: 'c1', label: 'Checkbox', type: 'checkbox' }]
+        }
+      ],
+      tableAssignments: {
+        a: { tableId: 'tbl_1', rowIndex: 0, columnId: 'c1' }
+      }
+    }
+  );
+  assert.equal(isMappingComplete(fields, getWizardState(model)), true);
+});
+
+test('rebuildSectionsFromWizard preserves field options and builds table sections', () => {
+  const checkboxField: DetectedField = {
+    ...field('cb1'),
+    type: 'checkbox',
+    options: ['Ja', 'Nein']
+  };
+  const fields = sortMappingFields([checkboxField]);
+  let model = withWizardState(
+    { single_sections: [] },
+    {
+      step: 'mapping',
+      groups: [{ sectionId: 'sonstiges', label: 'Sonstiges' }],
+      tables: [
+        {
+          tableId: 'tbl_1',
+          label: 'Checkliste',
+          rowCount: 1,
+          columns: [{ columnId: 'c1', label: 'Erledigt', type: 'checkbox' }]
+        }
+      ],
+      tableAssignments: {
+        cb1: { tableId: 'tbl_1', rowIndex: 0, columnId: 'c1' }
+      }
+    }
+  );
+  model = assignFieldToTableCell(model, 'cb1', { tableId: 'tbl_1', rowIndex: 0, columnId: 'c1' });
+  const rebuilt = rebuildSectionsFromWizard(model, fields);
+  const tables = rebuilt.table_sections as Array<{
+    tableId: string;
+    rows: Array<{ cells: Array<{ fieldId: string; options?: string[]; type?: string }> }>;
+  }>;
+  assert.equal(tables.length, 1);
+  assert.equal(tables[0]?.rows[0]?.cells[0]?.fieldId, 'cb1');
+  assert.equal(tables[0]?.rows[0]?.cells[0]?.type, 'checkbox');
+  assert.deepEqual(tables[0]?.rows[0]?.cells[0]?.options, ['Ja', 'Nein']);
 });
 
 console.log(`\n${passed} tests passed`);

@@ -7,6 +7,7 @@ import { colors, spacing, typography } from '../../../../constants/theme';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
 import {
   assignFieldToGroup,
+  assignFieldToTableCell,
   addWizardGroup,
   checkMappingTransition,
   deferField,
@@ -19,9 +20,11 @@ import {
   resolveOverlayPlacement,
   type MappingField
 } from '../../lib/setup-mapping';
+import type { SetupWizardTableAssignment } from '../../types';
 import type { DetectedField } from '../../types';
 import { SetupPdfFieldPreview } from '../SetupPdfFieldPreview';
 import { GroupOverlayCards } from './GroupOverlayCards';
+import { TableMappingOverlay } from './TableMappingOverlay';
 import { SetupMappingCompletion } from './SetupMappingCompletion';
 import { SetupMappingValidation } from './SetupMappingValidation';
 import { SetupProgressHeader } from './SetupProgressHeader';
@@ -57,7 +60,11 @@ export function SetupMappingStep({
   const insets = useSafeAreaInsets();
   const indexSyncedRef = useRef(false);
   const wizard = useMemo(() => getWizardState(setupModel), [setupModel]);
+  const [mappingMode, setMappingMode] = useState<'group' | 'table'>('group');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedTableAssignment, setSelectedTableAssignment] =
+    useState<SetupWizardTableAssignment | null>(null);
+  const [activeTableId, setActiveTableId] = useState<string | null>(wizard.tables[0]?.tableId || null);
   const [showCompletion, setShowCompletion] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
 
@@ -124,7 +131,16 @@ export function SetupMappingStep({
   const assignGroup = (sectionId: string) => {
     if (!currentField || !hasGroups) return;
     setSelectedGroupId(sectionId);
+    setSelectedTableAssignment(null);
     const next = assignFieldToGroup(setupModel, currentField.fieldId, sectionId);
+    advanceAfterChange(next);
+  };
+
+  const assignTableCell = (assignment: SetupWizardTableAssignment) => {
+    if (!currentField) return;
+    setSelectedTableAssignment(assignment);
+    setSelectedGroupId(null);
+    const next = assignFieldToTableCell(setupModel, currentField.fieldId, assignment);
     advanceAfterChange(next);
   };
 
@@ -219,6 +235,21 @@ export function SetupMappingStep({
         labelCandidate={currentField?.labelCandidate}
       />
 
+      <View style={styles.modeRow}>
+        <Pressable
+          style={[styles.modeChip, mappingMode === 'group' ? styles.modeChipActive : null]}
+          onPress={() => setMappingMode('group')}
+        >
+          <Text style={mappingMode === 'group' ? styles.modeChipLabelActive : styles.modeChipLabel}>Gruppe</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.modeChip, mappingMode === 'table' ? styles.modeChipActive : null]}
+          onPress={() => setMappingMode('table')}
+        >
+          <Text style={mappingMode === 'table' ? styles.modeChipLabelActive : styles.modeChipLabel}>Tabelle</Text>
+        </Pressable>
+      </View>
+
       <View style={styles.canvas}>
         <SetupPdfFieldPreview
           pdfPath={pdfPath}
@@ -229,7 +260,7 @@ export function SetupMappingStep({
           variant="mapping"
         />
 
-        {currentField ? (
+        {currentField && mappingMode === 'group' ? (
           <GroupOverlayCards
             groups={wizard.groups}
             placement={placement}
@@ -237,6 +268,19 @@ export function SetupMappingStep({
             onSelectGroup={assignGroup}
             onCreateGroup={createGroup}
             disabled={!hasGroups}
+          />
+        ) : null}
+        {currentField && mappingMode === 'table' ? (
+          <TableMappingOverlay
+            wizard={wizard}
+            currentField={currentField}
+            placement={placement}
+            selectedAssignment={selectedTableAssignment}
+            activeTableId={activeTableId}
+            setupModel={setupModel}
+            onChange={onChange}
+            onAssignCell={assignTableCell}
+            onSelectTable={setActiveTableId}
           />
         ) : null}
       </View>
@@ -295,6 +339,37 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panel,
     borderBottomWidth: 1,
     borderBottomColor: colors.border
+  },
+  modeRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.pageX,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.panel,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  modeChip: {
+    minHeight: 34,
+    paddingHorizontal: spacing.md,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: 'center',
+    backgroundColor: colors.panelElevated
+  },
+  modeChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.badgeBg
+  },
+  modeChipLabel: {
+    ...typography.caption,
+    color: colors.ink
+  },
+  modeChipLabelActive: {
+    ...typography.caption,
+    color: colors.accent2,
+    fontFamily: 'SpaceGrotesk_600SemiBold'
   },
   canvas: {
     flex: 1,
