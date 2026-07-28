@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton, TextField } from '../../../../components/mobile';
@@ -26,11 +27,15 @@ export function SetupStructureGroupModal({
   const insets = useSafeAreaInsets();
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
+  const wasVisibleRef = useRef(false);
+  const isEditing = Boolean(initialName);
 
   useEffect(() => {
-    if (!visible) return;
-    setName(initialName);
-    setDescription(initialDescription);
+    if (visible && !wasVisibleRef.current) {
+      setName(initialName);
+      setDescription(initialDescription);
+    }
+    wasVisibleRef.current = visible;
   }, [visible, initialName, initialDescription]);
 
   const submit = () => {
@@ -44,11 +49,11 @@ export function SetupStructureGroupModal({
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <Pressable accessibilityRole="button" onPress={onClose}>
+          <Pressable accessibilityRole="button" style={styles.headerBtn} onPress={onClose}>
             <Text style={styles.cancel}>Abbrechen</Text>
           </Pressable>
-          <Text style={styles.title}>{initialName ? 'Gruppe bearbeiten' : 'Gruppe hinzufügen'}</Text>
-          <View style={styles.headerSpacer} />
+          <Text style={styles.title}>{isEditing ? 'Gruppe bearbeiten' : 'Gruppe hinzufügen'}</Text>
+          <View style={styles.headerBtn} />
         </View>
 
         <ScrollView
@@ -59,6 +64,16 @@ export function SetupStructureGroupModal({
           ]}
           keyboardShouldPersistTaps="handled"
         >
+          <View style={styles.hero}>
+            <View style={styles.heroIconWrap}>
+              <MaterialCommunityIcons name="file-document-outline" size={28} color={colors.accent2} />
+            </View>
+            <Text style={styles.heroTitle}>Formulargruppe</Text>
+            <Text style={styles.heroCopy}>
+              Ein Bereich für zusammengehörige Felder wie Projektinfos oder Wetter.
+            </Text>
+          </View>
+
           <TextField
             label="Name"
             value={name}
@@ -75,11 +90,6 @@ export function SetupStructureGroupModal({
             editable={!readOnly}
             multiline
           />
-
-          <View style={styles.typeCard}>
-            <Text style={styles.typeLabel}>Typ</Text>
-            <Text style={styles.typeValue}>Formulargruppe</Text>
-          </View>
         </ScrollView>
 
         {!readOnly ? (
@@ -107,17 +117,16 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     backgroundColor: colors.panel
   },
+  headerBtn: {
+    minWidth: 88
+  },
   cancel: {
     ...typography.bodyStrong,
-    color: colors.accent,
-    minWidth: 88
+    color: colors.accent
   },
   title: {
     ...typography.subtitle,
     color: colors.ink
-  },
-  headerSpacer: {
-    minWidth: 88
   },
   body: {
     flex: 1
@@ -126,21 +135,28 @@ const styles = StyleSheet.create({
     padding: spacing.pageX,
     gap: spacing.md
   },
-  typeCard: {
-    borderRadius: spacing.cardRadius,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.panelElevated,
-    padding: spacing.md,
-    gap: spacing.xxs
+  hero: {
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm
   },
-  typeLabel: {
-    ...typography.caption,
-    color: colors.muted
+  heroIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(36, 50, 64, 0.1)'
   },
-  typeValue: {
-    ...typography.bodyStrong,
+  heroTitle: {
+    ...typography.subtitle,
     color: colors.ink
+  },
+  heroCopy: {
+    ...typography.body,
+    color: colors.muted,
+    textAlign: 'center',
+    lineHeight: 22
   },
   footer: {
     paddingHorizontal: spacing.pageX,

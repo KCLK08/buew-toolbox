@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { LayoutAnimation, Platform, StyleSheet, Text, UIManager, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '../../../../components/mobile';
-import { colors, spacing, typography } from '../../../../constants/theme';
+import { colors, shadows, spacing, typography } from '../../../../constants/theme';
+import { hapticSuccess } from '../../../../lib/haptics';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
 import {
   addStructureGroup,
@@ -33,6 +35,7 @@ type EditorState =
   | null;
 
 type Props = {
+  templateName?: string;
   pdfPath: string | null;
   setupModel: Record<string, unknown>;
   readOnly?: boolean;
@@ -42,6 +45,7 @@ type Props = {
 };
 
 export function SetupStructureStep({
+  templateName,
   pdfPath,
   setupModel,
   readOnly = false,
@@ -96,6 +100,7 @@ export function SetupStructureStep({
   };
 
   const handleMove = (id: string, direction: -1 | 1) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     onChange(moveStructureItem(setupModel, id, direction));
   };
 
@@ -107,6 +112,7 @@ export function SetupStructureStep({
     }
     try {
       const next = completeStructureStep(setupModel);
+      void hapticSuccess();
       onComplete(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Struktur konnte nicht gespeichert werden.');
@@ -120,12 +126,18 @@ export function SetupStructureStep({
 
   return (
     <View style={styles.root}>
-      <SetupStructureHeader activeTab={activeTab} onTabChange={switchTab} onBack={onBack} />
+      <SetupStructureHeader
+        activeTab={activeTab}
+        templateName={templateName}
+        onTabChange={switchTab}
+        onBack={onBack}
+      />
 
       <View style={styles.body}>
-        {activeTab === 'pdf' ? (
+        <View style={[styles.tabPane, activeTab !== 'pdf' ? styles.tabPaneHidden : null]}>
           <PdfPreviewPanel pdfPath={pdfPath} fullscreen />
-        ) : (
+        </View>
+        <View style={[styles.tabPane, activeTab !== 'structure' ? styles.tabPaneHidden : null]}>
           <SetupStructureList
             items={structure}
             readOnly={readOnly}
@@ -138,13 +150,29 @@ export function SetupStructureStep({
             onDelete={handleDelete}
             onMove={handleMove}
           />
-        )}
+        </View>
       </View>
 
       {activeTab === 'structure' && !readOnly ? (
         <View style={[styles.footer, { paddingBottom: systemBottomInset(insets) + spacing.sm }]}>
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <PrimaryButton label="Weiter zur Feldzuordnung" onPress={handleContinue} />
+          {error ? (
+            <View style={styles.errorBanner}>
+              <MaterialCommunityIcons name="alert-circle-outline" size={18} color={colors.danger} />
+              <Text style={styles.error}>{error}</Text>
+            </View>
+          ) : null}
+          <View style={styles.footerSummary}>
+            <Text style={styles.footerSummaryLabel}>
+              {structure.length === 0
+                ? 'Noch keine Bereiche definiert'
+                : `${structure.length} ${structure.length === 1 ? 'Bereich' : 'Bereiche'} bereit`}
+            </Text>
+          </View>
+          <PrimaryButton
+            label="Weiter zur Feldzuordnung"
+            onPress={handleContinue}
+            disabled={structure.length === 0}
+          />
           <PrimaryButton label="Später fortsetzen" variant="ghost" onPress={onBack} />
         </View>
       ) : null}
@@ -179,17 +207,42 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0
   },
+  tabPane: {
+    ...StyleSheet.absoluteFillObject
+  },
+  tabPaneHidden: {
+    opacity: 0,
+    pointerEvents: 'none'
+  },
   footer: {
     gap: spacing.sm,
     paddingHorizontal: spacing.pageX,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    backgroundColor: colors.panel
+    backgroundColor: colors.panel,
+    ...shadows.card
+  },
+  footerSummary: {
+    alignItems: 'center'
+  },
+  footerSummaryLabel: {
+    ...typography.caption,
+    color: colors.muted
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    padding: spacing.sm,
+    borderRadius: 12,
+    backgroundColor: 'rgba(161, 44, 36, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(161, 44, 36, 0.2)'
   },
   error: {
     ...typography.caption,
     color: colors.danger,
-    textAlign: 'center'
+    flex: 1
   }
 });

@@ -4,8 +4,12 @@ import {
   addStructureGroup,
   addStructureTable,
   completeStructureStep,
+  deleteStructureItem,
   getStructureItems,
+  migrateStructureFromLegacy,
   moveStructureItem,
+  updateStructureGroup,
+  updateStructureTable,
   validateStructureStep
 } from './setup-structure';
 import { getWizardState, withWizardState } from './setup-mapping';
@@ -77,6 +81,72 @@ test('completeStructureStep advances wizard to assign and builds shells', () => 
   assert.equal(wizard.step, 'assign');
   assert.equal(Array.isArray(model.single_sections) ? model.single_sections.length : 0, 1);
   assert.equal(Array.isArray(model.table_sections) ? model.table_sections.length : 0, 0);
+});
+
+test('mixed group/table order is preserved in section_order', () => {
+  let model: Record<string, unknown> = { wizard: { step: 'structure', structure: [], groups: [], tables: [] } };
+  model = addStructureGroup(model, { name: 'Allgemein' });
+  model = addStructureTable(model, { name: 'Arbeit', columns: [{ name: 'Tätigkeit' }] });
+  model = addStructureGroup(model, { name: 'Wetter' });
+  model = completeStructureStep(model);
+  const order = model.section_order as Array<{ kind: string }>;
+  assert.deepEqual(
+    order.map((entry) => entry.kind),
+    ['single', 'table', 'single']
+  );
+});
+
+test('updateStructureGroup and updateStructureTable persist edits', () => {
+  let model: Record<string, unknown> = { wizard: { step: 'structure', structure: [], groups: [], tables: [] } };
+  model = addStructureGroup(model, { name: 'Alt' });
+  const groupId = getStructureItems(model)[0].id;
+  model = updateStructureGroup(model, groupId, { name: 'Neu', description: 'Info' });
+  const group = getStructureItems(model)[0];
+  assert.equal(group.type, 'group');
+  if (group.type === 'group') {
+    assert.equal(group.name, 'Neu');
+    assert.equal(group.description, 'Info');
+  }
+
+  model = addStructureTable(model, { name: 'Tabelle', columns: [{ name: 'A' }] });
+  const table = getStructureItems(model).find((item) => item.type === 'table');
+  assert.ok(table && table.type === 'table');
+  if (!table || table.type !== 'table') return;
+  model = updateStructureTable(model, table.id, {
+    name: 'Tabelle 2',
+    columns: [{ id: table.columns[0].id, name: 'B' }]
+  });
+  const updated = getStructureItems(model).find((item) => item.id === table.id);
+  assert.ok(updated && updated.type === 'table');
+  if (!updated || updated.type !== 'table') return;
+  assert.equal(updated.name, 'Tabelle 2');
+  assert.equal(updated.columns[0].name, 'B');
+});
+
+test('deleteStructureItem removes entry from wizard mirrors', () => {
+  let model: Record<string, unknown> = { wizard: { step: 'structure', structure: [], groups: [], tables: [] } };
+  model = addStructureGroup(model, { name: 'Temp' });
+  const id = getStructureItems(model)[0].id;
+  model = deleteStructureItem(model, id);
+  assert.equal(getStructureItems(model).length, 0);
+  assert.equal(getWizardState(model).groups.length, 0);
+});
+
+test('migrateStructureFromLegacy builds ordered items from groups and tables', () => {
+  const items = migrateStructureFromLegacy(
+    [{ sectionId: 'g1', label: 'Gruppe' }],
+    [
+      {
+        tableId: 't1',
+        label: 'Tabelle',
+        rowCount: 1,
+        columns: [{ columnId: 'c1', label: 'Spalte', type: 'text' }]
+      }
+    ]
+  );
+  assert.equal(items.length, 2);
+  assert.equal(items[0].name, 'Gruppe');
+  assert.equal(items[1].name, 'Tabelle');
 });
 
 console.log(`\n${passed} setup-structure tests passed`);

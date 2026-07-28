@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton, TextField } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
+import { hapticSelection } from '../../../../lib/haptics';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
 
 type ColumnDraft = {
@@ -32,14 +33,19 @@ export function SetupStructureTableModal({
   const insets = useSafeAreaInsets();
   const [name, setName] = useState(initialName);
   const [columns, setColumns] = useState<ColumnDraft[]>(initialColumns);
+  const wasVisibleRef = useRef(false);
+  const isEditing = Boolean(initialName);
 
   useEffect(() => {
-    if (!visible) return;
-    setName(initialName);
-    setColumns(initialColumns.length > 0 ? initialColumns : [{ name: '' }]);
+    if (visible && !wasVisibleRef.current) {
+      setName(initialName);
+      setColumns(initialColumns.length > 0 ? initialColumns.map((column) => ({ ...column })) : [{ name: '' }]);
+    }
+    wasVisibleRef.current = visible;
   }, [visible, initialName, initialColumns]);
 
   const addColumn = () => {
+    void hapticSelection();
     setColumns((current) => [...current, { name: '' }]);
   };
 
@@ -52,6 +58,7 @@ export function SetupStructureTableModal({
   };
 
   const removeColumn = (index: number) => {
+    void hapticSelection();
     setColumns((current) => current.filter((_, columnIndex) => columnIndex !== index));
   };
 
@@ -74,11 +81,11 @@ export function SetupStructureTableModal({
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <Pressable accessibilityRole="button" onPress={onClose}>
+          <Pressable accessibilityRole="button" style={styles.headerBtn} onPress={onClose}>
             <Text style={styles.cancel}>Abbrechen</Text>
           </Pressable>
-          <Text style={styles.title}>{initialName ? 'Tabelle bearbeiten' : 'Tabelle hinzufügen'}</Text>
-          <View style={styles.headerSpacer} />
+          <Text style={styles.title}>{isEditing ? 'Tabelle bearbeiten' : 'Tabelle hinzufügen'}</Text>
+          <View style={styles.headerBtn} />
         </View>
 
         <ScrollView
@@ -89,6 +96,16 @@ export function SetupStructureTableModal({
           ]}
           keyboardShouldPersistTaps="handled"
         >
+          <View style={styles.hero}>
+            <View style={styles.heroIconWrap}>
+              <MaterialCommunityIcons name="table" size={28} color={colors.info} />
+            </View>
+            <Text style={styles.heroTitle}>Tabellenbereich</Text>
+            <Text style={styles.heroCopy}>
+              Spalten sind logische Strukturen — die PDF-Zuordnung folgt in Schritt 2.
+            </Text>
+          </View>
+
           <TextField
             label="Name"
             value={name}
@@ -99,16 +116,24 @@ export function SetupStructureTableModal({
           />
 
           <View style={styles.columnsSection}>
-            <Text style={styles.columnsTitle}>Spalten definieren</Text>
+            <View style={styles.columnsHeader}>
+              <Text style={styles.columnsTitle}>Spalten</Text>
+              <Text style={styles.columnsMeta}>{columns.filter((c) => c.name.trim()).length} definiert</Text>
+            </View>
             {columns.map((column, index) => (
               <View key={column.id || `col_${index}`} style={styles.columnRow}>
-                <TextField
-                  label={`Spalte ${index + 1}`}
-                  value={column.name}
-                  onChangeText={(value) => updateColumn(index, value)}
-                  placeholder="Spaltenname"
-                  editable={!readOnly}
-                />
+                <View style={styles.columnIndex}>
+                  <Text style={styles.columnIndexText}>{index + 1}</Text>
+                </View>
+                <View style={styles.columnField}>
+                  <TextField
+                    label={`Spalte ${index + 1}`}
+                    value={column.name}
+                    onChangeText={(value) => updateColumn(index, value)}
+                    placeholder="Spaltenname"
+                    editable={!readOnly}
+                  />
+                </View>
                 {!readOnly && columns.length > 1 ? (
                   <Pressable
                     accessibilityRole="button"
@@ -116,14 +141,14 @@ export function SetupStructureTableModal({
                     style={styles.removeBtn}
                     onPress={() => removeColumn(index)}
                   >
-                    <MaterialCommunityIcons name="close-circle" size={22} color={colors.muted} />
+                    <MaterialCommunityIcons name="minus-circle-outline" size={24} color={colors.muted} />
                   </Pressable>
                 ) : null}
               </View>
             ))}
             {!readOnly ? (
               <Pressable accessibilityRole="button" style={styles.addColumnBtn} onPress={addColumn}>
-                <MaterialCommunityIcons name="plus" size={18} color={colors.accent} />
+                <MaterialCommunityIcons name="plus-circle-outline" size={22} color={colors.accent} />
                 <Text style={styles.addColumnLabel}>Spalte hinzufügen</Text>
               </Pressable>
             ) : null}
@@ -155,17 +180,16 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     backgroundColor: colors.panel
   },
+  headerBtn: {
+    minWidth: 88
+  },
   cancel: {
     ...typography.bodyStrong,
-    color: colors.accent,
-    minWidth: 88
+    color: colors.accent
   },
   title: {
     ...typography.subtitle,
     color: colors.ink
-  },
-  headerSpacer: {
-    minWidth: 88
   },
   body: {
     flex: 1
@@ -174,29 +198,84 @@ const styles = StyleSheet.create({
     padding: spacing.pageX,
     gap: spacing.md
   },
+  hero: {
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm
+  },
+  heroIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(42, 95, 143, 0.12)'
+  },
+  heroTitle: {
+    ...typography.subtitle,
+    color: colors.ink
+  },
+  heroCopy: {
+    ...typography.body,
+    color: colors.muted,
+    textAlign: 'center',
+    lineHeight: 22
+  },
   columnsSection: {
     gap: spacing.sm
+  },
+  columnsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
   },
   columnsTitle: {
     ...typography.label,
     color: colors.muted
   },
+  columnsMeta: {
+    ...typography.caption,
+    color: colors.muted
+  },
   columnRow: {
-    gap: spacing.xxs
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm
+  },
+  columnIndex: {
+    width: 28,
+    height: 28,
+    marginTop: 28,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border
+  },
+  columnIndexText: {
+    ...typography.caption,
+    color: colors.muted,
+    fontFamily: 'SpaceGrotesk_600SemiBold'
+  },
+  columnField: {
+    flex: 1
   },
   removeBtn: {
-    alignSelf: 'flex-end',
+    marginTop: 30,
     padding: spacing.xxs
   },
   addColumnBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.xs,
-    minHeight: spacing.touchMin,
-    paddingHorizontal: spacing.sm,
-    borderRadius: 12,
+    minHeight: spacing.touchMin + 4,
+    paddingHorizontal: spacing.md,
+    borderRadius: spacing.cardRadius,
     borderWidth: 1,
     borderColor: colors.border,
+    borderStyle: 'dashed',
     backgroundColor: colors.panelElevated
   },
   addColumnLabel: {
