@@ -33,7 +33,16 @@ export type BautagebuchRunTree = {
 
 type GroupingOptions = {
   setupModel?: Record<string, unknown> | null;
+  sortOrder?: 'newest' | 'oldest';
 };
+
+function compareBySortOrder(
+  leftValue: number,
+  rightValue: number,
+  sortOrder: 'newest' | 'oldest' = 'newest'
+): number {
+  return sortOrder === 'newest' ? rightValue - leftValue : leftValue - rightValue;
+}
 
 function parseBtbDate(run: BautagebuchRun): Date | null {
   const fromTitle = run.title.match(/\d{4}-\d{2}-\d{2}/)?.[0];
@@ -117,18 +126,26 @@ function formatWeekDateRange(start: Date, end: Date): string {
   return `${startLabel} – ${endLabel}`;
 }
 
-function sortRunsByDateDesc(runs: BautagebuchRun[]): BautagebuchRun[] {
+function sortRunsByDate(
+  runs: BautagebuchRun[],
+  sortOrder: 'newest' | 'oldest' = 'newest'
+): BautagebuchRun[] {
   return [...runs].sort((left, right) => {
     const leftDate = parseBtbDate(left)?.getTime() ?? Number.NEGATIVE_INFINITY;
     const rightDate = parseBtbDate(right)?.getTime() ?? Number.NEGATIVE_INFINITY;
-    if (leftDate !== rightDate) return rightDate - leftDate;
-    return String(right.updatedAt || '').localeCompare(String(left.updatedAt || ''));
+    if (leftDate !== rightDate) return compareBySortOrder(leftDate, rightDate, sortOrder);
+    const leftUpdated = String(left.updatedAt || left.createdAt || '');
+    const rightUpdated = String(right.updatedAt || right.createdAt || '');
+    return sortOrder === 'newest'
+      ? rightUpdated.localeCompare(leftUpdated)
+      : leftUpdated.localeCompare(rightUpdated);
   });
 }
 
 function groupRunsByProject(
   runs: BautagebuchRun[],
-  projectFieldKey: string | null
+  projectFieldKey: string | null,
+  sortOrder: 'newest' | 'oldest' = 'newest'
 ): ProjectRunGroup[] {
   const projectMap = new Map<string, ProjectRunGroup>();
 
@@ -150,12 +167,12 @@ function groupRunsByProject(
   return [...projectMap.values()]
     .map((group) => ({
       ...group,
-      runs: sortRunsByDateDesc(group.runs)
+      runs: sortRunsByDate(group.runs, sortOrder)
     }))
     .sort((left, right) => {
       const leftDate = parseBtbDate(left.runs[0])?.getTime() ?? Number.NEGATIVE_INFINITY;
       const rightDate = parseBtbDate(right.runs[0])?.getTime() ?? Number.NEGATIVE_INFINITY;
-      if (leftDate !== rightDate) return rightDate - leftDate;
+      if (leftDate !== rightDate) return compareBySortOrder(leftDate, rightDate, sortOrder);
       return left.projectLabel.localeCompare(right.projectLabel, 'de');
     });
 }
@@ -164,6 +181,7 @@ export function groupRunsByCalendar(
   runs: BautagebuchRun[],
   options: GroupingOptions = {}
 ): BautagebuchRunTree {
+  const sortOrder = options.sortOrder || 'newest';
   const projectFieldKey = resolveProjectFieldKey(options.setupModel);
   const weekMap = new Map<string, BautagebuchRun[]>();
 
@@ -180,7 +198,7 @@ export function groupRunsByCalendar(
   }
 
   const weeks: WeekRunGroup[] = [...weekMap.entries()].map(([weekKey, weekRuns]) => {
-    const projects = groupRunsByProject(weekRuns, projectFieldKey);
+    const projects = groupRunsByProject(weekRuns, projectFieldKey, sortOrder);
     const runCount = weekRuns.length;
 
     if (weekKey === 'unknown') {
@@ -212,8 +230,10 @@ export function groupRunsByCalendar(
   });
 
   weeks.sort((left, right) => {
-    if (left.weekYear !== right.weekYear) return right.weekYear - left.weekYear;
-    return right.weekNumber - left.weekNumber;
+    if (left.weekYear !== right.weekYear) {
+      return compareBySortOrder(left.weekYear, right.weekYear, sortOrder);
+    }
+    return compareBySortOrder(left.weekNumber, right.weekNumber, sortOrder);
   });
 
   const yearMap = new Map<number, WeekRunGroup[]>();
@@ -230,7 +250,7 @@ export function groupRunsByCalendar(
       weeks: yearWeeks,
       runCount: yearWeeks.reduce((sum, week) => sum + week.runCount, 0)
     }))
-    .sort((left, right) => right.year - left.year);
+    .sort((left, right) => compareBySortOrder(left.year, right.year, sortOrder));
 
   const distinctYears = years.filter((entry) => entry.year > 0);
 

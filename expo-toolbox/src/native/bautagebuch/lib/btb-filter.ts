@@ -123,7 +123,7 @@ export function buildCalendarTree(
   filters: Pick<BtbListFilters, 'sortOrder'>
 ): BautagebuchRunTree {
   const sorted = sortRuns(runs, filters.sortOrder);
-  return groupRunsByCalendar(sorted, { setupModel });
+  return groupRunsByCalendar(sorted, { setupModel, sortOrder: filters.sortOrder });
 }
 
 export function buildProjectFirstTree(
@@ -142,7 +142,7 @@ export function buildProjectFirstTree(
     filters.sortOrder
   );
 
-  const tree = groupRunsByCalendar(projectRuns, { setupModel });
+  const tree = groupRunsByCalendar(projectRuns, { setupModel, sortOrder: filters.sortOrder });
   const years: ProjectFirstYear[] = tree.years.map((year) => ({
     year: year.year,
     runCount: year.runCount,

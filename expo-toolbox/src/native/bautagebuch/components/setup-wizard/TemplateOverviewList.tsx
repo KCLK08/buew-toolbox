@@ -16,6 +16,8 @@ type Props = {
   onActivate: (templateId: string) => void;
   onRename?: (templateId: string) => void;
   onArchive?: (templateId: string) => void;
+  onDelete?: (templateId: string) => void;
+  canDelete?: (template: BautagebuchTemplate) => boolean;
 };
 
 function actionForTemplate(
@@ -46,7 +48,9 @@ export function TemplateOverviewList({
   onContinueSetup,
   onActivate,
   onRename,
-  onArchive
+  onArchive,
+  onDelete,
+  canDelete
 }: Props) {
   return (
     <View style={styles.root}>
@@ -128,6 +132,11 @@ export function TemplateOverviewList({
                 {onArchive && template.status !== 'archived' && !isActive ? (
                   <Pressable style={styles.linkBtn} onPress={() => onArchive(template.templateId)}>
                     <Text style={styles.archiveLabel}>Archivieren</Text>
+                  </Pressable>
+                ) : null}
+                {onDelete && canDelete?.(template) ? (
+                  <Pressable style={styles.linkBtn} onPress={() => onDelete(template.templateId)}>
+                    <Text style={styles.deleteLabel}>Löschen</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -264,5 +273,10 @@ const styles = StyleSheet.create({
   archiveLabel: {
     ...typography.caption,
     color: colors.muted
+  },
+  deleteLabel: {
+    ...typography.caption,
+    color: colors.danger,
+    fontFamily: 'SpaceGrotesk_600SemiBold'
   }
 });
