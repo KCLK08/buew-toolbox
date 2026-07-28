@@ -21,6 +21,7 @@ import {
   getTemplate,
   listTemplates,
   putTemplate,
+  deleteTemplateRecord,
   renameTemplate as renameTemplateRecord,
   saveDetectedFields,
   saveSetupModel,
@@ -156,6 +157,37 @@ export async function archiveTemplate(templateId: string): Promise<void> {
     status: 'archived',
     updatedAt: new Date().toISOString()
   });
+}
+
+function isBuiltinTemplate(template: BautagebuchTemplate): boolean {
+  return template.templateKind === ETB_TEMPLATE_KIND || template.fileName === ETB_TEMPLATE_FILE_NAME;
+}
+
+export async function deleteTemplate(templateId: string): Promise<void> {
+  const template = await getTemplate(templateId);
+  if (!template) {
+    throw new Error('Vorlage nicht gefunden.');
+  }
+  if (isBuiltinTemplate(template)) {
+    throw new Error('Die Standard-Vorlage kann nicht gelöscht werden.');
+  }
+  const activeId = await getActiveTemplateId();
+  if (activeId === templateId) {
+    throw new Error('Die aktive Vorlage kann nicht gelöscht werden.');
+  }
+
+  await deleteTemplateRecord(templateId);
+
+  if (template.pdfPath) {
+    try {
+      const info = await FileSystem.getInfoAsync(template.pdfPath);
+      if (info.exists) {
+        await FileSystem.deleteAsync(template.pdfPath, { idempotent: true });
+      }
+    } catch {
+      // PDF cleanup is best-effort; DB soft-delete is authoritative.
+    }
+  }
 }
 
 export async function renameTemplate(
@@ -389,4 +421,9 @@ export function isTemplateEditable(template: BautagebuchTemplate): boolean {
 
 export function canActivateTemplate(template: BautagebuchTemplate): boolean {
   return template.status === 'ready';
+}
+
+export function canDeleteTemplate(template: BautagebuchTemplate, activeTemplateId: string): boolean {
+  if (template.templateId === activeTemplateId) return false;
+  return !isBuiltinTemplate(template);
 }

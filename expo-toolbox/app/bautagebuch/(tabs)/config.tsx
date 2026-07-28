@@ -9,6 +9,8 @@ import { getSetupModel } from '../../../src/native/bautagebuch/db/database';
 import { resolveSetupEntryPath } from '../../../src/native/bautagebuch/lib/setup-mapping';
 import {
   archiveTemplate,
+  canDeleteTemplate,
+  deleteTemplate,
   ensureBuiltinTemplate,
   importTemplateFromDocument,
   listManagedTemplates,
@@ -107,6 +109,29 @@ export default function BautagebuchConfigTabScreen() {
     ]);
   };
 
+  const handleDelete = (templateId: string) => {
+    const template = templates.find((entry) => entry.templateId === templateId);
+    const templateName = template?.templateName || 'diese Vorlage';
+    Alert.alert(
+      'Vorlage löschen',
+      `„${templateName}“ wirklich unwiderruflich löschen?\n\nBestehende Bautagebücher bleiben erhalten. Die Vorlage steht danach nicht mehr für neue BTBs zur Verfügung.`,
+      [
+        { text: 'Abbrechen', style: 'cancel' },
+        {
+          text: 'Löschen',
+          style: 'destructive',
+          onPress: () => {
+            void deleteTemplate(templateId)
+              .then(() => load())
+              .catch((err) => {
+                Alert.alert('Löschen', err instanceof Error ? err.message : 'Vorlage konnte nicht gelöscht werden.');
+              });
+          }
+        }
+      ]
+    );
+  };
+
   const openRename = (templateId: string) => {
     const template = templates.find((entry) => entry.templateId === templateId);
     setRenameTemplateId(templateId);
@@ -159,6 +184,8 @@ export default function BautagebuchConfigTabScreen() {
           onActivate={(templateId) => void handleActivate(templateId)}
           onRename={openRename}
           onArchive={(templateId) => void handleArchive(templateId)}
+          onDelete={handleDelete}
+          canDelete={(template) => canDeleteTemplate(template, activeTemplateId)}
         />
       ) : null}
 

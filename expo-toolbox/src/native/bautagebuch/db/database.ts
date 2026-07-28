@@ -250,6 +250,16 @@ export async function renameTemplate(
   return putTemplate({ ...template, templateName: trimmed });
 }
 
+export async function deleteTemplateRecord(templateId: string): Promise<void> {
+  const template = await getTemplate(templateId);
+  if (!template) {
+    throw new Error('Vorlage nicht gefunden.');
+  }
+  const db = await getDb();
+  const timestamp = nowIso();
+  await db.runAsync('UPDATE templates SET deleted_at = ?, updatedAt = ? WHERE templateId = ?', timestamp, timestamp, templateId);
+}
+
 export async function saveDetectedFields(
   templateId: string,
   fields: Omit<DetectedField, 'id' | 'templateId' | 'createdAt' | 'updatedAt'>[]

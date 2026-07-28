@@ -55,6 +55,23 @@ test('groupRunsByCalendar sorts same-day runs by updatedAt descending', () => {
   assert.equal(projectRuns[1]?.runId, 'older');
 });
 
+test('groupRunsByCalendar respects oldest sort order', () => {
+  const tree = groupRunsByCalendar(
+    [
+      run('newer', 'BTB_Projekt_A_2025-06-12', '2025-06-12T18:00:00Z'),
+      run('older', 'BTB_Projekt_A_2025-06-12', '2025-06-12T08:00:00Z'),
+      run('later-week', 'BTB_Projekt_A_2025-06-20', '2025-06-20T10:00:00Z')
+    ],
+    { sortOrder: 'oldest' }
+  );
+
+  const projectRuns = tree.years[0]?.weeks[0]?.projects[0]?.runs || [];
+  assert.equal(projectRuns[0]?.runId, 'older');
+  assert.equal(projectRuns[1]?.runId, 'newer');
+  assert.equal(tree.years[0]?.weeks[0]?.weekNumber, 24);
+  assert.equal(tree.years[0]?.weeks.at(-1)?.weekNumber, 25);
+});
+
 test('groupRunsByCalendar groups runs by calendar week and project', () => {
   const tree = groupRunsByCalendar([
     run('r1', 'BTB_Nord_2025-06-12', '2025-06-12T10:00:00Z'),
