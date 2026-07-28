@@ -7,23 +7,17 @@ import { PrimaryButton, TextField } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
 import { systemBottomInset } from '../../../navigation/systemInsets';
 import { validateSetupModel } from '../lib/setup-model.js';
+import { mutateSetupModel } from '../hooks/useSetupAutosave';
 import {
   listOrderedSections,
   moveSectionInSetupModel,
   sectionEntryKey
 } from '../lib/setup-section-order';
 import { SetupSectionOrderCard } from './setup-wizard/SetupSectionOrderCard';
-import {
-  checkboxBehaviorHint,
-  isCheckboxField,
-  readCheckboxDefault,
-  resolveSetupFieldType,
-  writeCheckboxDefault
-} from '../lib/setup-field-hints.js';
-import { mutateSetupModel } from '../hooks/useSetupAutosave';
-import type { BautagebuchTemplate, DetectedField } from '../types';
+import { SetupFieldCard } from './setup-wizard/SetupFieldCard';
 import { SetupTemplateManager } from './SetupTemplateManager';
 import { SetupTemplateRenameControl } from './setup-wizard/SetupTemplateRenameControl';
+import type { BautagebuchTemplate, DetectedField } from '../types';
 
 type SetupPreviewField = {
   fieldId: string;
@@ -458,94 +452,19 @@ export function SetupEditor({
                 <Text style={styles.sectionLabel}>Felder in „{activeSingle.label || activeSingle.sectionId}“</Text>
                 {(activeSingle.fields || []).map((field) => {
                   const active = activeFieldId === field.fieldId;
-                  const fieldType = resolveSetupFieldType(field, detectedFields);
-                  const checkboxField = isCheckboxField(field, detectedFields);
                   return (
-                    <Pressable
-                      key={field.fieldId}
-                      style={[styles.fieldCard, active ? styles.fieldCardActive : null]}
-                      onPress={() => setActiveFieldId(active ? null : field.fieldId)}
-                    >
-                      <View style={styles.fieldCardHeader}>
-                        <View style={styles.fieldCardHeading}>
-                          <Text style={styles.selectorTitle} numberOfLines={2}>
-                            {field.label || field.fieldName || field.fieldId}
-                          </Text>
-                          <Text style={styles.selectorMeta}>{field.fieldName || field.fieldId}</Text>
-                        </View>
-                        <Text style={styles.fieldCardChevron}>{active ? '▲' : '▼'}</Text>
-                      </View>
-                      {!active ? (
-                        <StatusPills
-                          items={[
-                            field.required ? 'Pflicht' : null,
-                            field.skipped ? 'Ausgeblendet' : null,
-                            field.multiline ? 'Mehrzeilig' : null,
-                            field.defaultValue ? 'Standardwert' : null
-                          ].filter(Boolean)}
-                        />
-                      ) : (
-                        <View style={styles.fieldCardBody}>
-                          <Text style={styles.fieldMeta}>
-                            PDF-Feld: {field.fieldName || field.fieldId}
-                            {field.page ? ` · Seite ${field.page}` : ''} · Typ: {fieldType}
-                          </Text>
-                          <TextField
-                            label="Anzeigename im Assistenten"
-                            value={field.label || ''}
-                            onChangeText={(value) =>
-                              updateSingleField(activeSingle.sectionId, field.fieldId, { label: value })
-                            }
-                            onFocus={() => setActiveFieldId(field.fieldId)}
-                          />
-                          {checkboxField ? (
-                            <SettingRow
-                              title="Standard: aktiviert (Ja)"
-                              hint={checkboxBehaviorHint(field.fieldName)}
-                              value={readCheckboxDefault(field)}
-                              onValueChange={(value) =>
-                                updateSingleField(activeSingle.sectionId, field.fieldId, {
-                                  defaultValue: writeCheckboxDefault(value)
-                                })
-                              }
-                            />
-                          ) : (
-                            <TextField
-                              label="Standardtext zum Vorausfüllen"
-                              value={field.defaultValue || ''}
-                              onChangeText={(value) =>
-                                updateSingleField(activeSingle.sectionId, field.fieldId, { defaultValue: value })
-                              }
-                              onFocus={() => setActiveFieldId(field.fieldId)}
-                              placeholder="Optional — wird beim Start des BTB gesetzt"
-                            />
-                          )}
-                          <SettingRow
-                            title="Pflichtfeld"
-                            hint="Muss vor dem Export ausgefüllt sein"
-                            value={field.required === true}
-                            onValueChange={(value) =>
-                              updateSingleField(activeSingle.sectionId, field.fieldId, { required: value })
-                            }
-                          />
-                          <SettingRow
-                            title="Im Assistenten ausblenden"
-                            hint="Feld wird nicht angezeigt, bleibt aber im PDF"
-                            value={field.skipped === true}
-                            onValueChange={(value) =>
-                              updateSingleField(activeSingle.sectionId, field.fieldId, { skipped: value })
-                            }
-                          />
-                          {!checkboxField ? (
-                            <SettingRow
-                              title="Mehrzeiliges Eingabefeld"
-                              hint="Größeres Textfeld für längere Einträge"
-                              value={field.multiline === true}
-                              onValueChange={(value) =>
-                                updateSingleField(activeSingle.sectionId, field.fieldId, { multiline: value })
-                              }
-                            />
-                          ) : null}
+                    <View key={field.fieldId} style={styles.fieldCardWrap}>
+                      <SetupFieldCard
+                        field={field}
+                        detectedFields={detectedFields}
+                        expanded={active}
+                        onPress={() => setActiveFieldId(active ? null : field.fieldId)}
+                        onChange={(patch) =>
+                          updateSingleField(activeSingle.sectionId, field.fieldId, patch)
+                        }
+                      />
+                      {active ? (
+                        <View style={styles.fieldTools}>
                           <Text style={styles.sectionLabel}>Reihenfolge in der Gruppe</Text>
                           <View style={styles.row}>
                             <PrimaryButton
@@ -572,8 +491,8 @@ export function SetupEditor({
                             />
                           </View>
                         </View>
-                      )}
-                    </Pressable>
+                      ) : null}
+                    </View>
                   );
                 })}
               </>
@@ -803,6 +722,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.panel
+  },
+  fieldCardWrap: {
+    gap: spacing.sm
+  },
+  fieldTools: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xxs
   },
   fieldCardActive: {
     borderColor: colors.accent,

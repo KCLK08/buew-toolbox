@@ -61,11 +61,35 @@ export type SetupWizardGroup = {
   label: string;
 };
 
+export type SetupWizardTableColumn = {
+  columnId: string;
+  label: string;
+  type: 'text' | 'checkbox';
+  required?: boolean;
+  multiline?: boolean;
+  skipped?: boolean;
+};
+
+export type SetupWizardTable = {
+  tableId: string;
+  label: string;
+  columns: SetupWizardTableColumn[];
+  rowCount: number;
+};
+
+export type SetupWizardTableAssignment = {
+  tableId: string;
+  rowIndex: number;
+  columnId: string;
+};
+
 export type SetupWizardState = {
   step: SetupWizardStep;
   currentFieldIndex: number;
   groups: SetupWizardGroup[];
+  tables: SetupWizardTable[];
   assignments: Record<string, string>;
+  tableAssignments: Record<string, SetupWizardTableAssignment>;
   deferredFieldIds: string[];
 };
 

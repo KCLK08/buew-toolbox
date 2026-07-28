@@ -1,12 +1,15 @@
 import type { Href } from 'expo-router';
 
 import type { DetectedField, SetupFieldConfig, SetupWizardGroup, SetupWizardState } from '../types';
+import { buildTableSectionsFromWizard } from './setup-wizard-tables';
+import { buildLegacySectionOrder, syncSectionOrder } from './setup-model.js';
 
 export type MappingField = {
   fieldId: string;
   fieldName: string;
   labelCandidate: string;
   type: string;
+  options: string[];
   page: number;
   orderIndex: number;
   rect: number[] | null;
@@ -44,6 +47,7 @@ export function sortMappingFields(detectedFields: DetectedField[]): MappingField
       fieldName: String(field.fieldName || ''),
       labelCandidate: String(field.labelCandidate || field.fieldName || 'Feld'),
       type: String(field.type || 'text'),
+      options: Array.isArray(field.options) ? field.options.map((entry) => String(entry)) : [],
       page: Number(field.page || 1),
       orderIndex: Number(field.orderIndex || 0),
       rect: Array.isArray(field.rect) ? field.rect.slice(0, 4) : null
@@ -59,11 +63,30 @@ export function getWizardState(setupModel: Record<string, unknown>): SetupWizard
           label: String(group.label || 'Gruppe')
         }))
       : [];
+  const tables =
+    Array.isArray(raw.tables) && raw.tables.length > 0
+      ? raw.tables.map((table) => ({
+          tableId: String(table.tableId || ''),
+          label: String(table.label || 'Tabelle'),
+          rowCount: Math.max(1, Number(table.rowCount || 1)),
+          columns: Array.isArray(table.columns)
+            ? table.columns.map((column) => ({
+                columnId: String(column.columnId || ''),
+                label: String(column.label || 'Spalte'),
+                type: column.type === 'checkbox' ? ('checkbox' as const) : ('text' as const),
+                required: column.required === true,
+                multiline: column.multiline === true,
+                skipped: column.skipped === true
+              }))
+            : []
+        }))
+      : [];
 
   return {
     step: raw.step === 'fields' ? 'fields' : 'mapping',
     currentFieldIndex: Math.max(0, Number(raw.currentFieldIndex || 0)),
     groups,
+    tables,
     assignments:
       raw.assignments && typeof raw.assignments === 'object'
         ? Object.fromEntries(
@@ -71,6 +94,22 @@ export function getWizardState(setupModel: Record<string, unknown>): SetupWizard
               String(fieldId),
               String(sectionId)
             ])
+          )
+        : {},
+    tableAssignments:
+      raw.tableAssignments && typeof raw.tableAssignments === 'object'
+        ? Object.fromEntries(
+            Object.entries(raw.tableAssignments).map(([fieldId, assignment]) => {
+              const entry = assignment as Record<string, unknown>;
+              return [
+                String(fieldId),
+                {
+                  tableId: String(entry.tableId || ''),
+                  rowIndex: Math.max(0, Number(entry.rowIndex || 0)),
+                  columnId: String(entry.columnId || '')
+                }
+              ];
+            })
           )
         : {},
     deferredFieldIds: Array.isArray(raw.deferredFieldIds)
@@ -90,7 +129,9 @@ export function withWizardState(
       ...current,
       ...wizard,
       groups: wizard.groups || current.groups,
+      tables: wizard.tables || current.tables,
       assignments: wizard.assignments || current.assignments,
+      tableAssignments: wizard.tableAssignments || current.tableAssignments,
       deferredFieldIds: wizard.deferredFieldIds || current.deferredFieldIds
     },
     updatedAt: nowIso()
@@ -105,7 +146,9 @@ export function getMappingProgress(
   const assigned = fields.filter((field) => Boolean(wizard.assignments[field.fieldId])).length;
   const handled = fields.filter(
     (field) =>
-      Boolean(wizard.assignments[field.fieldId]) || wizard.deferredFieldIds.includes(field.fieldId)
+      Boolean(wizard.assignments[field.fieldId]) ||
+      Boolean(wizard.tableAssignments[field.fieldId]) ||
+      wizard.deferredFieldIds.includes(field.fieldId)
   ).length;
   const current = total > 0 ? Math.min(total, Math.max(1, handled + 1)) : 0;
   const percent = total > 0 ? Math.round((handled / total) * 100) : 100;
@@ -125,7 +168,11 @@ export function getNextUnassignedIndex(
 ): number {
   for (let index = Math.max(0, startIndex); index < fields.length; index += 1) {
     const field = fields[index];
-    if (!wizard.assignments[field.fieldId] && !wizard.deferredFieldIds.includes(field.fieldId)) {
+    if (
+      !wizard.assignments[field.fieldId] &&
+      !wizard.tableAssignments[field.fieldId] &&
+      !wizard.deferredFieldIds.includes(field.fieldId)
+    ) {
       return index;
     }
   }
@@ -136,7 +183,9 @@ export function isMappingComplete(fields: MappingField[], wizard: SetupWizardSta
   if (fields.length === 0) return true;
   return fields.every(
     (field) =>
-      Boolean(wizard.assignments[field.fieldId]) || wizard.deferredFieldIds.includes(field.fieldId)
+      Boolean(wizard.assignments[field.fieldId]) ||
+      Boolean(wizard.tableAssignments[field.fieldId]) ||
+      wizard.deferredFieldIds.includes(field.fieldId)
   );
 }
 
@@ -147,8 +196,10 @@ export function assignFieldToGroup(
 ): Record<string, unknown> {
   const wizard = getWizardState(setupModel);
   const assignments = { ...wizard.assignments, [fieldId]: sectionId };
+  const tableAssignments = { ...wizard.tableAssignments };
+  delete tableAssignments[fieldId];
   const deferredFieldIds = wizard.deferredFieldIds.filter((entry) => entry !== fieldId);
-  return withWizardState(setupModel, { assignments, deferredFieldIds });
+  return withWizardState(setupModel, { assignments, tableAssignments, deferredFieldIds });
 }
 
 export function deferField(
@@ -161,7 +212,71 @@ export function deferField(
     : [...wizard.deferredFieldIds, fieldId];
   const assignments = { ...wizard.assignments };
   delete assignments[fieldId];
-  return withWizardState(setupModel, { assignments, deferredFieldIds });
+  const tableAssignments = { ...wizard.tableAssignments };
+  delete tableAssignments[fieldId];
+  return withWizardState(setupModel, { assignments, tableAssignments, deferredFieldIds });
+}
+
+export function addWizardTableSection(
+  setupModel: Record<string, unknown>,
+  label: string
+): { setupModel: Record<string, unknown>; table: import('../types').SetupWizardTable } {
+  const trimmed = String(label || '').trim() || 'Neue Tabelle';
+  const table = {
+    tableId: createId('table'),
+    label: trimmed,
+    columns: [] as import('../types').SetupWizardTableColumn[],
+    rowCount: 1
+  };
+  const wizard = getWizardState(setupModel);
+  return {
+    setupModel: withWizardState(setupModel, { tables: [...wizard.tables, table] }),
+    table
+  };
+}
+
+export function addWizardTableColumn(
+  setupModel: Record<string, unknown>,
+  tableId: string,
+  input: { label: string; type: 'text' | 'checkbox' }
+): Record<string, unknown> {
+  const wizard = getWizardState(setupModel);
+  const column = {
+    columnId: createId('col'),
+    label: String(input.label || '').trim() || (input.type === 'checkbox' ? 'Checkbox' : 'Spalte'),
+    type: input.type,
+    required: false,
+    multiline: false,
+    skipped: false
+  };
+  const tables = wizard.tables.map((table) =>
+    table.tableId === tableId ? { ...table, columns: [...table.columns, column] } : table
+  );
+  return withWizardState(setupModel, { tables });
+}
+
+export function addWizardTableRow(
+  setupModel: Record<string, unknown>,
+  tableId: string
+): Record<string, unknown> {
+  const wizard = getWizardState(setupModel);
+  const tables = wizard.tables.map((table) =>
+    table.tableId === tableId ? { ...table, rowCount: Math.max(1, table.rowCount + 1) } : table
+  );
+  return withWizardState(setupModel, { tables });
+}
+
+export function assignFieldToTableCell(
+  setupModel: Record<string, unknown>,
+  fieldId: string,
+  assignment: import('../types').SetupWizardTableAssignment
+): Record<string, unknown> {
+  const wizard = getWizardState(setupModel);
+  const tableAssignments = { ...wizard.tableAssignments, [fieldId]: assignment };
+  const assignments = { ...wizard.assignments };
+  delete assignments[fieldId];
+  const deferredFieldIds = wizard.deferredFieldIds.filter((entry) => entry !== fieldId);
+  return withWizardState(setupModel, { tableAssignments, assignments, deferredFieldIds });
 }
 
 export function addWizardGroup(
@@ -189,6 +304,11 @@ function fieldConfigFromDetected(
     fieldName: field.fieldName,
     label: String(existing?.label || field.labelCandidate || field.fieldName || 'Feld').trim(),
     type: field.type,
+    options: Array.isArray(existing?.options)
+      ? [...existing.options]
+      : Array.isArray(field.options)
+        ? [...field.options]
+        : [],
     required: Boolean(existing?.required),
     skipped: Boolean(existing?.skipped),
     multiline: Boolean(existing?.multiline),
@@ -260,14 +380,23 @@ export function rebuildSectionsFromWizard(
     });
   }
 
-  return {
+  const tableSections = buildTableSectionsFromWizard(wizard, fields);
+  const nextModel = {
     ...setupModel,
     single_sections: singleSections,
+    table_sections: tableSections,
     wizard: {
       ...wizard,
       step: 'fields' as const
     },
     updatedAt: nowIso()
+  };
+  return {
+    ...nextModel,
+    section_order: syncSectionOrder({
+      ...nextModel,
+      section_order: buildLegacySectionOrder(nextModel)
+    })
   };
 }
 
@@ -375,6 +504,7 @@ export function resolveCurrentMappingIndex(
   if (
     storedField &&
     !wizard.assignments[storedField.fieldId] &&
+    !wizard.tableAssignments[storedField.fieldId] &&
     !wizard.deferredFieldIds.includes(storedField.fieldId)
   ) {
     return stored;
@@ -406,7 +536,7 @@ export function ensureWizardInitialized(setupModel: Record<string, unknown>): Re
   if (setupModel.wizard && typeof setupModel.wizard === 'object') {
     return setupModel;
   }
-  return withWizardState(setupModel, { step: 'mapping', groups: [] });
+  return withWizardState(setupModel, { step: 'mapping', groups: [], tables: [] });
 }
 
 export function hasTableSections(setupModel: Record<string, unknown>): boolean {
