@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,11 +32,14 @@ export function SetupStructureTableModal({
   const insets = useSafeAreaInsets();
   const [name, setName] = useState(initialName);
   const [columns, setColumns] = useState<ColumnDraft[]>(initialColumns);
+  const wasVisibleRef = useRef(false);
 
   useEffect(() => {
-    if (!visible) return;
-    setName(initialName);
-    setColumns(initialColumns.length > 0 ? initialColumns : [{ name: '' }]);
+    if (visible && !wasVisibleRef.current) {
+      setName(initialName);
+      setColumns(initialColumns.length > 0 ? initialColumns.map((column) => ({ ...column })) : [{ name: '' }]);
+    }
+    wasVisibleRef.current = visible;
   }, [visible, initialName, initialColumns]);
 
   const addColumn = () => {

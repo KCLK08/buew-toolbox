@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -26,11 +26,14 @@ export function SetupStructureGroupModal({
   const insets = useSafeAreaInsets();
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
+  const wasVisibleRef = useRef(false);
 
   useEffect(() => {
-    if (!visible) return;
-    setName(initialName);
-    setDescription(initialDescription);
+    if (visible && !wasVisibleRef.current) {
+      setName(initialName);
+      setDescription(initialDescription);
+    }
+    wasVisibleRef.current = visible;
   }, [visible, initialName, initialDescription]);
 
   const submit = () => {

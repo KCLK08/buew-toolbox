@@ -123,9 +123,10 @@ export function SetupStructureStep({
       <SetupStructureHeader activeTab={activeTab} onTabChange={switchTab} onBack={onBack} />
 
       <View style={styles.body}>
-        {activeTab === 'pdf' ? (
+        <View style={[styles.tabPane, activeTab !== 'pdf' ? styles.tabPaneHidden : null]}>
           <PdfPreviewPanel pdfPath={pdfPath} fullscreen />
-        ) : (
+        </View>
+        <View style={[styles.tabPane, activeTab !== 'structure' ? styles.tabPaneHidden : null]}>
           <SetupStructureList
             items={structure}
             readOnly={readOnly}
@@ -138,7 +139,7 @@ export function SetupStructureStep({
             onDelete={handleDelete}
             onMove={handleMove}
           />
-        )}
+        </View>
       </View>
 
       {activeTab === 'structure' && !readOnly ? (
@@ -178,6 +179,13 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     minHeight: 0
+  },
+  tabPane: {
+    ...StyleSheet.absoluteFillObject
+  },
+  tabPaneHidden: {
+    opacity: 0,
+    pointerEvents: 'none'
   },
   footer: {
     gap: spacing.sm,
