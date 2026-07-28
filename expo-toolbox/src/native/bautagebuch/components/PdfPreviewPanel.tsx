@@ -13,9 +13,17 @@ type Props = {
   error?: string | null;
   /** Bumps when the file at pdfPath was regenerated in place (same URI). */
   reloadKey?: string | number;
+  /** Edge-to-edge preview without card chrome (setup step 1 PDF tab). */
+  fullscreen?: boolean;
 };
 
-export function PdfPreviewPanel({ pdfPath, loading = false, error = null, reloadKey = 0 }: Props) {
+export function PdfPreviewPanel({
+  pdfPath,
+  loading = false,
+  error = null,
+  reloadKey = 0,
+  fullscreen = false
+}: Props) {
   const webViewRef = useRef<WebView>(null);
   const [html, setHtml] = useState<string | null>(null);
   const [readBusy, setReadBusy] = useState(false);
@@ -113,8 +121,8 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null, reload
   }
 
   return (
-    <View style={styles.root}>
-      <View style={styles.panel}>
+    <View style={[styles.root, fullscreen ? styles.rootFullscreen : null]}>
+      <View style={[styles.panel, fullscreen ? styles.panelFullscreen : null]}>
         <WebView
           ref={webViewRef}
           source={{ html }}
@@ -162,6 +170,7 @@ export function PdfPreviewPanel({ pdfPath, loading = false, error = null, reload
 
 const styles = StyleSheet.create({
   root: { flex: 1, minHeight: 0 },
+  rootFullscreen: { flex: 1 },
   panel: {
     flex: 1,
     minHeight: 0,
@@ -170,6 +179,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.panel
+  },
+  panelFullscreen: {
+    borderRadius: 0,
+    borderWidth: 0
   },
   webview: {
     flex: 1,

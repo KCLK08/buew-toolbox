@@ -1,6 +1,13 @@
 import type { Href } from 'expo-router';
 
-import type { DetectedField, SetupFieldConfig, SetupWizardGroup, SetupWizardState } from '../types';
+import type {
+  DetectedField,
+  SetupFieldConfig,
+  SetupStructureItem,
+  SetupWizardGroup,
+  SetupWizardState,
+  SetupWizardStep
+} from '../types';
 import { buildTableSectionsFromWizard } from './setup-wizard-tables';
 import { buildLegacySectionOrder, syncSectionOrder } from './setup-model.js';
 
@@ -33,6 +40,90 @@ function createId(prefix = 'id'): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function normalizeStructureOrder(items: SetupStructureItem[]): SetupStructureItem[] {
+  return items
+    .slice()
+    .sort((left, right) => left.order - right.order)
+    .map((item, index) => ({ ...item, order: index }));
+}
+
+function migrateStructureFromLegacy(
+  groups: SetupWizardGroup[],
+  tables: SetupWizardState['tables']
+): SetupStructureItem[] {
+  const items: SetupStructureItem[] = [];
+  let order = 0;
+  for (const group of groups) {
+    items.push({
+      id: group.sectionId,
+      name: group.label,
+      description: group.description,
+      type: 'group',
+      order: order++
+    });
+  }
+  for (const table of tables) {
+    items.push({
+      id: table.tableId,
+      name: table.label,
+      type: 'table',
+      order: order++,
+      columns: table.columns.map((column, index) => ({
+        id: column.columnId,
+        name: column.label,
+        order: index
+      }))
+    });
+  }
+  return items;
+}
+
+function parseStructureItems(
+  raw: Partial<SetupWizardState>,
+  groups: SetupWizardGroup[],
+  tables: SetupWizardState['tables']
+): SetupStructureItem[] {
+  if (Array.isArray(raw.structure) && raw.structure.length > 0) {
+    return normalizeStructureOrder(
+      raw.structure.map((item) => {
+        if (item.type === 'table') {
+          return {
+            ...item,
+            columns: [...(item.columns || [])].sort((left, right) => left.order - right.order)
+          };
+        }
+        return item;
+      })
+    );
+  }
+  if (groups.length > 0 || tables.length > 0) {
+    return migrateStructureFromLegacy(groups, tables);
+  }
+  return [];
+}
+
+function resolveWizardStep(raw: Partial<SetupWizardState>): SetupWizardStep {
+  if (raw.step === 'fields') return 'fields';
+  if (raw.step === 'assign') return 'assign';
+  if (raw.step === 'structure') return 'structure';
+  if (raw.step === 'mapping') {
+    const assignmentCount =
+      raw.assignments && typeof raw.assignments === 'object'
+        ? Object.keys(raw.assignments).length
+        : 0;
+    const tableAssignmentCount =
+      raw.tableAssignments && typeof raw.tableAssignments === 'object'
+        ? Object.keys(raw.tableAssignments).length
+        : 0;
+    const deferredCount = Array.isArray(raw.deferredFieldIds) ? raw.deferredFieldIds.length : 0;
+    if (assignmentCount > 0 || tableAssignmentCount > 0 || deferredCount > 0) {
+      return 'assign';
+    }
+    return 'structure';
+  }
+  return 'structure';
+}
+
 export function sortMappingFields(detectedFields: DetectedField[]): MappingField[] {
   return [...detectedFields]
     .filter((field) => String(field.fieldId || '').trim())
@@ -60,7 +151,8 @@ export function getWizardState(setupModel: Record<string, unknown>): SetupWizard
     Array.isArray(raw.groups) && raw.groups.length > 0
       ? raw.groups.map((group) => ({
           sectionId: String(group.sectionId || ''),
-          label: String(group.label || 'Gruppe')
+          label: String(group.label || 'Gruppe'),
+          description: group.description ? String(group.description) : undefined
         }))
       : [];
   const tables =
@@ -82,9 +174,12 @@ export function getWizardState(setupModel: Record<string, unknown>): SetupWizard
         }))
       : [];
 
+  const structure = parseStructureItems(raw, groups, tables);
+
   return {
-    step: raw.step === 'fields' ? 'fields' : 'mapping',
+    step: resolveWizardStep(raw),
     currentFieldIndex: Math.max(0, Number(raw.currentFieldIndex || 0)),
+    structure,
     groups,
     tables,
     assignments:
@@ -130,6 +225,7 @@ export function withWizardState(
       ...wizard,
       groups: wizard.groups || current.groups,
       tables: wizard.tables || current.tables,
+      structure: wizard.structure || current.structure,
       assignments: wizard.assignments || current.assignments,
       tableAssignments: wizard.tableAssignments || current.tableAssignments,
       deferredFieldIds: wizard.deferredFieldIds || current.deferredFieldIds
@@ -536,7 +632,7 @@ export function ensureWizardInitialized(setupModel: Record<string, unknown>): Re
   if (setupModel.wizard && typeof setupModel.wizard === 'object') {
     return setupModel;
   }
-  return withWizardState(setupModel, { step: 'mapping', groups: [], tables: [] });
+  return withWizardState(setupModel, { step: 'structure', groups: [], tables: [], structure: [] });
 }
 
 export function hasTableSections(setupModel: Record<string, unknown>): boolean {
@@ -554,6 +650,9 @@ export function resolveSetupEntryPath(
   const wizard = getWizardState(setupModel);
   if (wizard.step === 'fields') {
     return `/bautagebuch/setup/${templateId}/fields` as Href;
+  }
+  if (wizard.step === 'assign') {
+    return `/bautagebuch/setup/${templateId}/assign` as Href;
   }
   return `/bautagebuch/setup/${templateId}/mapping` as Href;
 }
