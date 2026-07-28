@@ -1,28 +1,28 @@
 import { useEffect, useRef } from 'react';
-import { Animated, useWindowDimensions, View } from 'react-native';
+import { Animated, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ToolCard } from '../../src/components/ToolCard';
 import { HomeHeader } from '../../src/components/toolbox/HomeHeader';
+import { homeCardsGap, resolveHomeLayoutTier } from '../../src/components/toolbox/homeLayout';
 import { ToolboxBackground } from '../../src/components/ToolboxBackground';
 import { spacing } from '../../src/constants/theme';
 import { TOOLBOX_TOOLS } from '../../src/constants/tools';
 import { systemBottomInset } from '../../src/navigation/systemInsets';
 
-/** Below this height the home layout compacts cards to stay on one screen. */
-const COMPACT_HOME_HEIGHT = 760;
-
 export default function ToolboxHomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
-  const compact = windowHeight < COMPACT_HOME_HEIGHT;
   const fadeIn = useRef(new Animated.Value(0)).current;
   const slideUp = useRef(new Animated.Value(16)).current;
 
   const topPad = Math.max(spacing.sm, insets.top + spacing.sm);
-  const bottomPad = systemBottomInset(insets) + spacing.md;
+  const bottomPad = systemBottomInset(insets) + spacing.lg;
+  const contentMinHeight = windowHeight - topPad - bottomPad;
+  const tier = resolveHomeLayoutTier(contentMinHeight);
+  const cardsGap = homeCardsGap(tier);
 
   useEffect(() => {
     Animated.parallel([
@@ -33,38 +33,67 @@ export default function ToolboxHomeScreen() {
 
   return (
     <ToolboxBackground>
-      <View
-        style={{
-          flex: 1,
-          paddingTop: topPad,
-          paddingBottom: bottomPad,
-          paddingHorizontal: spacing.pageX
-        }}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            minHeight: contentMinHeight,
+            paddingTop: topPad,
+            paddingBottom: bottomPad
+          }
+        ]}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        overScrollMode="never"
       >
-        <Animated.View style={{ opacity: fadeIn, transform: [{ translateY: slideUp }] }}>
-          <HomeHeader compact={compact} />
-        </Animated.View>
+        <View style={[styles.page, { minHeight: contentMinHeight }]}>
+          <Animated.View
+            style={[styles.headerWrap, { opacity: fadeIn, transform: [{ translateY: slideUp }] }]}
+          >
+            <HomeHeader tier={tier} />
+          </Animated.View>
 
-        <Animated.View
-          style={{
-            flex: 1,
-            minHeight: 0,
-            justifyContent: 'center',
-            gap: compact ? spacing.sm : spacing.md,
-            opacity: fadeIn,
-            transform: [{ translateY: slideUp }]
-          }}
-        >
-          {TOOLBOX_TOOLS.map((tool) => (
-            <ToolCard
-              key={tool.id}
-              tool={tool}
-              compact={compact}
-              onPress={() => router.push(tool.tabHref)}
-            />
-          ))}
-        </Animated.View>
-      </View>
+          <Animated.View
+            style={[
+              styles.cards,
+              { gap: cardsGap, opacity: fadeIn, transform: [{ translateY: slideUp }] }
+            ]}
+          >
+            {TOOLBOX_TOOLS.map((tool) => (
+              <ToolCard
+                key={tool.id}
+                tool={tool}
+                tier={tier}
+                onPress={() => router.push(tool.tabHref)}
+              />
+            ))}
+          </Animated.View>
+        </View>
+      </ScrollView>
     </ToolboxBackground>
   );
 }
+
+const styles = StyleSheet.create({
+  scroll: {
+    flex: 1
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.pageX
+  },
+  page: {
+    flexGrow: 1,
+    minHeight: 0
+  },
+  headerWrap: {
+    flexShrink: 0
+  },
+  cards: {
+    flex: 1,
+    minHeight: 0,
+    justifyContent: 'flex-start',
+    paddingTop: spacing.xxs
+  }
+});
