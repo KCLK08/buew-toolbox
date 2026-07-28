@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Dimensions, StyleSheet, Text, View } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { PrimaryButton } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
-import { systemBottomInset } from '../../../navigation/systemInsets';
 import { loadPdfPreviewAssets } from '../lib/pdf-preview-assets';
 import {
   buildFieldPreviewHtml,
+  buildScrollableFieldPreviewHtml,
   PDF_PREVIEW_LOAD_ERROR,
   type PreviewHtmlMode
 } from '../lib/pdf-preview-html';
@@ -49,7 +48,6 @@ export function SetupPdfFieldPreview({
   variant = 'default',
   emphasizeActiveHighlight = false
 }: Props) {
-  const insets = useSafeAreaInsets();
   const pinned = variant === 'pinned';
   const mapping = variant === 'mapping';
   const overlay = variant === 'overlay';
@@ -111,15 +109,18 @@ export function SetupPdfFieldPreview({
     ])
       .then(([base64, assets]) => {
         if (cancelled) return;
+        const previewOptions = {
+          base64,
+          ...assets,
+          highlights,
+          mode: htmlMode,
+          highlightActive,
+          highQuality
+        };
         setHtml(
-          buildFieldPreviewHtml({
-            base64,
-            ...assets,
-            highlights,
-            mode: htmlMode,
-            highlightActive,
-            highQuality
-          })
+          overlay
+            ? buildScrollableFieldPreviewHtml(previewOptions)
+            : buildFieldPreviewHtml(previewOptions)
         );
         setPreviewState({ page: 1, pageCount: 1, ready: false, error: null });
       })
@@ -138,7 +139,7 @@ export function SetupPdfFieldPreview({
     return () => {
       cancelled = true;
     };
-  }, [pdfPath, highlights, htmlMode, highlightActive, highQuality]);
+  }, [pdfPath, highlights, htmlMode, highlightActive, highQuality, overlay]);
 
   useEffect(() => {
     if (!previewState.ready || useFallback) return;
@@ -189,7 +190,7 @@ export function SetupPdfFieldPreview({
 
   if (readBusy) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, overlay ? styles.centerOverlay : null]}>
         <ActivityIndicator color={colors.accent} />
         <Text style={styles.muted}>Vorlagen-PDF wird geladen…</Text>
       </View>
@@ -200,13 +201,14 @@ export function SetupPdfFieldPreview({
     return <PdfPreviewPanel pdfPath={pdfPath} error={loadError || previewState.error} />;
   }
 
-  const banner = mapping
-    ? activeFieldLabel || 'Feld zuordnen'
-    : activeFieldLabel
-      ? `Aktiv: ${activeFieldLabel}${activeFieldPage ? ` · Seite ${activeFieldPage}` : ''}`
-      : pinned
-        ? 'Feld oder Spalte antippen — Markierung in der PDF zeigt die Position.'
-        : 'Feld in der Liste antippen, um die zugehörige PDF-Seite zu sehen.';
+  const showPageControls = !mapping && !overlay;
+  const showBanner = !mapping && !overlay;
+
+  const banner = activeFieldLabel
+    ? `Aktiv: ${activeFieldLabel}${activeFieldPage ? ` · Seite ${activeFieldPage}` : ''}`
+    : pinned
+      ? 'Feld oder Spalte antippen — Markierung in der PDF zeigt die Position.'
+      : 'Feld in der Liste antippen, um die zugehörige PDF-Seite zu sehen.';
 
   return (
     <View
@@ -214,10 +216,10 @@ export function SetupPdfFieldPreview({
         styles.root,
         pinned ? styles.rootPinned : null,
         mapping ? styles.rootMapping : null,
-        overlay ? [styles.rootOverlay, { paddingBottom: systemBottomInset(insets) }] : null
+        overlay ? styles.rootOverlay : null
       ]}
     >
-      {!mapping ? (
+      {showBanner ? (
         <Text style={[styles.banner, pinned ? styles.bannerPinned : null]} numberOfLines={2}>
           {banner}
         </Text>
@@ -260,8 +262,8 @@ export function SetupPdfFieldPreview({
           }}
         />
       </View>
-      {!mapping ? (
-        <View style={[styles.controls, overlay ? { paddingBottom: systemBottomInset(insets) + spacing.xs } : null]}>
+      {showPageControls ? (
+        <View style={styles.controls}>
           <PrimaryButton
             label="◀"
             variant="ghost"
@@ -279,7 +281,7 @@ export function SetupPdfFieldPreview({
           />
         </View>
       ) : null}
-      {highlights.length === 0 && !pinned && !mapping ? (
+      {highlights.length === 0 && !pinned && !mapping && !overlay ? (
         <Text style={styles.hint}>
           Feld-Overlays sind ohne Positionsdaten nicht verfügbar. Seitennavigation und Feld-Banner funktionieren
           weiterhin.
@@ -309,7 +311,6 @@ const styles = StyleSheet.create({
   },
   rootOverlay: {
     flex: 1,
-    gap: spacing.xs,
     minHeight: 0
   },
   banner: { ...typography.caption, color: colors.accent2 },
@@ -339,8 +340,10 @@ const styles = StyleSheet.create({
   },
   panelOverlay: {
     flex: 1,
-    borderRadius: 10,
-    minHeight: 0
+    borderRadius: 0,
+    borderWidth: 0,
+    minHeight: 0,
+    backgroundColor: '#f2f0eb'
   },
   webview: {
     flex: 1,
@@ -358,7 +361,8 @@ const styles = StyleSheet.create({
   },
   webviewOverlay: {
     flex: 1,
-    minHeight: 0
+    minHeight: 0,
+    backgroundColor: '#f2f0eb'
   },
   controls: {
     flexDirection: 'row',
@@ -379,6 +383,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
     padding: spacing.md
+  },
+  centerOverlay: {
+    flex: 1,
+    minHeight: 0
   },
   muted: { ...typography.caption, color: colors.muted, textAlign: 'center' }
 });

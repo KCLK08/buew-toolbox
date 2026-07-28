@@ -593,3 +593,293 @@ export function buildScrollablePdfPreviewHtml(options: BuildSimplePreviewHtmlOpt
   </body>
 </html>`;
 }
+
+/** Setup live preview: all pages stacked with field overlays, scroll + pinch zoom. */
+export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions): string {
+  const {
+    base64,
+    pdfJsSource,
+    workerSrc,
+    workerSource,
+    highlights = [],
+    highlightActive = false,
+    highQuality = false
+  } = options;
+
+  const highlightsJson = JSON.stringify(highlights);
+
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    ${buildPdfWorkerInlineScript(workerSource)}
+    ${buildPdfJsInlineScript(pdfJsSource)}
+    <style>
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      html, body {
+        margin: 0; padding: 0; width: 100%; height: 100%;
+        background: #f2f0eb; overflow: hidden;
+      }
+      #viewport {
+        width: 100%; height: 100%; overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+      }
+      #wrap {
+        display: flex; flex-direction: column; align-items: center;
+        gap: 12px; padding: 8px 0 16px;
+        transform-origin: center top;
+        will-change: transform;
+      }
+      .page-sheet {
+        display: flex; justify-content: center; width: 100%;
+      }
+      .page-frame {
+        position: relative; display: inline-block;
+      }
+      canvas {
+        display: block; max-width: 100%; height: auto;
+        background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+      }
+      .overlay {
+        position: absolute; inset: 0; pointer-events: none;
+      }
+      .highlight {
+        position: absolute;
+        border: 2px solid rgba(47, 111, 237, 0.45);
+        background: rgba(47, 111, 237, 0.08);
+        border-radius: 4px;
+        transition: opacity 0.2s ease;
+      }
+      .highlight.active {
+        border: 3px solid rgba(196, 75, 50, 0.98);
+        background: rgba(196, 75, 50, 0.28);
+        box-shadow: 0 0 0 4px rgba(196, 75, 50, 0.3), 0 0 16px rgba(196, 75, 50, 0.35);
+        animation: pulse 1s ease-in-out infinite;
+        z-index: 3;
+        opacity: 1;
+      }
+      .highlight.dim {
+        opacity: 0.32;
+        background: rgba(26, 25, 22, 0.12);
+        border-color: rgba(26, 25, 22, 0.15);
+        border-width: 1px;
+      }
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.03); opacity: 0.94; }
+      }
+      #zoomHint {
+        position: fixed; bottom: 8px; right: 8px; z-index: 50;
+        font: 11px/1.3 system-ui, sans-serif; color: #666;
+        background: rgba(255,255,255,0.88); padding: 4px 8px; border-radius: 8px;
+        pointer-events: none; opacity: 0.85;
+      }
+      ${previewErrorStyles()}
+    </style>
+  </head>
+  <body>
+    <div id="errorState">${PDF_PREVIEW_LOAD_ERROR}</div>
+    <div id="viewport">
+      <div id="wrap"></div>
+    </div>
+    <div id="zoomHint">Scrollen · Zwei Finger zum Zoomen</div>
+    <script>
+      const highlightActive = ${highlightActive ? 'true' : 'false'};
+      const highQuality = ${highQuality ? 'true' : 'false'};
+      ${previewBootHelpers(PDF_PREVIEW_LOAD_ERROR, workerSrc)}
+
+      const highlights = ${highlightsJson};
+      let pdfDoc = null;
+      let activeFieldId = '';
+      let pinchScale = 1;
+      let pinchStartDistance = 0;
+      let pinchStartScale = 1;
+      const pageMeta = new Map();
+
+      const MAX_CANVAS_PIXELS = 12000000;
+      const viewport = document.getElementById('viewport');
+      const wrap = document.getElementById('wrap');
+
+      function pageHighlights(pageNumber) {
+        return highlights.filter((entry) => Number(entry.page || 1) === pageNumber);
+      }
+
+      function drawPageOverlay(pageNumber, overlayEl, viewportObj, viewportScale) {
+        overlayEl.innerHTML = '';
+        const dpr = Math.min(window.devicePixelRatio || 1, highQuality ? 3 : 2);
+        overlayEl.style.width = Math.ceil(viewportObj.width / dpr) + 'px';
+        overlayEl.style.height = Math.ceil(viewportObj.height / dpr) + 'px';
+
+        for (const entry of pageHighlights(pageNumber)) {
+          if (!Array.isArray(entry.rect) || entry.rect.length < 4) continue;
+          const [x1, y1, x2, y2] = entry.rect;
+          const left = Math.min(x1, x2) * viewportScale;
+          const top = (viewportObj.height / viewportScale - Math.max(y1, y2)) * viewportScale;
+          const width = Math.abs(x2 - x1) * viewportScale;
+          const height = Math.abs(y2 - y1) * viewportScale;
+          const box = document.createElement('div');
+          const isActive = entry.fieldId === activeFieldId;
+          let className = 'highlight';
+          if (isActive) className += ' active';
+          else if (highlightActive && activeFieldId) className += ' dim';
+          box.className = className;
+          box.style.left = left + 'px';
+          box.style.top = top + 'px';
+          box.style.width = width + 'px';
+          box.style.height = height + 'px';
+          overlayEl.appendChild(box);
+        }
+      }
+
+      function refreshAllOverlays() {
+        for (const sheet of wrap.querySelectorAll('.page-sheet')) {
+          const pageNumber = Number(sheet.dataset.page || 1);
+          const meta = pageMeta.get(pageNumber);
+          const overlayEl = sheet.querySelector('.overlay');
+          if (!meta || !overlayEl) continue;
+          drawPageOverlay(pageNumber, overlayEl, meta.viewportObj, meta.viewportScale);
+        }
+      }
+
+      function scrollToActiveField() {
+        const active = document.querySelector('.highlight.active');
+        if (!active || !viewport) return;
+        const sheet = active.closest('.page-sheet');
+        if (!sheet) return;
+        const sheetTop = sheet.offsetTop;
+        const fieldTop = active.offsetTop;
+        const fieldHeight = active.offsetHeight || 24;
+        const targetY = sheetTop + fieldTop - viewport.clientHeight * 0.32 + fieldHeight / 2;
+        viewport.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+      }
+
+      function resetPinchZoom() {
+        pinchScale = 1;
+        wrap.style.transform = 'scale(1)';
+      }
+
+      function touchDistance(touches) {
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.hypot(dx, dy);
+      }
+
+      function applyPinchScale() {
+        wrap.style.transform = 'scale(' + pinchScale + ')';
+        wrap.style.transformOrigin = 'center top';
+      }
+
+      viewport.addEventListener('touchstart', (event) => {
+        if (event.touches.length === 2) {
+          pinchStartDistance = touchDistance(event.touches);
+          pinchStartScale = pinchScale;
+        }
+      }, { passive: true });
+
+      viewport.addEventListener('touchmove', (event) => {
+        if (event.touches.length !== 2 || pinchStartDistance <= 0) return;
+        event.preventDefault();
+        const ratio = touchDistance(event.touches) / pinchStartDistance;
+        pinchScale = Math.min(4, Math.max(1, pinchStartScale * ratio));
+        applyPinchScale();
+      }, { passive: false });
+
+      viewport.addEventListener('touchend', () => {
+        if (pinchScale <= 1.01) resetPinchZoom();
+      }, { passive: true });
+
+      async function renderPageSheet(pageNumber) {
+        const page = await pdfDoc.getPage(pageNumber);
+        const sheet = document.createElement('div');
+        sheet.className = 'page-sheet';
+        sheet.dataset.page = String(pageNumber);
+
+        const frame = document.createElement('div');
+        frame.className = 'page-frame';
+        const canvas = document.createElement('canvas');
+        const overlay = document.createElement('div');
+        overlay.className = 'overlay';
+        frame.appendChild(canvas);
+        frame.appendChild(overlay);
+        sheet.appendChild(frame);
+        wrap.appendChild(sheet);
+
+        const context = canvas.getContext('2d');
+        const baseViewport = page.getViewport({ scale: 1 });
+        const dpr = Math.min(window.devicePixelRatio || 1, highQuality ? 3 : 2);
+        const maxCssWidth = window.innerWidth || 860;
+        const fitScale = maxCssWidth / baseViewport.width;
+        const viewportScale = Math.min(fitScale, highQuality ? 2.6 : 2.2);
+
+        let pixelScale = viewportScale * dpr;
+        const pixelArea = baseViewport.width * baseViewport.height * pixelScale * pixelScale;
+        if (pixelArea > MAX_CANVAS_PIXELS) {
+          pixelScale = Math.sqrt(MAX_CANVAS_PIXELS / (baseViewport.width * baseViewport.height));
+        }
+
+        const viewportObj = page.getViewport({ scale: pixelScale });
+        canvas.width = Math.ceil(viewportObj.width);
+        canvas.height = Math.ceil(viewportObj.height);
+        canvas.style.width = Math.ceil(viewportObj.width / dpr) + 'px';
+        canvas.style.height = Math.ceil(viewportObj.height / dpr) + 'px';
+
+        await page.render({ canvasContext: context, viewport: viewportObj }).promise;
+        pageMeta.set(pageNumber, { viewportObj, viewportScale });
+        drawPageOverlay(pageNumber, overlay, viewportObj, viewportScale);
+      }
+
+      async function boot() {
+        if (!pdfjsLib) return;
+        const started = performance.now();
+        try {
+          const data = atob('${base64}');
+          const bytes = new Uint8Array(data.length);
+          for (let i = 0; i < data.length; i += 1) bytes[i] = data.charCodeAt(i);
+          pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+          wrap.innerHTML = '';
+          pageMeta.clear();
+          for (let pageNumber = 1; pageNumber <= pdfDoc.numPages; pageNumber += 1) {
+            await renderPageSheet(pageNumber);
+          }
+          resetPinchZoom();
+          post({
+            type: 'state',
+            page: 1,
+            pageCount: pdfDoc.numPages,
+            ready: true,
+            error: null,
+            renderMs: Math.round(performance.now() - started)
+          });
+        } catch (error) {
+          showPreviewError('PDF preview boot failed', error);
+        }
+      }
+
+      function handleCommand(raw) {
+        try {
+          const message = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          if (!message || !message.type) return;
+          if (message.type === 'setActive') {
+            activeFieldId = String(message.fieldId || '');
+            refreshAllOverlays();
+            if (activeFieldId) {
+              requestAnimationFrame(() => scrollToActiveField());
+            }
+          }
+          if (message.type === 'resetZoom') {
+            resetPinchZoom();
+          }
+        } catch (error) {
+          console.error('PDF preview command failed', error);
+        }
+      }
+
+      document.addEventListener('message', (event) => handleCommand(event.data));
+      window.addEventListener('message', (event) => handleCommand(event.data));
+      void boot();
+    </script>
+  </body>
+</html>`;
+}

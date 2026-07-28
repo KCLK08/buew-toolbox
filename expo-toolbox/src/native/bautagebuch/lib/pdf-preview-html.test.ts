@@ -7,6 +7,7 @@ import {
   buildFieldPreviewHtml,
   buildPdfJsInlineScript,
   buildPdfWorkerInlineScript,
+  buildScrollableFieldPreviewHtml,
   buildSimplePdfPreviewHtml,
   escapeInlineScript,
   PDF_PREVIEW_LOAD_ERROR,
@@ -100,6 +101,21 @@ test('buildSimplePdfPreviewHtml uses scrollable multi-page layout without field 
   assert.match(html, /Scrollen · Zwei Finger zum Zoomen/);
   assert.doesNotMatch(html, /id="overlay"/);
   assert.doesNotMatch(html, /setPage/);
+});
+
+test('buildScrollableFieldPreviewHtml uses scrollable layout with field overlays', () => {
+  const html = buildScrollableFieldPreviewHtml({
+    base64: 'UEZERg==',
+    ...mockAssets,
+    highlights: [{ fieldId: 'f1', page: 1, rect: [10, 10, 50, 50] }],
+    highlightActive: true
+  });
+
+  assert.match(html, /renderPageSheet/);
+  assert.match(html, /\.overlay/);
+  assert.match(html, /Scrollen · Zwei Finger zum Zoomen/);
+  assert.doesNotMatch(html, /setPage/);
+  assert.doesNotMatch(html, /Seite/);
 });
 
 test('offline simulation: bundled asset files exist for pdf.js 3.11.174', () => {

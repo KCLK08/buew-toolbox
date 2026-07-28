@@ -22,9 +22,13 @@ import {
 } from '../lib/setup-field-hints.js';
 import { mutateSetupModel } from '../hooks/useSetupAutosave';
 import type { BautagebuchTemplate, DetectedField } from '../types';
-import { SetupPdfFieldPreview } from './SetupPdfFieldPreview';
-import { PreviewOverlayPanel } from './PreviewOverlayPanel';
 import { SetupTemplateManager } from './SetupTemplateManager';
+
+type SetupPreviewField = {
+  fieldId: string;
+  label: string;
+  page: number;
+};
 
 type SetupField = {
   fieldId: string;
@@ -82,8 +86,7 @@ type Props = {
   info?: string | null;
   error?: string | null;
   embedded?: boolean;
-  showPreview?: boolean;
-  onClosePreview?: () => void;
+  onActiveFieldChange?: (field: SetupPreviewField | null) => void;
 };
 
 
@@ -149,7 +152,7 @@ export function SetupEditor({
   error,
   embedded = false,
   showPreview = false,
-  onClosePreview
+  onActiveFieldChange
 }: Props) {
   const insets = useSafeAreaInsets();
   const singleSections = (setupModel.single_sections || []) as SetupSingleSection[];
@@ -198,6 +201,19 @@ export function SetupEditor({
 
   const activeFieldLabel =
     activeField?.label || activeField?.fieldName || activeField?.fieldId || 'Feld in der Liste auswählen';
+
+  useEffect(() => {
+    if (!onActiveFieldChange) return;
+    if (!activeField?.fieldId) {
+      onActiveFieldChange(null);
+      return;
+    }
+    onActiveFieldChange({
+      fieldId: String(activeField.fieldId),
+      label: activeFieldLabel,
+      page: activeFieldPage
+    });
+  }, [activeField, activeFieldLabel, activeFieldPage, onActiveFieldChange]);
 
   useEffect(() => {
     if (mode !== 'single' || !activeSingle) return;
@@ -663,20 +679,6 @@ export function SetupEditor({
         )}
 
       </ScrollView>
-
-      {showPreview && templatePdfPath ? (
-        <PreviewOverlayPanel title="PDF-Vorschau" onClose={onClosePreview}>
-          <SetupPdfFieldPreview
-            variant="overlay"
-            emphasizeActiveHighlight
-            pdfPath={templatePdfPath}
-            detectedFields={detectedFields}
-            activeFieldId={activeField?.fieldId || null}
-            activeFieldLabel={activeFieldLabel}
-            activeFieldPage={activeFieldPage}
-          />
-        </PreviewOverlayPanel>
-      ) : null}
     </View>
   );
 }
