@@ -13,7 +13,8 @@ import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSe
 import {
   hasTableSections,
   getWizardState,
-  listSetupSections
+  listSetupSections,
+  resolveSetupEntryPath
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
 import { validateSetupModel } from '../../../../src/native/bautagebuch/lib/setup-model.js';
 import {
@@ -71,7 +72,7 @@ export default function SetupFieldsScreen() {
     const legacy = templateKind === 'builtin-etb' || hasTableSections(setupModel);
     if (legacy) return;
     if (getWizardState(setupModel).step !== 'fields') {
-      router.replace(`/bautagebuch/setup/${templateId}/mapping`);
+      router.replace(resolveSetupEntryPath(String(templateId), setupModel, templateKind));
     }
   }, [loading, setupModel, templateKind, templateId, router]);
 
@@ -186,7 +187,7 @@ export default function SetupFieldsScreen() {
 
   return (
     <Screen
-      title="Schritt 2"
+      title="Schritt 3 von 3"
       subtitle={templateName ? `Feldeinstellungen · ${templateName}` : 'Feldeinstellungen'}
       showBack
       scroll={false}

@@ -408,7 +408,7 @@ export async function importTemplateFromDocument(): Promise<{ templateId: string
       pageCount: scanResult.pageCount,
       detectedFields: detectedFields as never[]
     }),
-    { step: 'mapping' }
+    { step: 'structure' }
   );
 
   await saveSetupModel(template.templateId, setupModel, 'in_progress');

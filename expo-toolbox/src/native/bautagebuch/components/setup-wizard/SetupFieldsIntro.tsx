@@ -24,8 +24,8 @@ export function SetupFieldsIntro({
   return (
     <View style={styles.root}>
       <View style={styles.stepRow}>
-        <MaterialCommunityIcons name="numeric-2-circle" size={18} color={colors.accent} />
-        <Text style={styles.step}>Schritt 2 von 2</Text>
+        <MaterialCommunityIcons name="numeric-3-circle" size={18} color={colors.accent} />
+        <Text style={styles.step}>Schritt 3 von 3</Text>
       </View>
       <Text style={styles.title}>Felder konfigurieren</Text>
       <Text style={styles.copy}>

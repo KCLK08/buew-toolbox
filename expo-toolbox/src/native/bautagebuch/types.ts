@@ -54,11 +54,12 @@ export type BautagebuchTemplate = {
   deleted_at: string | null;
 };
 
-export type SetupWizardStep = 'mapping' | 'fields';
+export type SetupWizardStep = 'structure' | 'assign' | 'fields';
 
 export type SetupWizardGroup = {
   sectionId: string;
   label: string;
+  description?: string;
 };
 
 export type SetupWizardTableColumn = {
@@ -83,9 +84,34 @@ export type SetupWizardTableAssignment = {
   columnId: string;
 };
 
+export type SetupStructureGroup = {
+  id: string;
+  name: string;
+  description?: string;
+  type: 'group';
+  order: number;
+};
+
+export type SetupStructureTableColumn = {
+  id: string;
+  name: string;
+  order: number;
+};
+
+export type SetupStructureTable = {
+  id: string;
+  name: string;
+  type: 'table';
+  columns: SetupStructureTableColumn[];
+  order: number;
+};
+
+export type SetupStructureItem = SetupStructureGroup | SetupStructureTable;
+
 export type SetupWizardState = {
   step: SetupWizardStep;
   currentFieldIndex: number;
+  structure: SetupStructureItem[];
   groups: SetupWizardGroup[];
   tables: SetupWizardTable[];
   assignments: Record<string, string>;

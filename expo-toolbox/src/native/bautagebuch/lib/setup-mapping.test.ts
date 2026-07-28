@@ -11,6 +11,7 @@ import {
   rebuildSectionsFromWizard,
   resolveCurrentMappingIndex,
   resolveOverlayPlacement,
+  resolveSetupEntryPath,
   checkMappingTransition,
   getMappingCompletionSummary,
   sortMappingFields,
@@ -52,11 +53,38 @@ test('ensureWizardInitialized does not reset wizard step', () => {
 test('ensureWizardInitialized starts new templates without preset groups', () => {
   const next = ensureWizardInitialized({ single_sections: [] });
   assert.deepEqual(getWizardState(next).groups, []);
+  assert.equal(getWizardState(next).step, 'structure');
 });
 
 test('getWizardState returns empty groups when none were saved', () => {
   const wizard = getWizardState({});
   assert.deepEqual(wizard.groups, []);
+});
+
+test('resolveSetupEntryPath routes wizard steps to setup screens', () => {
+  assert.equal(
+    String(resolveSetupEntryPath('tpl_1', withWizardState({}, { step: 'structure' }))),
+    '/bautagebuch/setup/tpl_1/mapping'
+  );
+  assert.equal(
+    String(resolveSetupEntryPath('tpl_1', withWizardState({}, { step: 'assign' }))),
+    '/bautagebuch/setup/tpl_1/assign'
+  );
+  assert.equal(
+    String(resolveSetupEntryPath('tpl_1', withWizardState({}, { step: 'fields' }))),
+    '/bautagebuch/setup/tpl_1/fields'
+  );
+});
+
+test('legacy mapping step with assignments resolves to assign', () => {
+  const wizard = getWizardState({
+    wizard: {
+      step: 'assign',
+      assignments: { a: 'g1' },
+      groups: [{ sectionId: 'g1', label: 'G1' }]
+    }
+  });
+  assert.equal(wizard.step, 'assign');
 });
 
 test('isMappingComplete treats deferred fields as handled', () => {
@@ -72,7 +100,7 @@ test('rebuildSectionsFromWizard keeps deferred fields in fallback group', () => 
   let model = withWizardState(
     { single_sections: [] },
     {
-      step: 'mapping',
+      step: 'assign',
       groups: [
         { sectionId: 'kopfdaten', label: 'Kopfdaten' },
         { sectionId: 'sonstiges', label: 'Sonstiges' }
@@ -189,7 +217,7 @@ test('rebuildSectionsFromWizard preserves field options and builds table section
   let model = withWizardState(
     { single_sections: [] },
     {
-      step: 'mapping',
+      step: 'assign',
       groups: [{ sectionId: 'sonstiges', label: 'Sonstiges' }],
       tables: [
         {

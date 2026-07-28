@@ -1,23 +1,28 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
+import { Screen } from '../../../../src/components/mobile';
 import { colors, spacing, typography } from '../../../../src/constants/theme';
-import { SetupStructureStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupStructureStep';
+import { getDetectedFields } from '../../../../src/native/bautagebuch/db/database';
+import { SetupMappingStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupMappingStep';
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
 import {
   ensureWizardInitialized,
-  getWizardState
+  getWizardState,
+  rebuildSectionsFromWizard,
+  sortMappingFields
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
 import { getTemplateBundle } from '../../../../src/native/bautagebuch/services/templateService';
 
-export default function SetupStructureScreen() {
+export default function SetupAssignScreen() {
   const router = useRouter();
   const { templateId } = useLocalSearchParams<{ templateId: string }>();
   const [loading, setLoading] = useState(true);
+  const [templateName, setTemplateName] = useState('');
   const [templateStatus, setTemplateStatus] = useState('');
   const [pdfPath, setPdfPath] = useState<string | null>(null);
+  const [detectedFields, setDetectedFields] = useState<Awaited<ReturnType<typeof getDetectedFields>>>([]);
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { schedule, flush } = useSetupAutosave(String(templateId || ''));
@@ -28,6 +33,8 @@ export default function SetupStructureScreen() {
     setError(null);
     try {
       const bundle = await getTemplateBundle(templateId);
+      const fields = await getDetectedFields(templateId);
+      const sortedFields = sortMappingFields(fields);
       const wizard = getWizardState(bundle.setupModel);
 
       if (wizard.step === 'fields') {
@@ -35,46 +42,61 @@ export default function SetupStructureScreen() {
         router.replace(`/bautagebuch/setup/${templateId}/fields`);
         return;
       }
-      if (wizard.step === 'assign') {
+      if (wizard.step === 'structure') {
         setLoading(false);
-        router.replace(`/bautagebuch/setup/${templateId}/assign` as Href);
+        router.replace(`/bautagebuch/setup/${templateId}/mapping`);
         return;
       }
 
       const initialized = ensureWizardInitialized(bundle.setupModel);
+      setTemplateName(bundle.template.templateName);
       setTemplateStatus(bundle.template.status);
       setPdfPath(bundle.template.pdfPath);
+      setDetectedFields(fields);
       setSetupModel(initialized);
+
+      if (sortedFields.length === 0) {
+        const rebuilt = rebuildSectionsFromWizard(initialized, sortedFields);
+        setSetupModel(rebuilt);
+        schedule(rebuilt);
+        await flush();
+        setLoading(false);
+        router.replace(`/bautagebuch/setup/${templateId}/fields`);
+        return;
+      }
 
       if (initialized !== bundle.setupModel) {
         schedule(initialized);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Setup konnte nicht geladen werden.');
+      setError(err instanceof Error ? err.message : 'Feldzuordnung konnte nicht geladen werden.');
     } finally {
       setLoading(false);
     }
-  }, [templateId, schedule, router]);
+  }, [templateId, schedule, flush, router]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const mappingFields = useMemo(() => sortMappingFields(detectedFields), [detectedFields]);
 
   const handleChange = (next: Record<string, unknown>) => {
     setSetupModel(next);
     schedule(next);
   };
 
-  const handleComplete = (next: Record<string, unknown>) => {
-    setSetupModel(next);
-    schedule(next);
+  const handleComplete = (sourceModel: Record<string, unknown>) => {
+    const rebuilt = rebuildSectionsFromWizard(sourceModel, mappingFields);
+    setSetupModel(rebuilt);
+    schedule(rebuilt);
     void (async () => {
       await flush();
-      router.replace(`/bautagebuch/setup/${templateId}/assign` as Href);
+      router.replace(`/bautagebuch/setup/${templateId}/fields`);
     })();
   };
 
-  const handleBack = async () => {
+  const handleFinishLater = async () => {
     await flush();
     router.back();
   };
@@ -82,34 +104,47 @@ export default function SetupStructureScreen() {
   const readOnly = templateStatus === 'archived';
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+    <Screen
+      title="Schritt 2 von 3"
+      subtitle={templateName ? `Feldzuordnung · ${templateName}` : 'Feldzuordnung'}
+      showBack
+      scroll={false}
+      scrollableHeader
+      contentStyle={styles.screenContent}
+    >
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />
-          <Text style={styles.muted}>Setup wird vorbereitet…</Text>
+          <Text style={styles.muted}>PDF wird vorbereitet…</Text>
         </View>
       ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {!loading && setupModel ? (
-        <SetupStructureStep
+        <SetupMappingStep
+          templateId={String(templateId)}
+          templateName={templateName}
           pdfPath={pdfPath}
+          detectedFields={detectedFields}
+          mappingFields={mappingFields}
           setupModel={setupModel}
           readOnly={readOnly}
           onChange={handleChange}
           onComplete={handleComplete}
-          onBack={() => void handleBack()}
+          onFinishLater={() => void handleFinishLater()}
+          onTemplateRenamed={setTemplateName}
         />
       ) : null}
-    </SafeAreaView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
+  screenContent: {
     flex: 1,
-    backgroundColor: colors.bg
+    paddingHorizontal: 0,
+    paddingTop: 0
   },
   center: {
     flex: 1,
