@@ -668,6 +668,19 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
       .overlay {
         position: absolute; inset: 0; pointer-events: none;
       }
+      .draw-layer {
+        position: absolute; inset: 0; z-index: 4; pointer-events: none;
+      }
+      .page-frame.draw-enabled .draw-layer {
+        pointer-events: auto; cursor: crosshair;
+      }
+      .draw-preview {
+        position: absolute;
+        border: 2px dashed rgba(196, 75, 50, 0.95);
+        background: rgba(196, 75, 50, 0.15);
+        border-radius: 4px;
+        pointer-events: none;
+      }
       .highlight {
         position: absolute;
         border: 2px solid rgba(47, 111, 237, 0.45);
@@ -720,6 +733,10 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
       let pinchStartDistance = 0;
       let pinchStartScale = 1;
       const pageMeta = new Map();
+      let drawModeEnabled = false;
+      let drawStart = null;
+      let drawPreviewEl = null;
+      let drawPageNumber = 1;
 
       const MAX_CANVAS_PIXELS = 12000000;
       const viewport = document.getElementById('viewport');
@@ -761,6 +778,98 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           box.style.height = height + 'px';
           overlayEl.appendChild(box);
         }
+      }
+
+      function setDrawMode(enabled) {
+        drawModeEnabled = Boolean(enabled);
+        for (const frame of wrap.querySelectorAll('.page-frame')) {
+          frame.classList.toggle('draw-enabled', drawModeEnabled);
+        }
+        if (!drawModeEnabled && drawPreviewEl) {
+          drawPreviewEl.remove();
+          drawPreviewEl = null;
+          drawStart = null;
+        }
+      }
+
+      function cssToPdfRect(pageNumber, cssX, cssY, cssWidth, cssHeight) {
+        const meta = pageMeta.get(pageNumber);
+        if (!meta) return null;
+        const scale = meta.cssScale;
+        const pdfHeight = meta.baseViewportHeight;
+        const x = cssX / scale;
+        const width = cssWidth / scale;
+        const height = cssHeight / scale;
+        const y = pdfHeight - (cssY + cssHeight) / scale;
+        return { x, y, width, height };
+      }
+
+      function attachDrawHandlers(frame, pageNumber) {
+        const layer = frame.querySelector('.draw-layer');
+        if (!layer || layer.dataset.bound === '1') return;
+        layer.dataset.bound = '1';
+
+        const clearPreview = () => {
+          if (drawPreviewEl) {
+            drawPreviewEl.remove();
+            drawPreviewEl = null;
+          }
+          drawStart = null;
+        };
+
+        const finishDraw = (clientX, clientY) => {
+          if (!drawStart || !drawPreviewEl) return;
+          const rect = frame.getBoundingClientRect();
+          const endX = clientX - rect.left;
+          const endY = clientY - rect.top;
+          const left = Math.min(drawStart.x, endX);
+          const top = Math.min(drawStart.y, endY);
+          const width = Math.abs(endX - drawStart.x);
+          const height = Math.abs(endY - drawStart.y);
+          clearPreview();
+          if (width < 8 || height < 8) return;
+          const pdfRect = cssToPdfRect(pageNumber, left, top, width, height);
+          if (!pdfRect) return;
+          post({
+            type: 'fieldDrawn',
+            page: pageNumber,
+            rect: pdfRect
+          });
+        };
+
+        layer.addEventListener('pointerdown', (event) => {
+          if (!drawModeEnabled) return;
+          event.preventDefault();
+          const rect = frame.getBoundingClientRect();
+          drawPageNumber = pageNumber;
+          drawStart = {
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top
+          };
+          drawPreviewEl = document.createElement('div');
+          drawPreviewEl.className = 'draw-preview';
+          layer.appendChild(drawPreviewEl);
+        });
+
+        layer.addEventListener('pointermove', (event) => {
+          if (!drawModeEnabled || !drawStart || !drawPreviewEl) return;
+          const rect = frame.getBoundingClientRect();
+          const currentX = event.clientX - rect.left;
+          const currentY = event.clientY - rect.top;
+          const left = Math.min(drawStart.x, currentX);
+          const top = Math.min(drawStart.y, currentY);
+          drawPreviewEl.style.left = left + 'px';
+          drawPreviewEl.style.top = top + 'px';
+          drawPreviewEl.style.width = Math.abs(currentX - drawStart.x) + 'px';
+          drawPreviewEl.style.height = Math.abs(currentY - drawStart.y) + 'px';
+        });
+
+        layer.addEventListener('pointerup', (event) => {
+          if (!drawModeEnabled) return;
+          finishDraw(event.clientX, event.clientY);
+        });
+
+        layer.addEventListener('pointercancel', () => clearPreview());
       }
 
       function refreshAllOverlays() {
@@ -831,10 +940,15 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         const canvas = document.createElement('canvas');
         const overlay = document.createElement('div');
         overlay.className = 'overlay';
+        const drawLayer = document.createElement('div');
+        drawLayer.className = 'draw-layer';
         frame.appendChild(canvas);
         frame.appendChild(overlay);
+        frame.appendChild(drawLayer);
         sheet.appendChild(frame);
         wrap.appendChild(sheet);
+        attachDrawHandlers(frame, pageNumber);
+        frame.classList.toggle('draw-enabled', drawModeEnabled);
 
         const context = canvas.getContext('2d');
         const baseViewport = page.getViewport({ scale: 1 });
@@ -904,6 +1018,9 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         try {
           const message = typeof raw === 'string' ? JSON.parse(raw) : raw;
           if (!message || !message.type) return;
+          if (message.type === 'setDrawMode') {
+            setDrawMode(Boolean(message.enabled));
+          }
           if (message.type === 'setActive') {
             activeFieldId = String(message.fieldId || '');
             refreshAllOverlays();

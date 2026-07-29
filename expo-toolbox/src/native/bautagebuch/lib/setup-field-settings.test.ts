@@ -66,6 +66,8 @@ test('applyFieldTypeChange seeds select options from detection', () => {
       page: 1,
       orderIndex: 0,
       rect: null,
+      geometry: null,
+      source: 'acroform',
       createdAt: '',
       updatedAt: ''
     }

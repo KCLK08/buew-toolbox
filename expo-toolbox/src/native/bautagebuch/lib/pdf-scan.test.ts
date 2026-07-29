@@ -117,6 +117,25 @@ async function run() {
     );
   });
 
+  await test('detectedFieldsNeedRescan skips manual fields without geometry', () => {
+    assert.equal(
+      detectedFieldsNeedRescan([
+        {
+          fieldId: 'manual_1',
+          type: 'signature',
+          page: 1,
+          rect: null,
+          source: 'manual'
+        }
+      ]),
+      false
+    );
+  });
+
+  await test('detectedFieldsNeedRescan when field list empty', () => {
+    assert.equal(detectedFieldsNeedRescan([]), false);
+  });
+
   await test('detectedFieldsNeedRescan when complete', () => {
     assert.equal(
       detectedFieldsNeedRescan([

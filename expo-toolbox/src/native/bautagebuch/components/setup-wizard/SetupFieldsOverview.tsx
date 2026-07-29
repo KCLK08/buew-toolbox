@@ -12,6 +12,7 @@ import {
   resolveFieldFromTarget,
   resolveTargetDisplayName
 } from '../../lib/setup-field-settings';
+import { fieldSourceLabel } from '../../lib/template-field';
 import { getWizardState } from '../../lib/setup-mapping';
 import type { DetectedField, FieldSettingsTarget } from '../../types';
 
@@ -92,12 +93,19 @@ export function SetupFieldsOverview({
             const field = resolveFieldFromTarget(setupModel, target);
             const status = fieldStatus(target, wizard, currentTargetKey);
             const label = resolveTargetDisplayName(setupModel, target, field);
+            const detected =
+              target.kind !== 'table-meta' && target.fieldId
+                ? detectedFields.find((entry) => entry.fieldId === target.fieldId) ?? null
+                : null;
             const meta =
               target.kind === 'table-meta'
                 ? 'Tabellenstruktur'
-                : field?.page
-                  ? `Seite ${field.page}`
-                  : '';
+                : [
+                    field?.page ? `Seite ${field.page}` : '',
+                    detected ? fieldSourceLabel(detected.source) : ''
+                  ]
+                    .filter(Boolean)
+                    .join(' · ');
             return (
               <Pressable
                 key={target.key}

@@ -20,7 +20,9 @@ function fieldEntry(sourceField, { label = '' } = {}) {
       skipped: false,
       multiline: false,
       page: Number(sourceField.page || 1),
-      rect: Array.isArray(sourceField.rect) ? sourceField.rect.slice(0, 4) : null
+      rect: Array.isArray(sourceField.rect) ? sourceField.rect.slice(0, 4) : null,
+      geometry: sourceField.geometry ?? null,
+      source: String(sourceField.source || 'acroform')
     };
   }
 
@@ -34,7 +36,9 @@ function fieldEntry(sourceField, { label = '' } = {}) {
     skipped: true,
     multiline: false,
     page: 1,
-    rect: null
+    rect: null,
+    geometry: null,
+    source: 'acroform'
   };
 }
 

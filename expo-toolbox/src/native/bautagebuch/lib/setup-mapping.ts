@@ -2,6 +2,8 @@ import type { Href } from 'expo-router';
 
 import type {
   DetectedField,
+  FieldGeometry,
+  FieldSource,
   SetupFieldConfig,
   SetupStructureItem,
   SetupWizardGroup,
@@ -10,6 +12,7 @@ import type {
 } from '../types';
 import { updateStructureTable } from './setup-structure';
 import { buildTableSectionsFromWizard } from './setup-wizard-tables';
+import { getFieldPage, fieldToPreviewLegacyRect } from './template-field';
 import { buildLegacySectionOrder, syncSectionOrder } from './setup-model.js';
 
 export type MappingField = {
@@ -21,6 +24,8 @@ export type MappingField = {
   page: number;
   orderIndex: number;
   rect: number[] | null;
+  geometry: FieldGeometry | null;
+  source: FieldSource;
 };
 
 export type MappingProgress = {
@@ -141,9 +146,11 @@ export function sortMappingFields(detectedFields: DetectedField[]): MappingField
       labelCandidate: String(field.labelCandidate || field.fieldName || 'Feld'),
       type: String(field.type || 'text'),
       options: Array.isArray(field.options) ? field.options.map((entry) => String(entry)) : [],
-      page: Number(field.page || 1),
+      page: getFieldPage(field),
       orderIndex: Number(field.orderIndex || 0),
-      rect: Array.isArray(field.rect) ? field.rect.slice(0, 4) : null
+      rect: fieldToPreviewLegacyRect(field),
+      geometry: field.geometry,
+      source: field.source || 'acroform'
     }));
 }
 
@@ -339,7 +346,7 @@ export function getNextUnassignedIndex(
 }
 
 export function isMappingComplete(fields: MappingField[], wizard: SetupWizardState): boolean {
-  if (fields.length === 0) return true;
+  if (fields.length === 0) return false;
   return fields.every(
     (field) =>
       Boolean(wizard.assignments[field.fieldId]) ||
@@ -532,7 +539,9 @@ function fieldConfigFromDetected(
     defaultValue: String(existing?.defaultValue || ''),
     hint: String(existing?.hint || ''),
     page: field.page,
-    rect: field.rect
+    rect: field.rect,
+    geometry: field.geometry,
+    source: field.source
   };
 }
 

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutAnimation, Platform, StyleSheet, UIManager, View } from 'react-native';
+import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '../../../../components/mobile';
-import { colors, spacing } from '../../../../constants/theme';
+import { colors, spacing, typography } from '../../../../constants/theme';
 import { hapticSuccess } from '../../../../lib/haptics';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
 import {
@@ -18,14 +19,18 @@ import {
   resolveFieldDisplayLabel,
   type MappingField
 } from '../../lib/setup-mapping';
-import type { DetectedField, SetupStructureItem } from '../../types';
+import { createManualFieldInput } from '../../lib/template-field';
+import { getStructureItems } from '../../lib/setup-structure';
+import type { DetectedField, FieldRect, SetupStructureItem } from '../../types';
 import { SetupPdfFieldPreview } from '../SetupPdfFieldPreview';
 import { SetupAssignFieldOverview } from './SetupAssignFieldOverview';
 import { SetupAssignGroupFieldModal } from './SetupAssignGroupFieldModal';
 import { SetupAssignHeader, type SetupAssignViewTab } from './SetupAssignHeader';
 import { SetupAssignProgressBar } from './SetupAssignProgressBar';
+import { SetupAssignSourceBanner } from './SetupAssignSourceBanner';
 import { SetupAssignStructurePanel } from './SetupAssignStructurePanel';
 import { SetupAssignTableColumnModal } from './SetupAssignTableColumnModal';
+import { SetupManualFieldModal } from './SetupManualFieldModal';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -45,6 +50,11 @@ type Props = {
   onChange: (next: Record<string, unknown>) => void;
   onComplete: (next: Record<string, unknown>) => void;
   onBack: () => void;
+  onFieldsChanged?: () => void;
+  onCreateManualField?: (
+    field: ReturnType<typeof createManualFieldInput>,
+    target: { kind: 'group'; id: string } | { kind: 'table'; id: string } | null
+  ) => Promise<DetectedField | null>;
 };
 
 export function SetupAssignStep({
@@ -55,13 +65,17 @@ export function SetupAssignStep({
   readOnly = false,
   onChange,
   onComplete,
-  onBack
+  onBack,
+  onFieldsChanged,
+  onCreateManualField
 }: Props) {
   const insets = useSafeAreaInsets();
   const indexSyncedRef = useRef(false);
   const [activeTab, setActiveTab] = useState<SetupAssignViewTab>('pdf');
   const [pendingTarget, setPendingTarget] = useState<PendingTarget>(null);
   const [showFieldOverview, setShowFieldOverview] = useState(false);
+  const [drawMode, setDrawMode] = useState(false);
+  const [pendingDraw, setPendingDraw] = useState<{ page: number; rect: FieldRect } | null>(null);
 
   const wizard = useMemo(() => getWizardState(setupModel), [setupModel]);
   const currentIndex = resolveCurrentMappingIndex(mappingFields, wizard);
@@ -167,6 +181,8 @@ export function SetupAssignStep({
         onOpenFields={() => setShowFieldOverview(true)}
       />
 
+      <SetupAssignSourceBanner fields={detectedFields} />
+
       <SetupAssignProgressBar
         progress={progress}
         fieldNumber={fieldNumber}
@@ -175,6 +191,24 @@ export function SetupAssignStep({
 
       <View style={styles.body}>
         <View style={[styles.tabPane, activeTab !== 'pdf' ? styles.tabPaneHidden : null]}>
+          {!readOnly ? (
+            <View style={styles.pdfToolbar}>
+              <Pressable
+                accessibilityRole="button"
+                style={[styles.addFieldBtn, drawMode ? styles.addFieldBtnActive : null]}
+                onPress={() => setDrawMode((value) => !value)}
+              >
+                <MaterialCommunityIcons
+                  name={drawMode ? 'gesture-tap' : 'plus'}
+                  size={18}
+                  color={drawMode ? colors.white : colors.accent}
+                />
+                <Text style={drawMode ? styles.addFieldLabelActive : styles.addFieldLabel}>
+                  {drawMode ? 'Bereich markieren…' : '+ Feld hinzufügen'}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
           <SetupPdfFieldPreview
             pdfPath={pdfPath}
             detectedFields={detectedFields}
@@ -183,6 +217,11 @@ export function SetupAssignStep({
             activeFieldPage={currentField?.page || 1}
             assignedFieldIds={assignedFieldIds}
             variant="assign"
+            drawMode={drawMode}
+            onFieldDrawn={(payload) => {
+              setDrawMode(false);
+              setPendingDraw(payload);
+            }}
           />
         </View>
         <View style={[styles.tabPane, activeTab !== 'assign' ? styles.tabPaneHidden : null]}>
@@ -230,6 +269,51 @@ export function SetupAssignStep({
         onClose={() => setShowFieldOverview(false)}
         onSelectField={selectFieldAtIndex}
       />
+
+      <SetupManualFieldModal
+        visible={Boolean(pendingDraw)}
+        page={pendingDraw?.page || 1}
+        rect={pendingDraw?.rect || { x: 0, y: 0, width: 0, height: 0 }}
+        setupModel={setupModel}
+        readOnly={readOnly}
+        onClose={() => setPendingDraw(null)}
+        onConfirm={(input) => {
+          if (!pendingDraw || !onCreateManualField) {
+            setPendingDraw(null);
+            return;
+          }
+          void (async () => {
+            const draft = createManualFieldInput({
+              name: input.name,
+              type: input.type,
+              page: pendingDraw.page,
+              rect: pendingDraw.rect
+            });
+            const saved = await onCreateManualField(draft, input.target);
+            setPendingDraw(null);
+            if (!saved) return;
+            void hapticSuccess();
+            onFieldsChanged?.();
+            if (input.target?.kind === 'group') {
+              const next = assignFieldToGroup(setupModel, saved.fieldId, input.target.id, input.name);
+              onChange(next);
+            } else if (input.target?.kind === 'table') {
+              const table = getStructureItems(setupModel).find(
+                (item) => item.id === input.target?.id && item.type === 'table'
+              );
+              const firstColumn =
+                table && table.type === 'table' ? table.columns[0]?.id : undefined;
+              if (firstColumn) {
+                const next = assignFieldToTableColumn(setupModel, saved.fieldId, input.target.id, {
+                  columnId: firstColumn,
+                  fieldLabel: input.name
+                });
+                onChange(next);
+              }
+            }
+          })();
+        }}
+      />
     </View>
   );
 }
@@ -256,5 +340,38 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panel,
     paddingHorizontal: spacing.pageX,
     paddingTop: spacing.xs
+  },
+  pdfToolbar: {
+    paddingHorizontal: spacing.pageX,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.panel,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  addFieldBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    minHeight: spacing.touchMin,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.panelElevated,
+    paddingHorizontal: spacing.md
+  },
+  addFieldBtnActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent
+  },
+  addFieldLabel: {
+    ...typography.caption,
+    color: colors.accent,
+    fontFamily: 'SpaceGrotesk_600SemiBold'
+  },
+  addFieldLabelActive: {
+    ...typography.caption,
+    color: colors.white,
+    fontFamily: 'SpaceGrotesk_600SemiBold'
   }
 });

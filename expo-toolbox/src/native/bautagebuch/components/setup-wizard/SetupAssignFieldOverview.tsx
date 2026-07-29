@@ -12,6 +12,7 @@ import {
   resolveFieldDisplayLabel,
   type MappingField
 } from '../../lib/setup-mapping';
+import { fieldSourceLabel } from '../../lib/template-field';
 
 type FieldStatus = 'assigned' | 'current' | 'open';
 
@@ -111,7 +112,9 @@ export function SetupAssignFieldOverview({
                 />
                 <View style={styles.rowCopy}>
                   <SingleLineText style={styles.rowLabel}>{label}</SingleLineText>
-                  <Text style={styles.rowMeta}>Seite {field.page}</Text>
+                  <Text style={styles.rowMeta}>
+                    Seite {field.page} · {fieldSourceLabel(field.source)}
+                  </Text>
                 </View>
                 <Text style={styles.rowIndex}>{index + 1}</Text>
               </Pressable>
