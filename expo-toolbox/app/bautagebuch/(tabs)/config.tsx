@@ -6,7 +6,7 @@ import { PrimaryButton, Screen } from '../../../src/components/mobile';
 import { colors, spacing, typography } from '../../../src/constants/theme';
 import { TemplateOverviewList } from '../../../src/native/bautagebuch/components/setup-wizard/TemplateOverviewList';
 import { getSetupModel } from '../../../src/native/bautagebuch/db/database';
-import { resolveSetupEntryPath } from '../../../src/native/bautagebuch/lib/setup-mapping';
+import { resolveTemplateOpenPath } from '../../../src/native/bautagebuch/lib/setup-mapping';
 import {
   archiveTemplate,
   canDeleteTemplate,
@@ -55,7 +55,7 @@ export default function BautagebuchConfigTabScreen() {
       Alert.alert('Vorlage', 'Setup-Modell nicht gefunden.');
       return;
     }
-    router.push(resolveSetupEntryPath(templateId, setupModel, template.templateKind));
+    router.push(resolveTemplateOpenPath(templateId, setupModel, template.status, template.templateKind));
   };
 
   const handleImport = async () => {
@@ -68,7 +68,7 @@ export default function BautagebuchConfigTabScreen() {
       setTemplates(templateList);
       const setupModel = await getSetupModel(result.templateId);
       if (setupModel) {
-        router.push(resolveSetupEntryPath(result.templateId, setupModel));
+        router.push(resolveTemplateOpenPath(result.templateId, setupModel, 'draft'));
       }
     } catch (err) {
       Alert.alert('Import', err instanceof Error ? err.message : 'Vorlage konnte nicht importiert werden.');

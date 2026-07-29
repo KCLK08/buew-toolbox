@@ -169,6 +169,65 @@ function buildSectionShellsFromStructure(structure: SetupStructureItem[]) {
   return { single_sections, table_sections, section_order };
 }
 
+function mergeSectionShellsFromStructure(
+  setupModel: Record<string, unknown>,
+  structure: SetupStructureItem[]
+) {
+  const shells = buildSectionShellsFromStructure(structure);
+  const existingSingle = Array.isArray(setupModel.single_sections) ? setupModel.single_sections : [];
+  const existingTable = Array.isArray(setupModel.table_sections) ? setupModel.table_sections : [];
+  const singleById = new Map(
+    existingSingle.map((section) => [String(section?.sectionId || ''), section])
+  );
+  const tableById = new Map(existingTable.map((table) => [String(table?.tableId || ''), table]));
+
+  const single_sections = shells.single_sections.map((shell) => {
+    const existing = singleById.get(String(shell.sectionId));
+    if (!existing) return shell;
+    return {
+      ...existing,
+      sectionId: shell.sectionId,
+      label: shell.label,
+      description: shell.description
+    };
+  });
+
+  const table_sections = shells.table_sections.map((shell) => {
+    const existing = tableById.get(String(shell.tableId));
+    if (!existing) return shell;
+    const shellColumns = Array.isArray(shell.columns) ? shell.columns : [];
+    const existingColumns = Array.isArray(existing.columns) ? existing.columns : [];
+    const shellColumnById = new Map(shellColumns.map((column) => [String(column.columnId), column]));
+    const mergedColumns = existingColumns.map(
+      (column: { columnId?: string; label?: string }) => {
+        const shellColumn = shellColumnById.get(String(column.columnId || ''));
+        return shellColumn ? { ...column, label: shellColumn.label } : column;
+      }
+    );
+    for (const column of shellColumns) {
+      if (
+        !mergedColumns.some(
+          (entry: { columnId?: string }) => String(entry.columnId) === String(column.columnId)
+        )
+      ) {
+        mergedColumns.push(column);
+      }
+    }
+    return {
+      ...existing,
+      tableId: shell.tableId,
+      label: shell.label,
+      columns: mergedColumns.length > 0 ? mergedColumns : shellColumns
+    };
+  });
+
+  return {
+    single_sections,
+    table_sections,
+    section_order: shells.section_order
+  };
+}
+
 export function withStructureItems(
   setupModel: Record<string, unknown>,
   structure: SetupStructureItem[]
@@ -300,24 +359,92 @@ export function completeStructureStep(setupModel: Record<string, unknown>): Reco
   if (issue) {
     throw new Error(issue);
   }
-  const { groups, tables } = structureToGroupsTables(structure);
-  const shells = buildSectionShellsFromStructure(structure);
   const wizard = getWizardState(setupModel);
+  const { groups, tables } = structureToGroupsTables(structure);
+  const preserveAssignments = wizard.setupCompleted === true || wizard.editMode === true;
+  const shells = preserveAssignments
+    ? mergeSectionShellsFromStructure(setupModel, structure)
+    : buildSectionShellsFromStructure(structure);
+  const nextWizard = {
+    ...wizard,
+    step: 'assign' as const,
+    structure,
+    groups,
+    tables,
+    ...(preserveAssignments
+      ? {}
+      : {
+          assignments: {},
+          tableAssignments: {},
+          deferredFieldIds: [],
+          fieldLabels: {},
+          currentFieldIndex: 0
+        })
+  };
   return {
     ...setupModel,
     ...shells,
     updatedAt: nowIso(),
+    wizard: nextWizard
+  };
+}
+
+export function deleteStructureItemWithFields(
+  setupModel: Record<string, unknown>,
+  id: string
+): Record<string, unknown> {
+  const structure = getStructureItems(setupModel);
+  const item = structure.find((entry) => entry.id === id);
+  if (!item) return setupModel;
+
+  const wizard = getWizardState(setupModel);
+  let nextAssignments = { ...wizard.assignments };
+  let nextTableAssignments = { ...wizard.tableAssignments };
+  let nextDeferred = [...wizard.deferredFieldIds];
+  let nextFieldLabels = { ...(wizard.fieldLabels || {}) };
+
+  if (item.type === 'group') {
+    for (const [fieldId, sectionId] of Object.entries(nextAssignments)) {
+      if (sectionId === id) {
+        delete nextAssignments[fieldId];
+        delete nextFieldLabels[fieldId];
+      }
+    }
+  } else {
+    for (const [fieldId, assignment] of Object.entries(nextTableAssignments)) {
+      if (assignment.tableId === id) {
+        delete nextTableAssignments[fieldId];
+        delete nextFieldLabels[fieldId];
+      }
+    }
+  }
+
+  const nextStructure = structure.filter((entry) => entry.id !== id);
+  const { groups, tables } = structureToGroupsTables(nextStructure);
+  const shells = buildSectionShellsFromStructure(nextStructure);
+
+  const singleSections = Array.isArray(setupModel.single_sections)
+    ? setupModel.single_sections.filter((section) => String(section?.sectionId) !== id)
+    : shells.single_sections;
+  const tableSections = Array.isArray(setupModel.table_sections)
+    ? setupModel.table_sections.filter((table) => String(table?.tableId) !== id)
+    : shells.table_sections;
+
+  return {
+    ...setupModel,
+    ...shells,
+    single_sections: singleSections,
+    table_sections: tableSections,
     wizard: {
       ...wizard,
-      step: 'assign' as const,
-      structure,
+      structure: nextStructure,
       groups,
       tables,
-      assignments: {},
-      tableAssignments: {},
-      deferredFieldIds: [],
-      fieldLabels: {},
-      currentFieldIndex: 0
-    }
+      assignments: nextAssignments,
+      tableAssignments: nextTableAssignments,
+      deferredFieldIds: nextDeferred,
+      fieldLabels: nextFieldLabels
+    },
+    updatedAt: nowIso()
   };
 }

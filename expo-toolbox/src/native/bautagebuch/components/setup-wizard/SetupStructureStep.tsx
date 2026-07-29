@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
+import { Alert, LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -7,11 +7,13 @@ import { PrimaryButton } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 import { hapticLight, hapticSuccess } from '../../../../lib/haptics';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
+import { countAssignedFieldsForStructureItem } from '../../lib/setup-mapping';
 import {
   addStructureGroup,
   addStructureTable,
   completeStructureStep,
   deleteStructureItem,
+  deleteStructureItemWithFields,
   getStructureItems,
   moveStructureItem,
   updateStructureGroup,
@@ -41,6 +43,7 @@ type Props = {
   onChange: (next: Record<string, unknown>) => void;
   onComplete: (next: Record<string, unknown>) => void;
   onBack: () => void;
+  onNavigateToAssign?: () => void;
 };
 
 export function SetupStructureStep({
@@ -49,7 +52,8 @@ export function SetupStructureStep({
   readOnly = false,
   onChange,
   onComplete,
-  onBack
+  onBack,
+  onNavigateToAssign
 }: Props) {
   const insets = useSafeAreaInsets();
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,7 +112,32 @@ export function SetupStructureStep({
   };
 
   const handleDelete = (item: SetupStructureItem) => {
-    onChange(deleteStructureItem(setupModel, item.id));
+    const assignedCount = countAssignedFieldsForStructureItem(setupModel, item);
+    if (assignedCount === 0) {
+      onChange(deleteStructureItem(setupModel, item.id));
+      return;
+    }
+
+    const kindLabel = item.type === 'group' ? 'Gruppe' : 'Tabelle';
+    Alert.alert(
+      `${kindLabel} löschen`,
+      `Diese ${kindLabel.toLowerCase()} enthält bereits ${assignedCount} Felder.\n\nWas möchtest du tun?`,
+      [
+        { text: 'Abbrechen', style: 'cancel' },
+        {
+          text: 'Felder neu zuordnen',
+          onPress: () => onNavigateToAssign?.()
+        },
+        {
+          text: 'Inkl. Felder löschen',
+          style: 'destructive',
+          onPress: () => {
+            void hapticLight();
+            onChange(deleteStructureItemWithFields(setupModel, item.id));
+          }
+        }
+      ]
+    );
   };
 
   const handleMove = (id: string, direction: -1 | 1) => {
@@ -155,6 +184,7 @@ export function SetupStructureStep({
               else openTableEditor(item);
             }}
             onDelete={handleDelete}
+            onDeletePress={handleDelete}
             onMove={handleMove}
           />
         </View>

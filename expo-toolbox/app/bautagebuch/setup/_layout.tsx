@@ -10,6 +10,8 @@ export default function SetupLayout() {
       <Stack.Screen name="[templateId]/assign" />
       <Stack.Screen name="[templateId]/fields-intro" />
       <Stack.Screen name="[templateId]/fields" />
+      <Stack.Screen name="[templateId]/detail" />
+      <Stack.Screen name="[templateId]/edit" />
     </Stack>
   );
 }

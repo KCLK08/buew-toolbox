@@ -1,25 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../../../src/constants/theme';
 import { SetupEditor } from '../../../../src/native/bautagebuch/components/SetupEditor';
 import { SetupFieldsStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupFieldsStep';
+import { SetupWizardStepNav } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupWizardStepNav';
 import { getDetectedFields, saveSetupModel } from '../../../../src/native/bautagebuch/db/database';
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
 import {
   hasTableSections,
   getWizardState,
-  listSetupSections,
+  markSetupCompleted,
+  resolveSetupEditStepPath,
   resolveSetupEntryPath,
+  resolveTemplateDetailPath,
+  resolveTemplateEditPath,
   shouldShowFieldsIntro
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
 import { validateSetupModel } from '../../../../src/native/bautagebuch/lib/setup-model.js';
-import {
-  getTemplateBundle,
-  setActiveTemplateId
-} from '../../../../src/native/bautagebuch/services/templateService';
+import { getTemplateBundle } from '../../../../src/native/bautagebuch/services/templateService';
 
 export default function SetupFieldsScreen() {
   const router = useRouter();
@@ -80,47 +81,11 @@ export default function SetupFieldsScreen() {
         (hasTableSections(setupModel) && wizard?.step !== 'fields'))
   );
   const readOnly = templateStatus === 'archived';
+  const editMode = wizard?.editMode === true;
 
   const handleChange = (next: Record<string, unknown>) => {
     setSetupModel(next);
     schedule(next);
-  };
-
-  const showFinishDialog = (readyModel: Record<string, unknown>) => {
-    const sections = listSetupSections(readyModel);
-    const fieldCount = sections.reduce((sum, section) => sum + section.fields.length, 0);
-    const groupCount = sections.length;
-
-    Alert.alert(
-      'Vorlage fertig eingerichtet',
-      `Die Vorlage kann jetzt für neue Bautagebücher verwendet werden.\n\nFelder: ${fieldCount}\nGruppen: ${groupCount}`,
-      [
-        {
-          text: 'Später aktivieren',
-          style: 'cancel',
-          onPress: () => router.replace('/bautagebuch/config')
-        },
-        {
-          text: 'Vorlage aktivieren',
-          onPress: () => {
-            void (async () => {
-              try {
-                if (templateId) {
-                  await setActiveTemplateId(templateId);
-                }
-                router.replace('/bautagebuch/config');
-              } catch (err) {
-                Alert.alert(
-                  'Aktivieren',
-                  err instanceof Error ? err.message : 'Vorlage konnte nicht aktiviert werden.'
-                );
-                router.replace('/bautagebuch/config');
-              }
-            })();
-          }
-        }
-      ]
-    );
   };
 
   const handleFinish = async () => {
@@ -134,14 +99,14 @@ export default function SetupFieldsScreen() {
         setError(issues[0]);
         return;
       }
-      const readyModel = {
+      const readyModel = markSetupCompleted({
         ...setupModel,
         status: 'ready',
         updatedAt: new Date().toISOString()
-      };
+      });
       await saveSetupModel(templateId, readyModel, 'ready');
       setSetupModel(readyModel);
-      showFinishDialog(readyModel);
+      router.replace(resolveTemplateDetailPath(String(templateId)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Setup konnte nicht abgeschlossen werden.');
     } finally {
@@ -151,11 +116,24 @@ export default function SetupFieldsScreen() {
 
   const handleBack = async () => {
     await flush();
+    if (editMode) {
+      router.replace(resolveTemplateEditPath(String(templateId)));
+      return;
+    }
     router.replace(`/bautagebuch/setup/${templateId}/assign` as Href);
+  };
+
+  const handleStepNav = async (step: 'structure' | 'assign' | 'fields') => {
+    await flush();
+    router.replace(resolveSetupEditStepPath(String(templateId), step));
   };
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+      {editMode ? (
+        <SetupWizardStepNav activeStep="fields" onSelectStep={(step) => void handleStepNav(step)} />
+      ) : null}
+
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />

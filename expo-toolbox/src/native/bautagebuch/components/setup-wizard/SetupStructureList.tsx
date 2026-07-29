@@ -12,6 +12,7 @@ type Props = {
   onAddTable: () => void;
   onEdit: (item: SetupStructureItem) => void;
   onDelete: (item: SetupStructureItem) => void;
+  onDeletePress?: (item: SetupStructureItem) => void;
   onMove: (id: string, direction: -1 | 1) => void;
 };
 
@@ -46,6 +47,7 @@ export function SetupStructureList({
   onAddTable,
   onEdit,
   onDelete,
+  onDeletePress,
   onMove
 }: Props) {
   const confirmDelete = (item: SetupStructureItem) => {
@@ -194,6 +196,10 @@ export function SetupStructureList({
                           style={styles.iconBtn}
                           onPress={(event) => {
                             event.stopPropagation();
+                            if (onDeletePress) {
+                              onDeletePress(item);
+                              return;
+                            }
                             confirmDelete(item);
                           }}
                           hitSlop={8}

@@ -227,7 +227,9 @@ export function getWizardState(setupModel: Record<string, unknown>): SetupWizard
     configuredFieldIds: Array.isArray(raw.configuredFieldIds)
       ? raw.configuredFieldIds.map((entry) => String(entry))
       : [],
-    currentFieldSettingsIndex: Math.max(0, Number(raw.currentFieldSettingsIndex || 0))
+    currentFieldSettingsIndex: Math.max(0, Number(raw.currentFieldSettingsIndex || 0)),
+    setupCompleted: raw.setupCompleted === true,
+    editMode: raw.editMode === true
   };
 }
 
@@ -258,7 +260,10 @@ export function withWizardState(
       currentFieldSettingsIndex:
         wizard.currentFieldSettingsIndex !== undefined
           ? wizard.currentFieldSettingsIndex
-          : current.currentFieldSettingsIndex
+          : current.currentFieldSettingsIndex,
+      setupCompleted:
+        wizard.setupCompleted !== undefined ? wizard.setupCompleted : current.setupCompleted,
+      editMode: wizard.editMode !== undefined ? wizard.editMode : current.editMode
     },
     updatedAt: nowIso()
   };
@@ -756,7 +761,94 @@ export function hasTableSections(setupModel: Record<string, unknown>): boolean {
   return Array.isArray(setupModel.table_sections) && setupModel.table_sections.length > 0;
 }
 
+export function shouldSkipSetupIntros(setupModel: Record<string, unknown>): boolean {
+  const wizard = getWizardState(setupModel);
+  return wizard.setupCompleted === true || wizard.editMode === true;
+}
+
+export function markSetupCompleted(setupModel: Record<string, unknown>): Record<string, unknown> {
+  return withWizardState(setupModel, {
+    setupCompleted: true,
+    editMode: false,
+    step: 'fields'
+  });
+}
+
+export function enterEditMode(
+  setupModel: Record<string, unknown>,
+  step: SetupWizardStep
+): Record<string, unknown> {
+  return withWizardState(setupModel, { editMode: true, step });
+}
+
+export function exitEditMode(setupModel: Record<string, unknown>): Record<string, unknown> {
+  return withWizardState(setupModel, { editMode: false, step: 'fields' });
+}
+
+export function resolveTemplateDetailPath(templateId: string): Href {
+  return `/bautagebuch/setup/${templateId}/detail` as Href;
+}
+
+export function resolveTemplateEditPath(templateId: string): Href {
+  return `/bautagebuch/setup/${templateId}/edit` as Href;
+}
+
+export function resolveSetupEditStepPath(templateId: string, step: SetupWizardStep): Href {
+  if (step === 'structure') {
+    return `/bautagebuch/setup/${templateId}/mapping` as Href;
+  }
+  if (step === 'assign') {
+    return `/bautagebuch/setup/${templateId}/assign` as Href;
+  }
+  return `/bautagebuch/setup/${templateId}/fields` as Href;
+}
+
+export function resolveTemplateOpenPath(
+  templateId: string,
+  setupModel: Record<string, unknown>,
+  templateStatus: string,
+  templateKind = ''
+): Href {
+  if (templateKind === 'builtin-etb') {
+    return `/bautagebuch/setup/${templateId}/fields` as Href;
+  }
+  if (templateStatus === 'ready' || templateStatus === 'archived') {
+    return resolveTemplateDetailPath(templateId);
+  }
+  return resolveSetupEntryPath(templateId, setupModel, templateKind);
+}
+
+export function countAssignedFieldsForStructureItem(
+  setupModel: Record<string, unknown>,
+  item: { id: string; type: 'group' | 'table' }
+): number {
+  const wizard = getWizardState(setupModel);
+  if (item.type === 'group') {
+    const fromWizard = Object.values(wizard.assignments).filter(
+      (sectionId) => sectionId === item.id
+    ).length;
+    const section = listSetupSections(setupModel).find((entry) => entry.sectionId === item.id);
+    const fromSection = (section?.fields || []).filter((field) => field.skipped !== true).length;
+    return Math.max(fromWizard, fromSection);
+  }
+  const fromWizard = Object.values(wizard.tableAssignments).filter(
+    (assignment) => assignment.tableId === item.id
+  ).length;
+  const table = (Array.isArray(setupModel.table_sections) ? setupModel.table_sections : []).find(
+    (entry) => String(entry?.tableId || '') === item.id
+  );
+  const fromCells = (Array.isArray(table?.rows) ? table.rows : []).reduce(
+    (sum: number, row: { cells?: Array<{ fieldId?: string }> }) => {
+      const cells = Array.isArray(row?.cells) ? row.cells : [];
+      return sum + cells.filter((cell: { fieldId?: string }) => String(cell?.fieldId || '').trim()).length;
+    },
+    0
+  );
+  return Math.max(fromWizard, fromCells);
+}
+
 export function shouldShowStructureIntro(setupModel: Record<string, unknown>): boolean {
+  if (shouldSkipSetupIntros(setupModel)) return false;
   const wizard = getWizardState(setupModel);
   if (wizard.step !== 'structure') return false;
   if (wizard.structureIntroSeen) return false;
@@ -769,6 +861,7 @@ export function markStructureIntroSeen(setupModel: Record<string, unknown>): Rec
 }
 
 export function shouldShowAssignIntro(setupModel: Record<string, unknown>): boolean {
+  if (shouldSkipSetupIntros(setupModel)) return false;
   const wizard = getWizardState(setupModel);
   if (wizard.step !== 'assign') return false;
   if (wizard.assignIntroSeen) return false;
@@ -788,6 +881,7 @@ export function shouldShowFieldsIntro(
   templateKind = ''
 ): boolean {
   if (templateKind === 'builtin-etb') return false;
+  if (shouldSkipSetupIntros(setupModel)) return false;
   const wizard = getWizardState(setupModel);
   if (wizard.step !== 'fields') return false;
   if (wizard.fieldsIntroSeen) return false;
