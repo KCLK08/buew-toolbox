@@ -223,7 +223,11 @@ export function getWizardState(setupModel: Record<string, unknown>): SetupWizard
         : {},
     structureIntroSeen: raw.structureIntroSeen === true,
     assignIntroSeen: raw.assignIntroSeen === true,
-    fieldsIntroSeen: raw.fieldsIntroSeen === true
+    fieldsIntroSeen: raw.fieldsIntroSeen === true,
+    configuredFieldIds: Array.isArray(raw.configuredFieldIds)
+      ? raw.configuredFieldIds.map((entry) => String(entry))
+      : [],
+    currentFieldSettingsIndex: Math.max(0, Number(raw.currentFieldSettingsIndex || 0))
   };
 }
 
@@ -249,7 +253,12 @@ export function withWizardState(
       assignIntroSeen:
         wizard.assignIntroSeen !== undefined ? wizard.assignIntroSeen : current.assignIntroSeen,
       fieldsIntroSeen:
-        wizard.fieldsIntroSeen !== undefined ? wizard.fieldsIntroSeen : current.fieldsIntroSeen
+        wizard.fieldsIntroSeen !== undefined ? wizard.fieldsIntroSeen : current.fieldsIntroSeen,
+      configuredFieldIds: wizard.configuredFieldIds || current.configuredFieldIds,
+      currentFieldSettingsIndex:
+        wizard.currentFieldSettingsIndex !== undefined
+          ? wizard.currentFieldSettingsIndex
+          : current.currentFieldSettingsIndex
     },
     updatedAt: nowIso()
   };
@@ -778,7 +787,7 @@ export function shouldShowFieldsIntro(
   setupModel: Record<string, unknown>,
   templateKind = ''
 ): boolean {
-  if (templateKind === 'builtin-etb' || hasTableSections(setupModel)) return false;
+  if (templateKind === 'builtin-etb') return false;
   const wizard = getWizardState(setupModel);
   if (wizard.step !== 'fields') return false;
   if (wizard.fieldsIntroSeen) return false;
@@ -805,12 +814,15 @@ export function resolveSetupEntryPath(
   setupModel: Record<string, unknown>,
   templateKind = ''
 ): Href {
-  if (templateKind === 'builtin-etb' || hasTableSections(setupModel)) {
+  if (templateKind === 'builtin-etb') {
     return `/bautagebuch/setup/${templateId}/fields` as Href;
   }
   const wizard = getWizardState(setupModel);
   if (wizard.step === 'fields') {
     return resolveFieldsSetupPath(templateId, setupModel, templateKind);
+  }
+  if (hasTableSections(setupModel)) {
+    return `/bautagebuch/setup/${templateId}/fields` as Href;
   }
   if (wizard.step === 'assign') {
     if (shouldShowAssignIntro(setupModel)) {

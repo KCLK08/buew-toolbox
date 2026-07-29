@@ -3,6 +3,7 @@ const GEWERK_FIELD_NAMES = new Set(['Text3', 'Text5', 'Text6', 'Text7', 'Text8']
 
 export function resolveSetupFieldType(field, detectedFields = []) {
   const explicit = String(field?.type || '').trim();
+  if (explicit === 'select') return 'dropdown';
   if (explicit) return explicit;
   const fieldId = String(field?.fieldId || '').trim();
   const detected = (detectedFields || []).find((entry) => String(entry?.fieldId || '') === fieldId);

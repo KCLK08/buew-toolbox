@@ -145,10 +145,12 @@ test('shouldShowFieldsIntro skips after intro seen or legacy templates', () => {
   assert.equal(shouldShowFieldsIntro(fresh, 'builtin-etb'), false);
   assert.equal(
     shouldShowFieldsIntro(
-      { ...fresh, table_sections: [{ tableId: 't1', label: 'T', columns: [], rows: [] }] },
+      withWizardState(fresh, {
+        structure: [{ id: 't1', name: 'T', type: 'table', order: 0, columns: [] }]
+      }),
       ''
     ),
-    false
+    true
   );
 });
 
