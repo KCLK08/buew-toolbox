@@ -10,6 +10,7 @@ import {
   ensureWizardInitialized,
   getWizardState,
   markStructureIntroSeen,
+  shouldShowAssignIntro,
   shouldShowStructureIntro
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
 import { getTemplateBundle } from '../../../../src/native/bautagebuch/services/templateService';
@@ -37,7 +38,11 @@ export default function SetupStructureIntroScreen() {
       }
       if (wizard.step === 'assign') {
         setLoading(false);
-        router.replace(`/bautagebuch/setup/${templateId}/assign` as Href);
+        router.replace(
+          shouldShowAssignIntro(bundle.setupModel)
+            ? (`/bautagebuch/setup/${templateId}/assign-intro` as Href)
+            : (`/bautagebuch/setup/${templateId}/assign` as Href)
+        );
         return;
       }
 
