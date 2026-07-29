@@ -16,7 +16,6 @@ export default function SetupStructureScreen() {
   const router = useRouter();
   const { templateId } = useLocalSearchParams<{ templateId: string }>();
   const [loading, setLoading] = useState(true);
-  const [templateName, setTemplateName] = useState('');
   const [templateStatus, setTemplateStatus] = useState('');
   const [pdfPath, setPdfPath] = useState<string | null>(null);
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
@@ -43,7 +42,6 @@ export default function SetupStructureScreen() {
       }
 
       const initialized = ensureWizardInitialized(bundle.setupModel);
-      setTemplateName(bundle.template.templateName);
       setTemplateStatus(bundle.template.status);
       setPdfPath(bundle.template.pdfPath);
       setSetupModel(initialized);
@@ -96,7 +94,6 @@ export default function SetupStructureScreen() {
 
       {!loading && setupModel ? (
         <SetupStructureStep
-          templateName={templateName}
           pdfPath={pdfPath}
           setupModel={setupModel}
           readOnly={readOnly}
