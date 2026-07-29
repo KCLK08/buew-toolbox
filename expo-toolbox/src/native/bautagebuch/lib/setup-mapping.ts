@@ -363,6 +363,78 @@ export function resolveFieldAssignmentSummary(
   return { kind: 'none', label: '' };
 }
 
+function removeFieldFromSingleSections(
+  setupModel: Record<string, unknown>,
+  fieldId: string
+): Record<string, unknown>[] {
+  const singleSections = Array.isArray(setupModel.single_sections) ? setupModel.single_sections : [];
+  return singleSections.map((section) => {
+    const fields = (Array.isArray(section?.fields) ? section.fields : []) as SetupFieldConfig[];
+    return {
+      ...section,
+      fields: fields.filter((field) => String(field.fieldId || '') !== fieldId)
+    };
+  });
+}
+
+function removeFieldFromTableSections(
+  setupModel: Record<string, unknown>,
+  fieldId: string
+): Record<string, unknown>[] {
+  const tableSections = Array.isArray(setupModel.table_sections) ? setupModel.table_sections : [];
+  return tableSections.map((table) => {
+    type TableColumn = {
+      columnId?: string;
+      label?: string;
+      type?: string;
+      required?: boolean;
+      multiline?: boolean;
+    };
+    type TableCell = SetupFieldConfig & {
+      cellId?: string;
+      tableId?: string;
+      rowId?: string;
+      columnId?: string;
+    };
+    const columns = (Array.isArray(table?.columns) ? table.columns : []) as TableColumn[];
+    const rows = (Array.isArray(table?.rows) ? table.rows : []) as Array<{ cells?: TableCell[] }>;
+    return {
+      ...table,
+      rows: rows.map((row) => {
+        const cells = (Array.isArray(row?.cells) ? row.cells : []) as TableCell[];
+        return {
+          ...row,
+          cells: cells.map((cell) => {
+            if (String(cell?.fieldId || '') !== fieldId) return cell;
+            const column = columns.find(
+              (entry) => String(entry?.columnId || '') === String(cell?.columnId || '')
+            );
+            return {
+              ...cell,
+              fieldId: '',
+              fieldName: '',
+              label: String(column?.label || cell?.label || 'Spalte'),
+              type: String(column?.type || cell?.type || 'text'),
+              options: [],
+              page: 1,
+              rect: null,
+              geometry: null,
+              skipped: true,
+              required: column?.required === true,
+              multiline: column?.multiline === true
+            };
+          })
+        };
+      })
+    };
+  });
+}
+
+function removeFieldFromConfiguredTargets(configuredFieldIds: string[], fieldId: string): string[] {
+  const suffix = `:${fieldId}`;
+  return configuredFieldIds.filter((key) => !String(key).endsWith(suffix));
+}
+
 export function removeFieldFromWizard(
   setupModel: Record<string, unknown>,
   fieldId: string,
@@ -376,15 +448,26 @@ export function removeFieldFromWizard(
   const deferredFieldIds = wizard.deferredFieldIds.filter((entry) => entry !== fieldId);
   const fieldLabels = { ...(wizard.fieldLabels || {}) };
   delete fieldLabels[fieldId];
+  const configuredFieldIds = removeFieldFromConfiguredTargets(
+    wizard.configuredFieldIds || [],
+    fieldId
+  );
   const maxIndex = Math.max(0, fieldCount - 1);
   const nextIndex = Math.min(wizard.currentFieldIndex, maxIndex);
-  return withWizardState(setupModel, {
+  const withWizard = withWizardState(setupModel, {
     assignments,
     tableAssignments,
     deferredFieldIds,
     fieldLabels,
+    configuredFieldIds,
     currentFieldIndex: nextIndex
   });
+  return {
+    ...withWizard,
+    single_sections: removeFieldFromSingleSections(withWizard, fieldId),
+    table_sections: removeFieldFromTableSections(withWizard, fieldId),
+    updatedAt: nowIso()
+  };
 }
 
 export function updateFieldDisplayLabel(
