@@ -26,7 +26,11 @@ import {
   sortMappingFields,
   withWizardState
 } from './setup-mapping';
-import type { DetectedField } from '../types';
+import { listFieldSettingsTargets } from './setup-field-settings';
+import type {
+  DetectedField,
+  SetupFieldConfig
+} from '../types';
 
 function field(id: string, page = 1): DetectedField {
   return {
@@ -340,6 +344,83 @@ test('removeFieldFromWizard clears assignments and labels', () => {
   assert.equal(wizard.assignments.f1, undefined);
   assert.equal(wizard.fieldLabels?.f1, undefined);
   assert.equal(wizard.currentFieldIndex, 1);
+});
+
+test('removeFieldFromWizard clears single_sections and table_sections field references', () => {
+  const model = withWizardState(
+    {
+      single_sections: [
+        {
+          sectionId: 'g1',
+          label: 'Kopf',
+          fields: [
+            { fieldId: 'f1', label: 'Datum', type: 'datetime' },
+            { fieldId: 'f2', label: 'Baustelle', type: 'text' }
+          ]
+        }
+      ],
+      table_sections: [
+        {
+          tableId: 't1',
+          label: 'Leistungen',
+          columns: [{ columnId: 'c1', label: 'Checkbox', type: 'checkbox' }],
+          rows: [
+            {
+              rowId: 'row_1',
+              index: 1,
+              cells: [
+                {
+                  cellId: 't1_row_1_c1',
+                  tableId: 't1',
+                  rowId: 'row_1',
+                  columnId: 'c1',
+                  fieldId: 'f3',
+                  fieldName: 'f3',
+                  label: 'Erledigt',
+                  type: 'checkbox',
+                  skipped: false
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      assignments: { f1: 'g1', f2: 'g1' },
+      tableAssignments: { f3: { tableId: 't1', rowIndex: 0, columnId: 'c1' } },
+      fieldLabels: { f1: 'Datum', f2: 'Baustelle', f3: 'Erledigt' },
+      configuredFieldIds: ['single:g1:f1', 'table-cell:t1:f3']
+    }
+  );
+
+  const afterSingle = removeFieldFromWizard(model, 'f1', 3);
+  const singleFields = (
+    (afterSingle.single_sections as Array<{ fields: Array<{ fieldId: string }> }>)[0]?.fields || []
+  ).map((field) => field.fieldId);
+  assert.deepEqual(singleFields, ['f2']);
+  assert.equal(getWizardState(afterSingle).configuredFieldIds?.includes('single:g1:f1'), false);
+
+  const afterTable = removeFieldFromWizard(model, 'f3', 3);
+  const cell = (
+    (afterTable.table_sections as Array<{ rows: Array<{ cells: Array<{ fieldId: string; skipped?: boolean }> }> }>)[0]
+      ?.rows[0]?.cells[0]
+  );
+  assert.equal(cell?.fieldId, '');
+  assert.equal(cell?.skipped, true);
+  assert.equal(getWizardState(afterTable).configuredFieldIds?.includes('table-cell:t1:f3'), false);
+
+  const targets = listFieldSettingsTargets(afterTable);
+  assert.equal(
+    targets.some(
+      (target) => target.kind === 'table-cell' && target.fieldId === 'f3'
+    ),
+    false
+  );
+  assert.equal(
+    targets.some((target) => target.kind === 'single' && target.fieldId === 'f1'),
+    true
+  );
 });
 
 test('rebuildSectionsFromWizard preserves field options and builds table sections', () => {
