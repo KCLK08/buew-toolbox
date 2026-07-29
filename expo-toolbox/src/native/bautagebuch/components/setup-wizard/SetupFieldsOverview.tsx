@@ -8,10 +8,13 @@ import { hapticSelection } from '../../../../lib/haptics';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
 import {
   isFieldSettingsTargetConfigured,
-  listFieldSettingsTargets,
+  resolveFieldDisplayOrder,
   resolveFieldFromTarget,
+  resolveFieldPreviewPage,
+  resolveHybridFieldSource,
   resolveTargetDisplayName
 } from '../../lib/setup-field-settings';
+import { type MappingField } from '../../lib/setup-mapping';
 import { fieldSourceLabel } from '../../lib/template-field';
 import { getWizardState } from '../../lib/setup-mapping';
 import type { DetectedField, FieldSettingsTarget } from '../../types';
@@ -22,6 +25,7 @@ type Props = {
   visible: boolean;
   setupModel: Record<string, unknown>;
   detectedFields: DetectedField[];
+  mappingFields: MappingField[];
   targets: FieldSettingsTarget[];
   currentTargetKey: string | null;
   onClose: () => void;
@@ -48,6 +52,7 @@ export function SetupFieldsOverview({
   visible,
   setupModel,
   detectedFields,
+  mappingFields,
   targets,
   currentTargetKey,
   onClose,
@@ -92,17 +97,19 @@ export function SetupFieldsOverview({
           {targets.map((target, index) => {
             const field = resolveFieldFromTarget(setupModel, target);
             const status = fieldStatus(target, wizard, currentTargetKey);
-            const label = resolveTargetDisplayName(setupModel, target, field);
-            const detected =
-              target.kind !== 'table-meta' && target.fieldId
-                ? detectedFields.find((entry) => entry.fieldId === target.fieldId) ?? null
+            const label = resolveTargetDisplayName(setupModel, target, field, mappingFields);
+            const hybridSource = resolveHybridFieldSource(field, detectedFields);
+            const displayOrder =
+              target.kind !== 'table-meta'
+                ? resolveFieldDisplayOrder(mappingFields, target.fieldId)
                 : null;
+            const page = resolveFieldPreviewPage(field, mappingFields);
             const meta =
               target.kind === 'table-meta'
                 ? 'Tabellenstruktur'
                 : [
-                    field?.page ? `Seite ${field.page}` : '',
-                    detected ? fieldSourceLabel(detected.source) : ''
+                    page > 0 ? `Seite ${page}` : '',
+                    hybridSource ? fieldSourceLabel(hybridSource) : ''
                   ]
                     .filter(Boolean)
                     .join(' · ');
@@ -126,7 +133,7 @@ export function SetupFieldsOverview({
                   <SingleLineText style={styles.rowLabel}>{label}</SingleLineText>
                   {meta ? <Text style={styles.rowMeta}>{meta}</Text> : null}
                 </View>
-                <Text style={styles.rowIndex}>{index + 1}</Text>
+                <Text style={styles.rowIndex}>{displayOrder ?? index + 1}</Text>
               </Pressable>
             );
           })}

@@ -31,6 +31,7 @@ type Props = {
   detectedFields: DetectedField[];
   readOnly?: boolean;
   onChange: (next: Record<string, unknown>) => void;
+  onFieldLabelChange?: (fieldId: string, label: string) => void;
 };
 
 function ToggleRow({
@@ -64,7 +65,8 @@ export function SetupFieldSettingsForm({
   field,
   detectedFields,
   readOnly = false,
-  onChange
+  onChange,
+  onFieldLabelChange
 }: Props) {
   if (target.kind === 'table-meta') {
     return (
@@ -118,7 +120,13 @@ export function SetupFieldSettingsForm({
           label="Name des Feldes"
           value={field.label || ''}
           editable={!readOnly}
-          onChangeText={(label) => patchField({ label })}
+          onChangeText={(label) => {
+            if (onFieldLabelChange && field.fieldId) {
+              onFieldLabelChange(field.fieldId, label);
+              return;
+            }
+            patchField({ label });
+          }}
         />
       )}
 

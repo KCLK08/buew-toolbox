@@ -7,10 +7,12 @@ import { hapticSelection } from '../../../../lib/haptics';
 import {
   normalizeSetupFieldType,
   resolveFieldFromTarget,
+  resolveHybridFieldSource,
   resolveTargetDisplayName,
   resolveTargetGroupLabel,
   setupFieldTypeLabel
 } from '../../lib/setup-field-settings';
+import { type MappingField } from '../../lib/setup-mapping';
 import { fieldSourceLabel, fieldSourceTone } from '../../lib/template-field';
 import type { DetectedField, FieldSettingsTarget } from '../../types';
 import { SetupFieldSettingsForm } from './SetupFieldSettingsForm';
@@ -20,8 +22,11 @@ type Props = {
   setupModel: Record<string, unknown>;
   target: FieldSettingsTarget | null;
   detectedFields: DetectedField[];
+  mappingFields?: MappingField[];
+  draftLabels?: Record<string, string>;
   readOnly?: boolean;
   onChange: (next: Record<string, unknown>) => void;
+  onFieldLabelChange?: (fieldId: string, label: string) => void;
   onOpenTypePicker: () => void;
   onSaveAndNext: () => void;
   showSaveButton?: boolean;
@@ -31,8 +36,11 @@ export function SetupFieldsSettingsPanel({
   setupModel,
   target,
   detectedFields,
+  mappingFields = [],
+  draftLabels = {},
   readOnly = false,
   onChange,
+  onFieldLabelChange,
   onOpenTypePicker,
   onSaveAndNext,
   showSaveButton = true
@@ -49,14 +57,17 @@ export function SetupFieldsSettingsPanel({
   }
 
   const field = resolveFieldFromTarget(setupModel, target);
-  const displayName = resolveTargetDisplayName(setupModel, target, field);
+  const displayName = resolveTargetDisplayName(
+    setupModel,
+    target,
+    field,
+    mappingFields,
+    draftLabels
+  );
   const groupLabel = resolveTargetGroupLabel(setupModel, target);
-  const detected =
-    target.kind !== 'table-meta' && target.fieldId
-      ? detectedFields.find((entry) => entry.fieldId === target.fieldId) ?? null
-      : null;
-  const sourceLabel = detected ? fieldSourceLabel(detected.source) : null;
-  const sourceTone = detected ? fieldSourceTone(detected.source) : null;
+  const hybridSource = resolveHybridFieldSource(field, detectedFields);
+  const sourceLabel = hybridSource ? fieldSourceLabel(hybridSource) : null;
+  const sourceTone = hybridSource ? fieldSourceTone(hybridSource) : null;
   const fieldType: SetupFieldType =
     target.kind === 'table-meta' ? 'table' : normalizeSetupFieldType(field, detectedFields);
 
@@ -130,6 +141,7 @@ export function SetupFieldsSettingsPanel({
           detectedFields={detectedFields}
           readOnly={readOnly}
           onChange={onChange}
+          onFieldLabelChange={onFieldLabelChange}
         />
       </View>
 
