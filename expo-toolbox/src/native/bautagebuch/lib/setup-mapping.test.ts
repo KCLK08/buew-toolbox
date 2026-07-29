@@ -38,6 +38,11 @@ function field(id: string, page = 1): DetectedField {
     page,
     orderIndex: 0,
     rect: [100, 200, 200, 240],
+    geometry: {
+      page,
+      rect: { x: 100, y: 200, width: 100, height: 40 }
+    },
+    source: 'acroform',
     createdAt: '',
     updatedAt: ''
   };
@@ -285,6 +290,10 @@ test('isMappingComplete treats table assignments as handled', () => {
     }
   );
   assert.equal(isMappingComplete(fields, getWizardState(model)), true);
+});
+
+test('isMappingComplete requires at least one field', () => {
+  assert.equal(isMappingComplete([], getWizardState({ wizard: { groups: [] } })), false);
 });
 
 test('rebuildSectionsFromWizard preserves field options and builds table sections', () => {

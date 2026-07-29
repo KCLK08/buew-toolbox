@@ -11,6 +11,7 @@ import {
   resolveTargetGroupLabel,
   setupFieldTypeLabel
 } from '../../lib/setup-field-settings';
+import { fieldSourceLabel, fieldSourceTone } from '../../lib/template-field';
 import type { DetectedField, FieldSettingsTarget } from '../../types';
 import { SetupFieldSettingsForm } from './SetupFieldSettingsForm';
 import type { SetupFieldType } from '../../types';
@@ -50,6 +51,12 @@ export function SetupFieldsSettingsPanel({
   const field = resolveFieldFromTarget(setupModel, target);
   const displayName = resolveTargetDisplayName(setupModel, target, field);
   const groupLabel = resolveTargetGroupLabel(setupModel, target);
+  const detected =
+    target.kind !== 'table-meta' && target.fieldId
+      ? detectedFields.find((entry) => entry.fieldId === target.fieldId) ?? null
+      : null;
+  const sourceLabel = detected ? fieldSourceLabel(detected.source) : null;
+  const sourceTone = detected ? fieldSourceTone(detected.source) : null;
   const fieldType: SetupFieldType =
     target.kind === 'table-meta' ? 'table' : normalizeSetupFieldType(field, detectedFields);
 
@@ -66,6 +73,23 @@ export function SetupFieldsSettingsPanel({
           <View style={styles.infoCard}>
             <Text style={styles.infoLabel}>Name</Text>
             <Text style={styles.infoValue}>{displayName}</Text>
+          </View>
+        ) : null}
+        {sourceLabel ? (
+          <View style={styles.infoCard}>
+            <Text style={styles.infoLabel}>Quelle</Text>
+            <Text
+              style={[
+                styles.infoValue,
+                sourceTone === 'success'
+                  ? styles.sourceAuto
+                  : sourceTone === 'warning'
+                    ? styles.sourceManual
+                    : null
+              ]}
+            >
+              {sourceLabel}
+            </Text>
           </View>
         ) : null}
         <View style={styles.infoCard}>
@@ -147,6 +171,12 @@ const styles = StyleSheet.create({
   infoValue: {
     ...typography.bodyStrong,
     color: colors.ink
+  },
+  sourceAuto: {
+    color: colors.success
+  },
+  sourceManual: {
+    color: colors.warning
   },
   typePicker: {
     flexDirection: 'row',

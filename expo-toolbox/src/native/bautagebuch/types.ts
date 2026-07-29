@@ -170,6 +170,33 @@ export type FieldSettingsTarget =
       key: string;
     };
 
+export type FieldSource = 'acroform' | 'manual' | 'ocr';
+
+export type FieldRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type FieldGeometry = {
+  page: number;
+  rect: FieldRect;
+};
+
+export type TemplateField = {
+  id: string;
+  fieldId: string;
+  name: string;
+  type: SetupFieldType | string;
+  geometry: FieldGeometry | null;
+  source: FieldSource;
+  groupId?: string;
+  tableId?: string;
+  options: string[];
+  orderIndex: number;
+};
+
 export type SetupFieldConfig = {
   fieldId: string;
   fieldName?: string;
@@ -183,6 +210,8 @@ export type SetupFieldConfig = {
   type?: string;
   options?: string[];
   rect?: number[] | null;
+  geometry?: FieldGeometry | null;
+  source?: FieldSource;
   placeholder?: string;
   useCurrentDate?: boolean;
   dateMode?: SetupFieldDateMode;
@@ -202,7 +231,10 @@ export type DetectedField = {
   options: string[];
   page: number;
   orderIndex: number;
+  /** Legacy bounding box [x1,y1,x2,y2] in PDF points — derived from geometry when present. */
   rect: number[] | null;
+  geometry: FieldGeometry | null;
+  source: FieldSource;
   createdAt: string;
   updatedAt: string;
 };

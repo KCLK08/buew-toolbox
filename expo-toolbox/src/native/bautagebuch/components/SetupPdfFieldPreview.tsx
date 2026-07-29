@@ -16,6 +16,11 @@ import {
   previewScrollOverlayPlacement,
   resolvePreviewOverlayPlacement
 } from '../lib/pdf-preview-overlay';
+import {
+  fieldHasGeometry,
+  fieldToPreviewLegacyRect,
+  getFieldPage
+} from '../lib/template-field';
 import type { DetectedField } from '../types';
 import { PdfPreviewPanel } from './PdfPreviewPanel';
 
@@ -28,6 +33,11 @@ type Props = {
   assignedFieldIds?: string[];
   variant?: 'default' | 'pinned' | 'mapping' | 'assign' | 'overlay';
   emphasizeActiveHighlight?: boolean;
+  drawMode?: boolean;
+  onFieldDrawn?: (payload: {
+    page: number;
+    rect: { x: number; y: number; width: number; height: number };
+  }) => void;
 };
 
 const PINNED_PREVIEW_HEIGHT = Math.max(220, Math.round(Dimensions.get('window').height * 0.34));
@@ -48,12 +58,14 @@ export function SetupPdfFieldPreview({
   activeFieldPage = 1,
   assignedFieldIds = [],
   variant = 'default',
-  emphasizeActiveHighlight = false
+  emphasizeActiveHighlight = false,
+  drawMode = false,
+  onFieldDrawn
 }: Props) {
   const pinned = variant === 'pinned';
   const mapping = variant === 'mapping' || variant === 'assign';
   const assign = variant === 'assign';
-  const overlay = variant === 'overlay';
+  const overlay = variant === 'overlay' || variant === 'assign';
   const highQuality = overlay || mapping;
   const highlightActive = emphasizeActiveHighlight || mapping || overlay;
   const webViewRef = useRef<WebView>(null);
@@ -71,12 +83,12 @@ export function SetupPdfFieldPreview({
   const highlights = useMemo(
     () =>
       detectedFields
-        .filter((field) => Array.isArray(field.rect) && field.rect.length >= 4)
+        .filter((field) => fieldHasGeometry(field))
         .map((field) => ({
           fieldId: String(field.fieldId),
           fieldName: String(field.fieldName || ''),
-          page: Number(field.page || 1),
-          rect: field.rect as number[]
+          page: getFieldPage(field),
+          rect: fieldToPreviewLegacyRect(field) as number[]
         })),
     [detectedFields]
   );
@@ -195,6 +207,11 @@ export function SetupPdfFieldPreview({
     webViewRef.current?.postMessage(JSON.stringify({ type: 'setPage', page }));
   };
 
+  useEffect(() => {
+    if (!previewState.ready || useFallback || !overlay) return;
+    postPreviewCommand({ type: 'setDrawMode', enabled: drawMode });
+  }, [drawMode, previewState.ready, useFallback, overlay, postPreviewCommand]);
+
   const onWebMessage = (event: WebViewMessageEvent) => {
     try {
       const payload = JSON.parse(event.nativeEvent.data) as {
@@ -204,7 +221,15 @@ export function SetupPdfFieldPreview({
         ready?: boolean;
         error?: string | null;
         renderMs?: number;
+        rect?: { x: number; y: number; width: number; height: number };
       };
+      if (payload.type === 'fieldDrawn' && payload.rect && payload.page) {
+        onFieldDrawn?.({
+          page: Number(payload.page),
+          rect: payload.rect
+        });
+        return;
+      }
       if (payload.type !== 'state') return;
       if (payload.error) {
         console.error('PDF preview render error', payload.error);

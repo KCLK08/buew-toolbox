@@ -3,6 +3,7 @@ import {
   normalizeSetupFieldType,
   setupFieldTypeLabel
 } from './setup-field-settings';
+import { fieldSourceLabel } from './template-field';
 import { listSetupSections, resolveOverlayPlacement } from './setup-mapping';
 import { getStructureItems } from './setup-structure';
 
@@ -170,6 +171,10 @@ export function buildFieldDetailRows(
     { label: 'Position', value: resolveFieldPositionLabel(field.rect || detected?.rect) },
     { label: 'Feldtyp', value: setupFieldTypeLabel(type) }
   ];
+
+  if (field.source) {
+    rows.push({ label: 'Erkennung', value: fieldSourceLabel(field.source) });
+  }
 
   const settings: FieldDetailRow[] = [
     { label: 'Pflichtfeld', value: '', checked: field.required === true },

@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../../../../src/constants/theme';
 import { SetupAssignStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupAssignStep';
 import { SetupWizardStepNav } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupWizardStepNav';
-import { getDetectedFields } from '../../../../src/native/bautagebuch/db/database';
+import { addTemplateField, getDetectedFields } from '../../../../src/native/bautagebuch/db/database';
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
 import {
   ensureWizardInitialized,
@@ -64,16 +64,6 @@ export default function SetupAssignScreen() {
       setDetectedFields(fields);
       setSetupModel(initialized);
 
-      if (sortedFields.length === 0) {
-        const rebuilt = rebuildSectionsFromWizard(initialized, sortedFields);
-        setSetupModel(rebuilt);
-        schedule(rebuilt);
-        await flush();
-        setLoading(false);
-        router.replace(resolveFieldsSetupPath(String(templateId), rebuilt));
-        return;
-      }
-
       if (initialized !== bundle.setupModel) {
         schedule(initialized);
       }
@@ -122,6 +112,22 @@ export default function SetupAssignScreen() {
     router.replace(resolveSetupEditStepPath(String(templateId), step));
   };
 
+  const reloadFields = useCallback(async () => {
+    if (!templateId) return;
+    setDetectedFields(await getDetectedFields(templateId));
+  }, [templateId]);
+
+  const handleCreateManualField = useCallback(
+    async (
+      field: Parameters<typeof addTemplateField>[1],
+      _target: { kind: 'group'; id: string } | { kind: 'table'; id: string } | null
+    ) => {
+      if (!templateId) return null;
+      return addTemplateField(templateId, field);
+    },
+    [templateId]
+  );
+
   const readOnly = templateStatus === 'archived';
 
   return (
@@ -148,6 +154,8 @@ export default function SetupAssignScreen() {
           onChange={handleChange}
           onComplete={handleComplete}
           onBack={() => void handleBack()}
+          onFieldsChanged={() => void reloadFields()}
+          onCreateManualField={handleCreateManualField}
         />
       ) : null}
     </SafeAreaView>

@@ -4,6 +4,11 @@ import * as SQLite from 'expo-sqlite';
 import type { BautagebuchExport, BautagebuchRun, BautagebuchTemplate, DetectedField, SetupModelRecord } from '../types';
 import { nowIso } from '../../../lib/ids';
 import { requestDatabaseBackup } from '../../../storage/backupService';
+import {
+  normalizeDetectedField,
+  serializeFieldForDb,
+  type TemplateFieldInput
+} from '../lib/template-field';
 
 const DB_NAME = 'bautagebuch_v2_native.db';
 
@@ -103,6 +108,7 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
       await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory || ''}bautagebuch/`, {
         intermediates: true
       }).catch(() => undefined);
+      await migrateDetectedFieldsSchema(db);
       return db;
     })().catch((error) => {
       dbPromise = null;
@@ -110,6 +116,48 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
     });
   }
   return dbPromise;
+}
+
+async function migrateDetectedFieldsSchema(db: SQLite.SQLiteDatabase): Promise<void> {
+  const migrations = [
+    `ALTER TABLE detected_fields ADD COLUMN source TEXT NOT NULL DEFAULT 'acroform'`,
+    `ALTER TABLE detected_fields ADD COLUMN geometryJson TEXT`
+  ];
+  for (const statement of migrations) {
+    try {
+      await db.execAsync(statement);
+    } catch {
+      // Column already exists.
+    }
+  }
+
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    'SELECT id, page, rectJson, geometryJson, source FROM detected_fields WHERE geometryJson IS NULL AND rectJson IS NOT NULL'
+  );
+  for (const row of rows) {
+    try {
+      const rect = JSON.parse(String(row.rectJson)) as number[];
+      if (!Array.isArray(rect) || rect.length < 4) continue;
+      const [x1, y1, x2, y2] = rect;
+      const geometry = {
+        page: Math.max(1, Number(row.page || 1)),
+        rect: {
+          x: Math.min(x1, x2),
+          y: Math.min(y1, y2),
+          width: Math.abs(x2 - x1),
+          height: Math.abs(y2 - y1)
+        }
+      };
+      await db.runAsync(
+        'UPDATE detected_fields SET geometryJson = ?, source = COALESCE(source, ?) WHERE id = ?',
+        JSON.stringify(geometry),
+        'acroform',
+        String(row.id)
+      );
+    } catch {
+      // Best-effort migration.
+    }
+  }
 }
 
 function rowToTemplate(row: Record<string, unknown>): BautagebuchTemplate {
@@ -262,32 +310,82 @@ export async function deleteTemplateRecord(templateId: string): Promise<void> {
 
 export async function saveDetectedFields(
   templateId: string,
-  fields: Omit<DetectedField, 'id' | 'templateId' | 'createdAt' | 'updatedAt'>[]
+  fields: TemplateFieldInput[]
 ): Promise<void> {
   const db = await getDb();
   const timestamp = nowIso();
   await db.runAsync('DELETE FROM detected_fields WHERE templateId = ?', templateId);
   for (const [index, field] of fields.entries()) {
-    const id = `${templateId}::${field.fieldId || index}`;
+    const serialized = serializeFieldForDb(
+      templateId,
+      { ...field, orderIndex: field.orderIndex ?? index },
+      timestamp
+    );
     await db.runAsync(
       `INSERT INTO detected_fields (
         id, templateId, fieldId, fieldName, labelCandidate, type, optionsJson,
-        page, orderIndex, rectJson, createdAt, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      id,
-      templateId,
-      field.fieldId,
-      field.fieldName,
-      field.labelCandidate,
-      field.type,
-      JSON.stringify(field.options || []),
-      field.page,
-      field.orderIndex,
-      field.rect ? JSON.stringify(field.rect) : null,
-      timestamp,
-      timestamp
+        page, orderIndex, rectJson, geometryJson, source, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      serialized.id,
+      serialized.templateId,
+      serialized.fieldId,
+      serialized.fieldName,
+      serialized.labelCandidate,
+      serialized.type,
+      serialized.optionsJson,
+      serialized.page,
+      serialized.orderIndex,
+      serialized.rectJson,
+      serialized.geometryJson,
+      serialized.source,
+      serialized.createdAt,
+      serialized.updatedAt
     );
   }
+  void requestDatabaseBackup('manual');
+}
+
+export async function addTemplateField(
+  templateId: string,
+  field: TemplateFieldInput
+): Promise<DetectedField> {
+  const db = await getDb();
+  const timestamp = nowIso();
+  const rows = await db.getAllAsync<{ orderIndex: number }>(
+    'SELECT orderIndex FROM detected_fields WHERE templateId = ? ORDER BY orderIndex DESC LIMIT 1',
+    templateId
+  );
+  const nextOrder = Number(rows[0]?.orderIndex ?? -1) + 1;
+  const serialized = serializeFieldForDb(
+    templateId,
+    { ...field, orderIndex: field.orderIndex ?? nextOrder },
+    timestamp
+  );
+  await db.runAsync(
+    `INSERT INTO detected_fields (
+      id, templateId, fieldId, fieldName, labelCandidate, type, optionsJson,
+      page, orderIndex, rectJson, geometryJson, source, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    serialized.id,
+    serialized.templateId,
+    serialized.fieldId,
+    serialized.fieldName,
+    serialized.labelCandidate,
+    serialized.type,
+    serialized.optionsJson,
+    serialized.page,
+    serialized.orderIndex,
+    serialized.rectJson,
+    serialized.geometryJson,
+    serialized.source,
+    serialized.createdAt,
+    serialized.updatedAt
+  );
+  void requestDatabaseBackup('manual');
+  return normalizeDetectedField({
+    ...serialized,
+    optionsJson: serialized.optionsJson
+  });
 }
 
 export async function getDetectedFields(templateId: string): Promise<DetectedField[]> {
@@ -296,20 +394,7 @@ export async function getDetectedFields(templateId: string): Promise<DetectedFie
     'SELECT * FROM detected_fields WHERE templateId = ? ORDER BY page ASC, orderIndex ASC',
     templateId
   );
-  return rows.map((row) => ({
-    id: String(row.id),
-    templateId: String(row.templateId),
-    fieldId: String(row.fieldId),
-    fieldName: String(row.fieldName),
-    labelCandidate: String(row.labelCandidate),
-    type: String(row.type),
-    options: JSON.parse(String(row.optionsJson || '[]')) as string[],
-    page: Number(row.page || 1),
-    orderIndex: Number(row.orderIndex || 0),
-    rect: row.rectJson ? (JSON.parse(String(row.rectJson)) as number[]) : null,
-    createdAt: String(row.createdAt),
-    updatedAt: String(row.updatedAt)
-  }));
+  return rows.map((row) => normalizeDetectedField(row));
 }
 
 export async function saveSetupModel(

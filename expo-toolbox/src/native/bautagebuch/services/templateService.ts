@@ -10,6 +10,8 @@ import {
   upgradeSetupModel
 } from '../lib/etb-template.js';
 import { buildGenericSetupModel } from '../lib/generic-setup-model.js';
+import { mergeScannedFields } from '../lib/field-merge';
+import { scanResultToTemplateFieldInput } from '../lib/template-field';
 import { withWizardState } from '../lib/setup-mapping';
 import { scanTemplatePdf } from '../lib/pdf-scan';
 import { scanTemplatePdfLite } from '../lib/pdf-scan-lite';
@@ -105,19 +107,10 @@ async function rescanExistingTemplate(
     updatedAt: new Date().toISOString()
   });
 
-  await saveDetectedFields(
-    existing.templateId,
-    scanResult.detectedFields.map((field) => ({
-      fieldId: field.fieldId,
-      fieldName: field.fieldName,
-      labelCandidate: field.labelCandidate,
-      type: field.type,
-      options: field.options,
-      page: field.page,
-      orderIndex: field.orderIndex,
-      rect: field.rect
-    }))
-  );
+  const existingFields = await getDetectedFields(existing.templateId);
+  const merged = mergeScannedFields(existingFields, scanResult.detectedFields);
+
+  await saveDetectedFields(existing.templateId, merged);
 
   return { templateId: existing.templateId, setupModel };
 }
@@ -264,16 +257,7 @@ export async function ensureBuiltinTemplate(): Promise<{
 
   await saveDetectedFields(
     template.templateId,
-    scanResult.detectedFields.map((field) => ({
-      fieldId: field.fieldId,
-      fieldName: field.fieldName,
-      labelCandidate: field.labelCandidate,
-      type: field.type,
-      options: field.options,
-      page: field.page,
-      orderIndex: field.orderIndex,
-      rect: field.rect
-    }))
+    scanResult.detectedFields.map((field) => scanResultToTemplateFieldInput(field, 'acroform'))
   );
 
   const detectedFields = await getDetectedFields(template.templateId);
@@ -388,16 +372,7 @@ export async function importTemplateFromDocument(): Promise<{ templateId: string
 
   await saveDetectedFields(
     template.templateId,
-    scanResult.detectedFields.map((field) => ({
-      fieldId: field.fieldId,
-      fieldName: field.fieldName,
-      labelCandidate: field.labelCandidate,
-      type: field.type,
-      options: field.options,
-      page: field.page,
-      orderIndex: field.orderIndex,
-      rect: field.rect
-    }))
+    scanResult.detectedFields.map((field) => scanResultToTemplateFieldInput(field, 'acroform'))
   );
 
   const detectedFields = await getDetectedFields(template.templateId);
