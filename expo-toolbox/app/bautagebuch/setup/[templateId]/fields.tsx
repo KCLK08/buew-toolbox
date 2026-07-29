@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { PrimaryButton, Screen } from '../../../../src/components/mobile';
 import { colors, spacing, typography } from '../../../../src/constants/theme';
-import { PreviewOverlayPanel } from '../../../../src/native/bautagebuch/components/PreviewOverlayPanel';
 import { SetupEditor } from '../../../../src/native/bautagebuch/components/SetupEditor';
-import { SetupPdfFieldPreview } from '../../../../src/native/bautagebuch/components/SetupPdfFieldPreview';
-import { SetupFieldSettingsStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupFieldSettingsStep';
+import { SetupFieldsStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupFieldsStep';
 import { getDetectedFields, saveSetupModel } from '../../../../src/native/bautagebuch/db/database';
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
 import {
@@ -23,12 +21,6 @@ import {
   setActiveTemplateId
 } from '../../../../src/native/bautagebuch/services/templateService';
 
-export type SetupPreviewField = {
-  fieldId: string;
-  label: string;
-  page: number;
-};
-
 export default function SetupFieldsScreen() {
   const router = useRouter();
   const { templateId } = useLocalSearchParams<{ templateId: string }>();
@@ -41,8 +33,6 @@ export default function SetupFieldsScreen() {
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
-  const [previewField, setPreviewField] = useState<SetupPreviewField | null>(null);
   const { schedule, flush } = useSetupAutosave(String(templateId || ''));
 
   const load = useCallback(async () => {
@@ -70,9 +60,10 @@ export default function SetupFieldsScreen() {
 
   useEffect(() => {
     if (loading || !setupModel || !templateId) return;
-    const legacy = templateKind === 'builtin-etb' || hasTableSections(setupModel);
-    if (legacy) return;
     const wizard = getWizardState(setupModel);
+    const legacy =
+      templateKind === 'builtin-etb' || (hasTableSections(setupModel) && wizard.step !== 'fields');
+    if (legacy) return;
     if (wizard.step !== 'fields') {
       router.replace(resolveSetupEntryPath(String(templateId), setupModel, templateKind));
       return;
@@ -82,13 +73,11 @@ export default function SetupFieldsScreen() {
     }
   }, [loading, setupModel, templateKind, templateId, router]);
 
-  const validationIssues = useMemo(
-    () => (setupModel ? validateSetupModel(setupModel) : []),
-    [setupModel]
-  );
-
+  const wizard = setupModel ? getWizardState(setupModel) : null;
   const useLegacyEditor = Boolean(
-    setupModel && (templateKind === 'builtin-etb' || hasTableSections(setupModel))
+    setupModel &&
+      (templateKind === 'builtin-etb' ||
+        (hasTableSections(setupModel) && wizard?.step !== 'fields'))
   );
   const readOnly = templateStatus === 'archived';
 
@@ -160,63 +149,13 @@ export default function SetupFieldsScreen() {
     }
   };
 
-  const footer =
-    !loading && setupModel && !readOnly ? (
-      <View style={styles.footer}>
-        {pdfPath ? (
-          <PrimaryButton
-            compact
-            label={showPreview ? 'Vorschau aus' : 'Vorschau ein'}
-            variant="ghost"
-            onPress={() => setShowPreview((value) => !value)}
-            style={styles.footerSide}
-          />
-        ) : (
-          <View style={styles.footerSide} />
-        )}
-        <PrimaryButton
-          compact
-          label={saving ? 'Speichern…' : 'Vorlage speichern'}
-          disabled={saving || validationIssues.length > 0}
-          onPress={() => void handleFinish()}
-          style={styles.footerPrimary}
-        />
-      </View>
-    ) : pdfPath && !loading && setupModel ? (
-      <PrimaryButton
-        compact
-        label={showPreview ? 'Vorschau aus' : 'Vorschau ein'}
-        variant="secondary"
-        onPress={() => setShowPreview((value) => !value)}
-      />
-    ) : undefined;
+  const handleBack = async () => {
+    await flush();
+    router.replace(`/bautagebuch/setup/${templateId}/assign` as Href);
+  };
 
   return (
-    <Screen
-      title="Schritt 3 von 3"
-      subtitle={templateName ? `Feldeinstellungen · ${templateName}` : 'Feldeinstellungen'}
-      showBack
-      scroll={false}
-      scrollableHeader
-      compactFooter
-      contentStyle={styles.screenContent}
-      overlay={
-        showPreview && pdfPath ? (
-          <PreviewOverlayPanel title="Live-PDF-Vorschau" onClose={() => setShowPreview(false)}>
-            <SetupPdfFieldPreview
-              variant="overlay"
-              emphasizeActiveHighlight
-              pdfPath={pdfPath}
-              detectedFields={detectedFields}
-              activeFieldId={previewField?.fieldId || null}
-              activeFieldLabel={previewField?.label || null}
-              activeFieldPage={previewField?.page || 1}
-            />
-          </PreviewOverlayPanel>
-        ) : null
-      }
-      footer={footer}
-    >
+    <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />
@@ -238,7 +177,6 @@ export default function SetupFieldsScreen() {
           onChange={handleChange}
           error={error}
           embedded
-          onActiveFieldChange={setPreviewField}
           onTemplateRenamed={setTemplateName}
           onSelectEdit={() => undefined}
           onSetActive={() => undefined}
@@ -247,29 +185,30 @@ export default function SetupFieldsScreen() {
       ) : null}
 
       {!loading && setupModel && !useLegacyEditor ? (
-        <SetupFieldSettingsStep
-          templateId={String(templateId)}
-          templateName={templateName}
+        <SetupFieldsStep
           pdfPath={pdfPath}
           detectedFields={detectedFields}
           setupModel={setupModel}
-          validationIssues={validationIssues}
           readOnly={readOnly}
-          showPreview={showPreview}
-          onActiveFieldChange={setPreviewField}
           onChange={handleChange}
-          onTemplateRenamed={setTemplateName}
+          onFinish={() => void handleFinish()}
+          onBack={() => void handleBack()}
         />
       ) : null}
-    </Screen>
+
+      {saving ? (
+        <View style={styles.savingOverlay}>
+          <ActivityIndicator color={colors.accent} />
+        </View>
+      ) : null}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screenContent: {
+  root: {
     flex: 1,
-    paddingHorizontal: 0,
-    paddingTop: 0
+    backgroundColor: colors.bg
   },
   center: {
     flex: 1,
@@ -286,15 +225,10 @@ const styles = StyleSheet.create({
     color: colors.danger,
     padding: spacing.pageX
   },
-  footer: {
-    flexDirection: 'row',
+  savingOverlay: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
-    gap: spacing.sm
-  },
-  footerSide: {
-    flex: 1
-  },
-  footerPrimary: {
-    flex: 1.4
+    justifyContent: 'center',
+    backgroundColor: 'rgba(242, 240, 235, 0.6)'
   }
 });

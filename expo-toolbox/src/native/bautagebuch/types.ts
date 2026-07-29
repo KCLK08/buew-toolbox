@@ -125,7 +125,46 @@ export type SetupWizardState = {
   assignIntroSeen?: boolean;
   /** True after the user has seen the step-3 introduction screen. */
   fieldsIntroSeen?: boolean;
+  /** Field settings targets reviewed in step 3 (target keys). */
+  configuredFieldIds?: string[];
+  /** Active index in the step-3 field settings walkthrough. */
+  currentFieldSettingsIndex?: number;
 };
+
+export type SetupFieldType =
+  | 'text'
+  | 'number'
+  | 'datetime'
+  | 'checkbox'
+  | 'select'
+  | 'static_text'
+  | 'signature'
+  | 'table';
+
+export type SetupFieldDateMode = 'date' | 'time' | 'datetime';
+
+export type SetupSignatureMode = 'draw' | 'image';
+
+export type FieldSettingsTarget =
+  | {
+      kind: 'single';
+      sectionId: string;
+      fieldId: string;
+      key: string;
+    }
+  | {
+      kind: 'table-cell';
+      tableId: string;
+      rowId: string;
+      columnId: string;
+      fieldId: string;
+      key: string;
+    }
+  | {
+      kind: 'table-meta';
+      tableId: string;
+      key: string;
+    };
 
 export type SetupFieldConfig = {
   fieldId: string;
@@ -140,6 +179,13 @@ export type SetupFieldConfig = {
   type?: string;
   options?: string[];
   rect?: number[] | null;
+  placeholder?: string;
+  useCurrentDate?: boolean;
+  dateMode?: SetupFieldDateMode;
+  checkboxExclusiveGroup?: string;
+  signatureMode?: SetupSignatureMode;
+  signatureImageUri?: string;
+  staticText?: string;
 };
 
 export type DetectedField = {
