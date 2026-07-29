@@ -74,7 +74,12 @@ export function buildTableSectionsFromWizard(
               assignment.columnId === column.columnId
           )?.[0];
           const field = assignedFieldId ? fieldById.get(assignedFieldId) : undefined;
-          return tableCellEntry(table, rowIndex, column, field);
+          const customLabel = assignedFieldId ? wizard.fieldLabels?.[assignedFieldId] : undefined;
+          const cell = tableCellEntry(table, rowIndex, column, field);
+          if (customLabel && assignedFieldId) {
+            return { ...cell, label: customLabel };
+          }
+          return cell;
         });
         return {
           rowId,

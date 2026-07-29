@@ -316,6 +316,7 @@ export function completeStructureStep(setupModel: Record<string, unknown>): Reco
       assignments: {},
       tableAssignments: {},
       deferredFieldIds: [],
+      fieldLabels: {},
       currentFieldIndex: 0
     }
   };

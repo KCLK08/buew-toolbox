@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Screen } from '../../../../src/components/mobile';
 import { colors, spacing, typography } from '../../../../src/constants/theme';
+import { SetupAssignStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupAssignStep';
 import { getDetectedFields } from '../../../../src/native/bautagebuch/db/database';
-import { SetupMappingStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupMappingStep';
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
 import {
   ensureWizardInitialized,
@@ -20,7 +20,6 @@ export default function SetupAssignScreen() {
   const router = useRouter();
   const { templateId } = useLocalSearchParams<{ templateId: string }>();
   const [loading, setLoading] = useState(true);
-  const [templateName, setTemplateName] = useState('');
   const [templateStatus, setTemplateStatus] = useState('');
   const [pdfPath, setPdfPath] = useState<string | null>(null);
   const [detectedFields, setDetectedFields] = useState<Awaited<ReturnType<typeof getDetectedFields>>>([]);
@@ -56,7 +55,6 @@ export default function SetupAssignScreen() {
         return;
       }
 
-      setTemplateName(bundle.template.templateName);
       setTemplateStatus(bundle.template.status);
       setPdfPath(bundle.template.pdfPath);
       setDetectedFields(fields);
@@ -103,22 +101,15 @@ export default function SetupAssignScreen() {
     })();
   };
 
-  const handleFinishLater = async () => {
+  const handleBack = async () => {
     await flush();
-    router.back();
+    router.replace(`/bautagebuch/setup/${templateId}/mapping`);
   };
 
   const readOnly = templateStatus === 'archived';
 
   return (
-    <Screen
-      title="Schritt 2 von 3"
-      subtitle={templateName ? `Feldzuordnung · ${templateName}` : 'Feldzuordnung'}
-      showBack
-      scroll={false}
-      scrollableHeader
-      contentStyle={styles.screenContent}
-    >
+    <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />
@@ -129,9 +120,7 @@ export default function SetupAssignScreen() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {!loading && setupModel ? (
-        <SetupMappingStep
-          templateId={String(templateId)}
-          templateName={templateName}
+        <SetupAssignStep
           pdfPath={pdfPath}
           detectedFields={detectedFields}
           mappingFields={mappingFields}
@@ -139,19 +128,17 @@ export default function SetupAssignScreen() {
           readOnly={readOnly}
           onChange={handleChange}
           onComplete={handleComplete}
-          onFinishLater={() => void handleFinishLater()}
-          onTemplateRenamed={setTemplateName}
+          onBack={() => void handleBack()}
         />
       ) : null}
-    </Screen>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screenContent: {
+  root: {
     flex: 1,
-    paddingHorizontal: 0,
-    paddingTop: 0
+    backgroundColor: colors.bg
   },
   center: {
     flex: 1,
