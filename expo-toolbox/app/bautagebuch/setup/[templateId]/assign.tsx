@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../../../src/constants/theme';
 import { SetupAssignStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupAssignStep';
+import { SetupWizardStepNav } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupWizardStepNav';
 import { getDetectedFields } from '../../../../src/native/bautagebuch/db/database';
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
 import {
@@ -12,6 +13,8 @@ import {
   getWizardState,
   rebuildSectionsFromWizard,
   resolveFieldsSetupPath,
+  resolveSetupEditStepPath,
+  resolveTemplateEditPath,
   shouldShowAssignIntro,
   sortMappingFields
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
@@ -104,13 +107,28 @@ export default function SetupAssignScreen() {
 
   const handleBack = async () => {
     await flush();
+    const wizard = setupModel ? getWizardState(setupModel) : null;
+    if (wizard?.editMode) {
+      router.replace(resolveTemplateEditPath(String(templateId)));
+      return;
+    }
     router.replace(`/bautagebuch/setup/${templateId}/mapping`);
+  };
+
+  const editMode = setupModel ? getWizardState(setupModel).editMode === true : false;
+
+  const handleStepNav = async (step: 'structure' | 'assign' | 'fields') => {
+    await flush();
+    router.replace(resolveSetupEditStepPath(String(templateId), step));
   };
 
   const readOnly = templateStatus === 'archived';
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+      {editMode ? (
+        <SetupWizardStepNav activeStep="assign" onSelectStep={(step) => void handleStepNav(step)} />
+      ) : null}
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />

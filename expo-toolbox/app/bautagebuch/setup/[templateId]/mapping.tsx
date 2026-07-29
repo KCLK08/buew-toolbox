@@ -5,10 +5,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../../../src/constants/theme';
 import { SetupStructureStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupStructureStep';
+import { SetupWizardStepNav } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupWizardStepNav';
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
 import {
   ensureWizardInitialized,
   getWizardState,
+  resolveSetupEditStepPath,
+  resolveTemplateEditPath,
   shouldShowAssignIntro,
   shouldShowStructureIntro
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
@@ -92,13 +95,28 @@ export default function SetupStructureScreen() {
 
   const handleBack = async () => {
     await flush();
+    const wizard = setupModel ? getWizardState(setupModel) : null;
+    if (wizard?.editMode) {
+      router.replace(resolveTemplateEditPath(String(templateId)));
+      return;
+    }
     router.back();
+  };
+
+  const editMode = setupModel ? getWizardState(setupModel).editMode === true : false;
+
+  const handleStepNav = async (step: 'structure' | 'assign' | 'fields') => {
+    await flush();
+    router.replace(resolveSetupEditStepPath(String(templateId), step));
   };
 
   const readOnly = templateStatus === 'archived';
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+      {editMode ? (
+        <SetupWizardStepNav activeStep="structure" onSelectStep={(step) => void handleStepNav(step)} />
+      ) : null}
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />
@@ -116,6 +134,11 @@ export default function SetupStructureScreen() {
           onChange={handleChange}
           onComplete={handleComplete}
           onBack={() => void handleBack()}
+          onNavigateToAssign={() => {
+            void flush().then(() => {
+              router.replace(`/bautagebuch/setup/${templateId}/assign` as Href);
+            });
+          }}
         />
       ) : null}
     </SafeAreaView>

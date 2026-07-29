@@ -129,6 +129,10 @@ export type SetupWizardState = {
   configuredFieldIds?: string[];
   /** Active index in the step-3 field settings walkthrough. */
   currentFieldSettingsIndex?: number;
+  /** True after the user has completed the full setup wizard once. */
+  setupCompleted?: boolean;
+  /** True while editing a completed template (skips onboarding screens). */
+  editMode?: boolean;
 };
 
 export type SetupFieldType =
