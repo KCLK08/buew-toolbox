@@ -23,6 +23,8 @@ export type MappingField = {
   options: string[];
   page: number;
   orderIndex: number;
+  /** Stable 1-based index across all mapping views (independent of geometry). */
+  displayOrder: number;
   rect: number[] | null;
   geometry: FieldGeometry | null;
   source: FieldSource;
@@ -140,7 +142,7 @@ export function sortMappingFields(detectedFields: DetectedField[]): MappingField
       if (pageDelta !== 0) return pageDelta;
       return Number(left.orderIndex || 0) - Number(right.orderIndex || 0);
     })
-    .map((field) => ({
+    .map((field, index) => ({
       fieldId: String(field.fieldId),
       fieldName: String(field.fieldName || ''),
       labelCandidate: String(field.labelCandidate || field.fieldName || 'Feld'),
@@ -148,9 +150,49 @@ export function sortMappingFields(detectedFields: DetectedField[]): MappingField
       options: Array.isArray(field.options) ? field.options.map((entry) => String(entry)) : [],
       page: getFieldPage(field),
       orderIndex: Number(field.orderIndex || 0),
+      displayOrder: index + 1,
       rect: fieldToPreviewLegacyRect(field),
       geometry: field.geometry,
       source: field.source || 'acroform'
+    }));
+}
+
+export function resolveFieldDisplayLabel(
+  field: MappingField,
+  wizard?: SetupWizardState,
+  draftLabels?: Record<string, string>
+): string {
+  const draft = draftLabels?.[field.fieldId];
+  if (draft !== undefined && draft.trim()) return draft.trim();
+  const fromField = String(field.labelCandidate || field.fieldName || '').trim();
+  if (fromField) return fromField;
+  const custom = wizard?.fieldLabels?.[field.fieldId];
+  if (custom && custom.trim()) return custom.trim();
+  return 'Feld';
+}
+
+export function buildFieldPreviewHighlights(
+  mappingFields: MappingField[],
+  resolveLabel: (field: MappingField) => string
+): Array<{
+  fieldId: string;
+  fieldName: string;
+  label: string;
+  source: FieldSource;
+  index: number;
+  page: number;
+  rect: number[];
+}> {
+  return mappingFields
+    .filter((field) => field.rect && field.rect.length >= 4)
+    .map((field) => ({
+      fieldId: field.fieldId,
+      fieldName: field.fieldName,
+      label: resolveLabel(field),
+      source: field.source,
+      index: field.displayOrder,
+      page: field.page,
+      rect: field.rect as number[]
     }));
 }
 
@@ -310,15 +352,6 @@ export function getAssignedFieldIds(wizard: SetupWizardState): string[] {
   for (const fieldId of Object.keys(wizard.assignments)) ids.add(fieldId);
   for (const fieldId of Object.keys(wizard.tableAssignments)) ids.add(fieldId);
   return [...ids];
-}
-
-export function resolveFieldDisplayLabel(
-  field: MappingField,
-  wizard: SetupWizardState
-): string {
-  const custom = wizard.fieldLabels?.[field.fieldId];
-  if (custom && custom.trim()) return custom.trim();
-  return String(field.labelCandidate || field.fieldName || 'Feld').trim();
 }
 
 export function isFieldAssigned(fieldId: string, wizard: SetupWizardState): boolean {
@@ -685,7 +718,7 @@ function fieldConfigFromDetected(
     fieldId: field.fieldId,
     fieldName: field.fieldName,
     label: String(
-      customLabel || existing?.label || field.labelCandidate || field.fieldName || 'Feld'
+      existing?.label || field.labelCandidate || customLabel || field.fieldName || 'Feld'
     ).trim(),
     type: field.type,
     options: Array.isArray(existing?.options)
@@ -744,8 +777,7 @@ export function rebuildSectionsFromWizard(
     bucket.push(
       fieldConfigFromDetected(
         field,
-        findExistingFieldConfig(setupModel, field.fieldId) || undefined,
-        wizard.fieldLabels?.[field.fieldId]
+        findExistingFieldConfig(setupModel, field.fieldId) || undefined
       )
     );
     grouped.set(sectionId, bucket);

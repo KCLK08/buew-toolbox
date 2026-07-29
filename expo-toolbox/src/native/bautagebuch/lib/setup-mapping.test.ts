@@ -23,7 +23,9 @@ import {
   shouldShowFieldsIntro,
   checkMappingTransition,
   getMappingCompletionSummary,
+  resolveFieldDisplayLabel,
   sortMappingFields,
+  buildFieldPreviewHighlights,
   withWizardState
 } from './setup-mapping';
 import { listFieldSettingsTargets } from './setup-field-settings';
@@ -460,8 +462,45 @@ test('rebuildSectionsFromWizard preserves field options and builds table section
   assert.deepEqual(tables[0]?.rows[0]?.cells[0]?.options, ['Ja', 'Nein']);
 });
 
+test('sortMappingFields assigns stable displayOrder independent of geometry', () => {
+  const withGeometry = field('a');
+  const withoutGeometry: DetectedField = {
+    ...field('b'),
+    geometry: null,
+    rect: null
+  };
+  const sorted = sortMappingFields([withoutGeometry, withGeometry]);
+  assert.equal(sorted.length, 2);
+  assert.equal(sorted[0]?.fieldId, 'b');
+  assert.equal(sorted[0]?.displayOrder, 1);
+  assert.equal(sorted[1]?.fieldId, 'a');
+  assert.equal(sorted[1]?.displayOrder, 2);
+});
+
+test('resolveFieldDisplayLabel prefers labelCandidate over wizard fieldLabels', () => {
+  const fields = sortMappingFields([
+    { ...field('a'), labelCandidate: 'Datum' }
+  ]);
+  const wizard = getWizardState({ wizard: { fieldLabels: { a: 'Alt' } } });
+  assert.equal(resolveFieldDisplayLabel(fields[0]!, wizard), 'Datum');
+});
+
+test('buildFieldPreviewHighlights uses displayOrder for overlay index', () => {
+  const withoutGeometry: DetectedField = {
+    ...field('b', 1),
+    geometry: null,
+    rect: null
+  };
+  const fields = sortMappingFields([withoutGeometry, field('a', 1)]);
+  const highlights = buildFieldPreviewHighlights(fields, (entry) => entry.labelCandidate);
+  assert.equal(highlights.length, 1);
+  assert.equal(highlights[0]?.fieldId, 'a');
+  assert.equal(highlights[0]?.index, 2);
+});
+
 test('assignFieldToGroup stores custom field label', () => {
-  const fields = sortMappingFields([field('a')]);
+  const detected = { ...field('a'), labelCandidate: 'Baumaßnahme' };
+  const fields = sortMappingFields([detected]);
   const model = assignFieldToGroup(
     withWizardState({}, { groups: [{ sectionId: 'g1', label: 'Allgemein' }] }),
     'a',
@@ -476,7 +515,8 @@ test('assignFieldToGroup stores custom field label', () => {
 });
 
 test('assignFieldToTableColumn creates column and assigns field', () => {
-  const fields = sortMappingFields([field('t1')]);
+  const detected = { ...field('t1'), labelCandidate: 'Tätigkeit' };
+  const fields = sortMappingFields([detected]);
   let model = withWizardState(
     {},
     {

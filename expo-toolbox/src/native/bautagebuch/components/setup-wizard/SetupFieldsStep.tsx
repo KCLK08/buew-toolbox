@@ -19,7 +19,7 @@ import {
   resolveTargetDisplayName,
   updateFieldSettingsTarget
 } from '../../lib/setup-field-settings';
-import { getWizardState, withWizardState } from '../../lib/setup-mapping';
+import { getWizardState, sortMappingFields, withWizardState } from '../../lib/setup-mapping';
 import type { DetectedField, SetupFieldType } from '../../types';
 import { SetupPdfFieldPreview } from '../SetupPdfFieldPreview';
 import { SetupFieldTypePickerSheet } from './SetupFieldTypePickerSheet';
@@ -58,6 +58,7 @@ export function SetupFieldsStep({
   const [overviewOpen, setOverviewOpen] = useState(false);
 
   const targets = useMemo(() => listFieldSettingsTargets(setupModel), [setupModel]);
+  const mappingFields = useMemo(() => sortMappingFields(detectedFields), [detectedFields]);
   const wizard = useMemo(() => getWizardState(setupModel), [setupModel]);
   const currentIndex = resolveCurrentFieldSettingsIndex(targets, wizard);
   const currentTarget = targets[currentIndex] || null;
@@ -134,6 +135,7 @@ export function SetupFieldsStep({
           <SetupPdfFieldPreview
             pdfPath={pdfPath}
             detectedFields={detectedFields}
+            mappingFields={mappingFields}
             activeFieldId={currentField?.fieldId || null}
             activeFieldLabel={displayName}
             activeFieldPage={currentField?.page || 1}

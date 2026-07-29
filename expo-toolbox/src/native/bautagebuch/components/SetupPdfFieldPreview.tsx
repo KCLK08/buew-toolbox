@@ -10,12 +10,17 @@ import {
   buildFieldPreviewHtml,
   buildScrollableFieldPreviewHtml,
   PDF_PREVIEW_LOAD_ERROR,
+  type PreviewHighlight,
   type PreviewHtmlMode
 } from '../lib/pdf-preview-html';
 import {
   previewScrollOverlayPlacement,
   resolvePreviewOverlayPlacement
 } from '../lib/pdf-preview-overlay';
+import {
+  buildFieldPreviewHighlights,
+  type MappingField
+} from '../lib/setup-mapping';
 import {
   fieldHasGeometry,
   fieldToPreviewLegacyRect,
@@ -27,7 +32,8 @@ import { PdfPreviewPanel } from './PdfPreviewPanel';
 type Props = {
   pdfPath: string | null;
   detectedFields?: DetectedField[];
-  fieldLabels?: Record<string, string>;
+  mappingFields?: MappingField[];
+  resolveFieldLabel?: (field: MappingField) => string;
   activeFieldId?: string | null;
   activeFieldLabel?: string | null;
   activeFieldPage?: number;
@@ -39,6 +45,7 @@ type Props = {
     page: number;
     rect: { x: number; y: number; width: number; height: number };
   }) => void;
+  onFieldSelect?: (fieldId: string) => void;
 };
 
 const PINNED_PREVIEW_HEIGHT = Math.max(220, Math.round(Dimensions.get('window').height * 0.34));
@@ -54,7 +61,8 @@ type PreviewState = {
 export function SetupPdfFieldPreview({
   pdfPath,
   detectedFields = [],
-  fieldLabels = {},
+  mappingFields,
+  resolveFieldLabel,
   activeFieldId,
   activeFieldLabel,
   activeFieldPage = 1,
@@ -62,7 +70,8 @@ export function SetupPdfFieldPreview({
   variant = 'default',
   emphasizeActiveHighlight = false,
   drawMode = false,
-  onFieldDrawn
+  onFieldDrawn,
+  onFieldSelect
 }: Props) {
   const pinned = variant === 'pinned';
   const mapping = variant === 'mapping' || variant === 'assign';
@@ -82,33 +91,43 @@ export function SetupPdfFieldPreview({
     error: null
   });
 
-  const highlights = useMemo(
-    () =>
-      detectedFields
-        .filter((field) => fieldHasGeometry(field))
-        .map((field, index) => ({
-          fieldId: String(field.fieldId),
-          fieldName: String(field.fieldName || ''),
-          label: String(
-            fieldLabels[field.fieldId] || field.labelCandidate || field.fieldName || 'Feld'
-          ).trim(),
-          source: field.source,
-          index: index + 1,
-          page: getFieldPage(field),
-          rect: fieldToPreviewLegacyRect(field) as number[]
-        })),
-    [detectedFields, fieldLabels]
+  const labelResolver = useCallback(
+    (field: MappingField) => {
+      if (resolveFieldLabel) return resolveFieldLabel(field);
+      return String(field.labelCandidate || field.fieldName || 'Feld').trim();
+    },
+    [resolveFieldLabel]
   );
+
+  const highlights = useMemo((): PreviewHighlight[] => {
+    if (mappingFields && mappingFields.length > 0) {
+      return buildFieldPreviewHighlights(mappingFields, labelResolver);
+    }
+    return detectedFields
+      .filter((field) => fieldHasGeometry(field))
+      .map((field, index) => ({
+        fieldId: String(field.fieldId),
+        fieldName: String(field.fieldName || ''),
+        label: String(field.labelCandidate || field.fieldName || 'Feld').trim(),
+        source: field.source,
+        index: index + 1,
+        page: getFieldPage(field),
+        rect: fieldToPreviewLegacyRect(field) as number[]
+      }));
+  }, [detectedFields, mappingFields, labelResolver]);
 
   const resolvedActiveFieldId = useMemo(() => {
     if (!activeFieldId) return '';
     const needle = String(activeFieldId);
-    const direct = detectedFields.find((field) => String(field.fieldId) === needle);
+    const sourceFields = mappingFields?.length
+      ? mappingFields
+      : detectedFields.map((field) => ({ fieldId: field.fieldId, fieldName: field.fieldName }));
+    const direct = sourceFields.find((field) => String(field.fieldId) === needle);
     if (direct) return String(direct.fieldId);
-    const byName = detectedFields.find((field) => String(field.fieldName || '') === needle);
+    const byName = sourceFields.find((field) => String(field.fieldName || '') === needle);
     if (byName) return String(byName.fieldId);
     return needle;
-  }, [activeFieldId, detectedFields]);
+  }, [activeFieldId, detectedFields, mappingFields]);
 
   const activeFieldRect = useMemo(() => {
     if (!activeFieldId) return null;
@@ -181,7 +200,7 @@ export function SetupPdfFieldPreview({
     return () => {
       cancelled = true;
     };
-  }, [pdfPath, highlights, assignedFieldIds, htmlMode, highlightActive, highQuality, overlay]);
+  }, [pdfPath, htmlMode, highlightActive, highQuality, overlay]);
 
   const postPreviewCommand = useCallback((payload: Record<string, unknown>) => {
     const json = JSON.stringify(payload);
@@ -190,6 +209,15 @@ export function SetupPdfFieldPreview({
       `(function(){try{if(window.__applyPreviewCommand){window.__applyPreviewCommand(${JSON.stringify(json)});}}catch(e){}})();true;`
     );
   }, []);
+
+  useEffect(() => {
+    if (!previewState.ready || useFallback) return;
+    postPreviewCommand({
+      type: 'updateHighlights',
+      highlights,
+      page: Number(activeFieldPage || previewState.page || 1)
+    });
+  }, [highlights, previewState.ready, useFallback, postPreviewCommand, activeFieldPage, previewState.page]);
 
   useEffect(() => {
     if (!previewState.ready || useFallback) return;
@@ -229,7 +257,12 @@ export function SetupPdfFieldPreview({
         error?: string | null;
         renderMs?: number;
         rect?: { x: number; y: number; width: number; height: number };
+        fieldId?: string;
       };
+      if (payload.type === 'fieldSelected' && payload.fieldId) {
+        onFieldSelect?.(String(payload.fieldId));
+        return;
+      }
       if (payload.type === 'fieldDrawn' && payload.rect && payload.page) {
         onFieldDrawn?.({
           page: Number(payload.page),
@@ -330,6 +363,11 @@ export function SetupPdfFieldPreview({
           setBuiltInZoomControls={false}
           onMessage={onWebMessage}
           onLoadEnd={() => {
+            postPreviewCommand({
+              type: 'updateHighlights',
+              highlights,
+              page: Number(activeFieldPage || previewState.page || 1)
+            });
             postPreviewCommand({
               type: 'setActive',
               fieldId: resolvedActiveFieldId,

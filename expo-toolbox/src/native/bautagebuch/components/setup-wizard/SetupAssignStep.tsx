@@ -18,7 +18,6 @@ import {
   removeFieldFromWizard,
   resolveCurrentMappingIndex,
   resolveFieldDisplayLabel,
-  updateFieldDisplayLabel,
   type MappingField
 } from '../../lib/setup-mapping';
 import { createManualFieldInput } from '../../lib/template-field';
@@ -87,6 +86,7 @@ export function SetupAssignStep({
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [drawMode, setDrawMode] = useState(false);
   const [pendingDraw, setPendingDraw] = useState<{ page: number; rect: FieldRect } | null>(null);
+  const [draftLabels, setDraftLabels] = useState<Record<string, string>>({});
 
   const wizard = useMemo(() => getWizardState(setupModel), [setupModel]);
   const currentIndex = resolveCurrentMappingIndex(mappingFields, wizard);
@@ -94,9 +94,10 @@ export function SetupAssignStep({
   const progress = useMemo(() => getMappingProgress(mappingFields, wizard), [mappingFields, wizard]);
   const assignedFieldIds = useMemo(() => getAssignedFieldIds(wizard), [wizard]);
   const mappingDone = isMappingComplete(mappingFields, wizard);
-  const fieldNumber = currentField ? currentIndex + 1 : 0;
-  const currentLabel = currentField ? resolveFieldDisplayLabel(currentField, wizard) : null;
-  const fieldLabels = wizard.fieldLabels || {};
+  const fieldNumber = currentField?.displayOrder ?? 0;
+  const resolveLabel = (field: MappingField) =>
+    resolveFieldDisplayLabel(field, wizard, draftLabels);
+  const currentLabel = currentField ? resolveLabel(currentField) : null;
 
   useEffect(() => {
     if (indexSyncedRef.current || mappingFields.length === 0) return;
@@ -137,16 +138,22 @@ export function SetupAssignStep({
 
   const confirmGroupField = (fieldName: string) => {
     if (!currentField || pendingTarget?.kind !== 'group') return;
+    const trimmed = fieldName.trim();
     const next = assignFieldToGroup(
       setupModel,
       currentField.fieldId,
       pendingTarget.item.id,
-      fieldName
+      trimmed
     );
     setPendingTarget(null);
     setShowAssignModal(false);
     void hapticSuccess();
-    advanceAfterAssign(next);
+    void (async () => {
+      if (trimmed) {
+        await onUpdateField?.(currentField.fieldId, { labelCandidate: trimmed });
+      }
+      advanceAfterAssign(next);
+    })();
   };
 
   const confirmTableColumn = (input: {
@@ -164,7 +171,13 @@ export function SetupAssignStep({
     setPendingTarget(null);
     setShowAssignModal(false);
     void hapticSuccess();
-    advanceAfterAssign(next);
+    void (async () => {
+      const trimmed = input.fieldLabel.trim();
+      if (trimmed) {
+        await onUpdateField?.(currentField.fieldId, { labelCandidate: trimmed });
+      }
+      advanceAfterAssign(next);
+    })();
   };
 
   const selectFieldAtIndex = (index: number) => {
@@ -178,14 +191,21 @@ export function SetupAssignStep({
   };
 
   const handleFieldNameChange = (fieldId: string, name: string) => {
-    const next = updateFieldDisplayLabel(setupModel, fieldId, name);
-    onChange(next);
-    void onUpdateField?.(fieldId, { labelCandidate: name.trim() });
+    setDraftLabels((current) => ({ ...current, [fieldId]: name }));
+    void (async () => {
+      await onUpdateField?.(fieldId, { labelCandidate: name.trim() });
+      setDraftLabels((current) => {
+        const next = { ...current };
+        delete next[fieldId];
+        return next;
+      });
+    })();
   };
 
   const handleFieldTypeChange = (fieldId: string, type: SetupFieldType) => {
-    void onUpdateField?.(fieldId, { type });
-    onFieldsChanged?.();
+    void (async () => {
+      await onUpdateField?.(fieldId, { type });
+    })();
   };
 
   const handleDeleteField = (fieldId: string) => {
@@ -201,6 +221,14 @@ export function SetupAssignStep({
   const openAssignForCurrentField = () => {
     if (!currentField) return;
     setShowAssignModal(true);
+  };
+
+  const selectFieldById = (fieldId: string) => {
+    const index = mappingFields.findIndex((field) => field.fieldId === fieldId);
+    if (index >= 0) {
+      selectFieldAtIndex(index);
+      switchTab('fields');
+    }
   };
 
   const pendingGroup =
@@ -256,13 +284,15 @@ export function SetupAssignStep({
           <SetupPdfFieldPreview
             pdfPath={pdfPath}
             detectedFields={detectedFields}
-            fieldLabels={fieldLabels}
+            mappingFields={mappingFields}
+            resolveFieldLabel={resolveLabel}
             activeFieldId={currentField?.fieldId || null}
             activeFieldLabel={currentLabel}
             activeFieldPage={currentField?.page || 1}
             assignedFieldIds={assignedFieldIds}
             variant="assign"
             drawMode={drawMode}
+            onFieldSelect={selectFieldById}
             onFieldDrawn={(payload) => {
               setDrawMode(false);
               setPendingDraw(payload);
@@ -274,6 +304,7 @@ export function SetupAssignStep({
             mappingFields={mappingFields}
             setupModel={setupModel}
             currentField={currentField}
+            draftLabels={draftLabels}
             readOnly={readOnly}
             onSelectField={selectFieldAtIndex}
             onShowInPdf={() => switchTab('pdf')}
@@ -372,27 +403,24 @@ export function SetupAssignStep({
             if (!saved) return;
             void hapticSuccess();
             onFieldsChanged?.();
-            const withLabel = updateFieldDisplayLabel(setupModel, saved.fieldId, input.name);
             if (input.target?.kind === 'group') {
-              const next = assignFieldToGroup(withLabel, saved.fieldId, input.target.id, input.name);
+              const next = assignFieldToGroup(setupModel, saved.fieldId, input.target.id, input.name);
               onChange(next);
             } else if (input.target?.kind === 'table') {
-              const table = getStructureItems(withLabel).find(
+              const table = getStructureItems(setupModel).find(
                 (item) => item.id === input.target?.id && item.type === 'table'
               );
               const firstColumn =
                 table && table.type === 'table' ? table.columns[0]?.id : undefined;
               if (firstColumn) {
-                const next = assignFieldToTableColumn(withLabel, saved.fieldId, input.target.id, {
+                const next = assignFieldToTableColumn(setupModel, saved.fieldId, input.target.id, {
                   columnId: firstColumn,
                   fieldLabel: input.name
                 });
                 onChange(next);
               } else {
-                onChange(withLabel);
+                onChange(setupModel);
               }
-            } else {
-              onChange(withLabel);
             }
             switchTab('fields');
           })();

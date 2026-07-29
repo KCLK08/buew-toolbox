@@ -131,7 +131,7 @@ export function SetupAssignFieldOverview({
                         : `Gruppe: ${assignment.label}`}
                   </Text>
                 </View>
-                <Text style={styles.rowIndex}>{index + 1}</Text>
+                <Text style={styles.rowIndex}>{field.displayOrder}</Text>
               </Pressable>
             );
           })}

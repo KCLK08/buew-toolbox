@@ -35,6 +35,7 @@ type Props = {
   mappingFields: MappingField[];
   setupModel: Record<string, unknown>;
   currentField: MappingField | null;
+  draftLabels?: Record<string, string>;
   readOnly?: boolean;
   onSelectField: (index: number) => void;
   onShowInPdf: () => void;
@@ -50,6 +51,7 @@ export function SetupAssignFieldListPanel({
   mappingFields,
   setupModel,
   currentField,
+  draftLabels = {},
   readOnly = false,
   onSelectField,
   onShowInPdf,
@@ -62,6 +64,8 @@ export function SetupAssignFieldListPanel({
 }: Props) {
   const wizard = getWizardState(setupModel);
   const structureItems = getStructureItems(setupModel);
+  const resolveLabel = (field: MappingField) =>
+    resolveFieldDisplayLabel(field, wizard, draftLabels);
   const assignment = currentField
     ? resolveFieldAssignmentSummary(setupModel, currentField.fieldId)
     : null;
@@ -105,8 +109,8 @@ export function SetupAssignFieldListPanel({
           </View>
         ) : null}
 
-        {mappingFields.map((field, index) => {
-          const label = resolveFieldDisplayLabel(field, wizard);
+        {mappingFields.map((field) => {
+          const label = resolveLabel(field);
           const assigned = isFieldAssigned(field.fieldId, wizard);
           const fieldAssignment = resolveFieldAssignmentSummary(setupModel, field.fieldId);
           const isCurrent = field.fieldId === currentField?.fieldId;
@@ -118,7 +122,8 @@ export function SetupAssignFieldListPanel({
               style={[styles.card, isCurrent ? styles.cardCurrent : null]}
               onPress={() => {
                 void hapticSelection();
-                onSelectField(index);
+                const index = mappingFields.findIndex((entry) => entry.fieldId === field.fieldId);
+                if (index >= 0) onSelectField(index);
               }}
             >
               <View style={styles.cardHeader}>
@@ -137,7 +142,7 @@ export function SetupAssignFieldListPanel({
                     {hasGeometry ? ` · Seite ${field.page}` : ''}
                   </Text>
                 </View>
-                <Text style={styles.cardIndex}>{index + 1}</Text>
+                <Text style={styles.cardIndex}>{field.displayOrder}</Text>
               </View>
             </Pressable>
           );
@@ -150,7 +155,7 @@ export function SetupAssignFieldListPanel({
 
           <Text style={styles.detailLabel}>Name</Text>
           <TextInput
-            value={resolveFieldDisplayLabel(currentField, wizard)}
+            value={resolveLabel(currentField)}
             onChangeText={(value) => onChangeFieldName(currentField.fieldId, value)}
             style={styles.input}
             editable={!readOnly}
