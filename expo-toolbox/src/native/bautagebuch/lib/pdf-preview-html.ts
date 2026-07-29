@@ -172,6 +172,10 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
         border-radius: 4px;
         transition: opacity 0.2s ease;
       }
+      .highlight.selectable {
+        pointer-events: auto;
+        cursor: pointer;
+      }
       .highlight.active {
         border: 3px solid rgba(196, 75, 50, 0.98);
         background: rgba(196, 75, 50, 0.28);
@@ -256,7 +260,7 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
       const highQuality = ${highQuality ? 'true' : 'false'};
       ${previewBootHelpers(PDF_PREVIEW_LOAD_ERROR, workerSrc)}
 
-      const highlights = ${highlightsJson};
+      let highlights = ${highlightsJson};
       let assignedFieldIds = ${assignedFieldIdsJson};
       let pdfDoc = null;
       let currentPage = 1;
@@ -318,6 +322,13 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
             indexEl.className = 'highlight-index';
             indexEl.textContent = String(entry.index);
             box.appendChild(indexEl);
+          }
+          if (assignMode) {
+            box.classList.add('selectable');
+            box.addEventListener('click', (event) => {
+              event.stopPropagation();
+              post({ type: 'fieldSelected', fieldId: String(entry.fieldId || '') });
+            });
           }
           overlay.appendChild(box);
         }
@@ -482,11 +493,18 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
           if (message.type === 'resetZoom') {
             resetPinchZoom();
           }
+          if (message.type === 'updateHighlights') {
+            if (Array.isArray(message.highlights)) {
+              highlights = message.highlights;
+              void renderPage(Number(message.page || currentPage || 1));
+            }
+          }
         } catch (error) {
           console.error('PDF preview command failed', error);
         }
       }
 
+      window.__applyPreviewCommand = handleCommand;
       document.addEventListener('message', (event) => handleCommand(event.data));
       window.addEventListener('message', (event) => handleCommand(event.data));
       void boot();
@@ -737,6 +755,10 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         border-radius: 4px;
         transition: opacity 0.2s ease;
       }
+      .highlight.selectable {
+        pointer-events: auto;
+        cursor: pointer;
+      }
       .highlight.active {
         border: 3px solid rgba(196, 75, 50, 0.98);
         background: rgba(196, 75, 50, 0.28);
@@ -806,7 +828,7 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
       const highQuality = ${highQuality ? 'true' : 'false'};
       ${previewBootHelpers(PDF_PREVIEW_LOAD_ERROR, workerSrc)}
 
-      const highlights = ${highlightsJson};
+      let highlights = ${highlightsJson};
       let pdfDoc = null;
       let activeFieldId = '';
       let pinchScale = 1;
@@ -871,6 +893,13 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
             indexEl.textContent = String(entry.index);
             box.appendChild(indexEl);
           }
+          if (!drawModeEnabled) {
+            box.classList.add('selectable');
+            box.addEventListener('click', (event) => {
+              event.stopPropagation();
+              post({ type: 'fieldSelected', fieldId: String(entry.fieldId || '') });
+            });
+          }
           overlayEl.appendChild(box);
         }
       }
@@ -885,6 +914,7 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           drawPreviewEl = null;
           drawStart = null;
         }
+        refreshAllOverlays();
       }
 
       function cssToPdfRect(pageNumber, cssX, cssY, cssWidth, cssHeight) {
@@ -1125,6 +1155,12 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           }
           if (message.type === 'resetZoom') {
             resetPinchZoom();
+          }
+          if (message.type === 'updateHighlights') {
+            if (Array.isArray(message.highlights)) {
+              highlights = message.highlights;
+              refreshAllOverlays();
+            }
           }
         } catch (error) {
           console.error('PDF preview command failed', error);
