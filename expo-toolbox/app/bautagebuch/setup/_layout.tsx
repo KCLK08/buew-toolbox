@@ -4,6 +4,7 @@ export default function SetupLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
+      <Stack.Screen name="[templateId]/intro" />
       <Stack.Screen name="[templateId]/mapping" />
       <Stack.Screen name="[templateId]/assign" />
       <Stack.Screen name="[templateId]/fields" />

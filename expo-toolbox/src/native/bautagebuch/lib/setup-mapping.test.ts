@@ -8,10 +8,12 @@ import {
   getMappingProgress,
   getWizardState,
   isMappingComplete,
+  markStructureIntroSeen,
   rebuildSectionsFromWizard,
   resolveCurrentMappingIndex,
   resolveOverlayPlacement,
   resolveSetupEntryPath,
+  shouldShowStructureIntro,
   checkMappingTransition,
   getMappingCompletionSummary,
   sortMappingFields,
@@ -64,6 +66,15 @@ test('getWizardState returns empty groups when none were saved', () => {
 test('resolveSetupEntryPath routes wizard steps to setup screens', () => {
   assert.equal(
     String(resolveSetupEntryPath('tpl_1', withWizardState({}, { step: 'structure' }))),
+    '/bautagebuch/setup/tpl_1/intro'
+  );
+  assert.equal(
+    String(
+      resolveSetupEntryPath(
+        'tpl_1',
+        markStructureIntroSeen(withWizardState({}, { step: 'structure' }))
+      )
+    ),
     '/bautagebuch/setup/tpl_1/mapping'
   );
   assert.equal(
@@ -73,6 +84,20 @@ test('resolveSetupEntryPath routes wizard steps to setup screens', () => {
   assert.equal(
     String(resolveSetupEntryPath('tpl_1', withWizardState({}, { step: 'fields' }))),
     '/bautagebuch/setup/tpl_1/fields'
+  );
+});
+
+test('shouldShowStructureIntro skips after intro seen or structure exists', () => {
+  const fresh = withWizardState({}, { step: 'structure' });
+  assert.equal(shouldShowStructureIntro(fresh), true);
+  assert.equal(shouldShowStructureIntro(markStructureIntroSeen(fresh)), false);
+  assert.equal(
+    shouldShowStructureIntro(
+      withWizardState(fresh, {
+        structure: [{ id: 'g1', name: 'G', type: 'group', order: 0 }]
+      })
+    ),
+    false
   );
 });
 
