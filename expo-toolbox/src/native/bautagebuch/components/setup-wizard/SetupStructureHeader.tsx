@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { colors, shadows, spacing, typography } from '../../../../constants/theme';
@@ -6,41 +6,50 @@ import { hapticSelection } from '../../../../lib/haptics';
 
 export type SetupStructureViewTab = 'pdf' | 'structure';
 
+const INFO_TEXT =
+  'Definiere hier die Bereiche deines digitalen Bautagebuchs anhand der PDF-Vorlage. Lege Gruppen und Tabellen an — die Feldzuordnung folgt in Schritt 2.';
+
 type Props = {
   activeTab: SetupStructureViewTab;
-  templateName?: string;
   onTabChange: (tab: SetupStructureViewTab) => void;
   onBack: () => void;
 };
 
-export function SetupStructureHeader({ activeTab, templateName, onTabChange, onBack }: Props) {
+export function SetupStructureHeader({ activeTab, onTabChange, onBack }: Props) {
   const selectTab = (tab: SetupStructureViewTab) => {
     if (tab === activeTab) return;
     void hapticSelection();
     onTabChange(tab);
   };
 
+  const showInfo = () => {
+    Alert.alert('Setup Schritt 1', INFO_TEXT);
+  };
+
   return (
     <View style={styles.root}>
       <View style={styles.topRow}>
         <Pressable accessibilityRole="button" style={styles.backBtn} onPress={onBack}>
-          <MaterialCommunityIcons name="chevron-left" size={22} color={colors.accent} />
+          <MaterialCommunityIcons name="chevron-left" size={20} color={colors.accent} />
           <Text style={styles.backLabel}>Zurück</Text>
         </Pressable>
-        <View style={styles.stepBadge}>
-          <MaterialCommunityIcons name="numeric-1-circle" size={16} color={colors.accent} />
-          <Text style={styles.step}>Schritt 1 von 3</Text>
-        </View>
-      </View>
 
-      <View style={styles.titleBlock}>
-        <Text style={styles.title}>Setup</Text>
-        {templateName ? (
-          <Text style={styles.templateName} numberOfLines={1}>
-            {templateName}
-          </Text>
-        ) : null}
-        <Text style={styles.subtitle}>Aus welchen Bereichen besteht dein digitales Bautagebuch?</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Setup</Text>
+          <Text style={styles.dot}>·</Text>
+          <Text style={styles.step}>Schritt 1 von 3</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Informationen zum Setup"
+            style={styles.infoBtn}
+            onPress={showInfo}
+            hitSlop={8}
+          >
+            <MaterialCommunityIcons name="information-outline" size={18} color={colors.muted} />
+          </Pressable>
+        </View>
+
+        <View style={styles.topSpacer} />
       </View>
 
       <View style={styles.tabs}>
@@ -52,7 +61,7 @@ export function SetupStructureHeader({ activeTab, templateName, onTabChange, onB
         >
           <MaterialCommunityIcons
             name="file-pdf-box"
-            size={18}
+            size={16}
             color={activeTab === 'pdf' ? colors.accent : colors.muted}
           />
           <Text style={activeTab === 'pdf' ? styles.tabLabelActive : styles.tabLabel}>PDF</Text>
@@ -65,7 +74,7 @@ export function SetupStructureHeader({ activeTab, templateName, onTabChange, onB
         >
           <MaterialCommunityIcons
             name="view-list"
-            size={18}
+            size={16}
             color={activeTab === 'structure' ? colors.accent : colors.muted}
           />
           <Text style={activeTab === 'structure' ? styles.tabLabelActive : styles.tabLabel}>Struktur</Text>
@@ -81,62 +90,62 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     paddingHorizontal: spacing.pageX,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm
+    paddingTop: 2,
+    paddingBottom: spacing.xs,
+    gap: spacing.xs
   },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: spacing.touchMin
+    minHeight: 40
   },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    minHeight: spacing.touchMin,
+    minWidth: 80,
     marginLeft: -4
   },
   backLabel: {
-    ...typography.bodyStrong,
-    color: colors.accent
-  },
-  stepBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xxs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
-    borderRadius: 999,
-    backgroundColor: colors.badgeBg
-  },
-  step: {
     ...typography.caption,
     color: colors.accent,
     fontFamily: 'SpaceGrotesk_600SemiBold'
   },
-  titleBlock: {
-    gap: 4
+  titleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xxs
   },
   title: {
-    ...typography.title,
+    ...typography.bodyStrong,
     color: colors.ink
   },
-  templateName: {
+  dot: {
     ...typography.bodyStrong,
-    color: colors.accent2
+    color: colors.muted
   },
-  subtitle: {
-    ...typography.body,
+  step: {
+    ...typography.caption,
     color: colors.muted,
-    lineHeight: 22
+    fontFamily: 'SpaceGrotesk_600SemiBold'
+  },
+  infoBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 2
+  },
+  topSpacer: {
+    minWidth: 80
   },
   tabs: {
     flexDirection: 'row',
-    gap: spacing.xs,
-    padding: 4,
-    borderRadius: 14,
+    gap: 4,
+    padding: 3,
+    borderRadius: 12,
     backgroundColor: colors.bg,
     borderWidth: 1,
     borderColor: colors.border
@@ -146,20 +155,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xxs,
-    minHeight: spacing.touchMin,
-    borderRadius: 10
+    gap: 4,
+    minHeight: 36,
+    borderRadius: 9
   },
   tabActive: {
     backgroundColor: colors.panelElevated,
     ...shadows.card
   },
   tabLabel: {
-    ...typography.bodyStrong,
-    color: colors.muted
+    ...typography.caption,
+    color: colors.muted,
+    fontFamily: 'SpaceGrotesk_600SemiBold'
   },
   tabLabelActive: {
-    ...typography.bodyStrong,
-    color: colors.accent2
+    ...typography.caption,
+    color: colors.accent2,
+    fontFamily: 'SpaceGrotesk_600SemiBold'
   }
 });

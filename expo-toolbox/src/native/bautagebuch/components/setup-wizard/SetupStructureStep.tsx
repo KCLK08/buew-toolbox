@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
-import { LayoutAnimation, Platform, StyleSheet, Text, UIManager, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '../../../../components/mobile';
-import { colors, shadows, spacing, typography } from '../../../../constants/theme';
-import { hapticSuccess } from '../../../../lib/haptics';
+import { colors, spacing, typography } from '../../../../constants/theme';
+import { hapticLight, hapticSuccess } from '../../../../lib/haptics';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
 import {
   addStructureGroup,
@@ -35,7 +35,6 @@ type EditorState =
   | null;
 
 type Props = {
-  templateName?: string;
   pdfPath: string | null;
   setupModel: Record<string, unknown>;
   readOnly?: boolean;
@@ -45,7 +44,6 @@ type Props = {
 };
 
 export function SetupStructureStep({
-  templateName,
   pdfPath,
   setupModel,
   readOnly = false,
@@ -54,15 +52,29 @@ export function SetupStructureStep({
   onBack
 }: Props) {
   const insets = useSafeAreaInsets();
+  const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeTab, setActiveTab] = useState<SetupStructureViewTab>('structure');
   const [editor, setEditor] = useState<EditorState>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [continueHint, setContinueHint] = useState<string | null>(null);
 
   const structure = useMemo(() => getStructureItems(setupModel), [setupModel]);
+
+  useEffect(() => {
+    return () => {
+      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    };
+  }, []);
 
   const switchTab = (tab: SetupStructureViewTab) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveTab(tab);
+  };
+
+  const showContinueHint = (message: string) => {
+    void hapticLight();
+    setContinueHint(message);
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    hintTimerRef.current = setTimeout(() => setContinueHint(null), 3200);
   };
 
   const openGroupEditor = (item?: SetupStructureItem) => {
@@ -81,7 +93,7 @@ export function SetupStructureStep({
         : addStructureGroup(setupModel, input);
     onChange(next);
     setEditor(null);
-    setError(null);
+    setContinueHint(null);
   };
 
   const saveTable = (input: { name: string; columns: Array<{ id?: string; name: string }> }) => {
@@ -92,7 +104,7 @@ export function SetupStructureStep({
         : addStructureTable(setupModel, input);
     onChange(next);
     setEditor(null);
-    setError(null);
+    setContinueHint(null);
   };
 
   const handleDelete = (item: SetupStructureItem) => {
@@ -107,7 +119,7 @@ export function SetupStructureStep({
   const handleContinue = () => {
     const issue = validateStructureStep(structure);
     if (issue) {
-      setError(issue);
+      showContinueHint(issue);
       return;
     }
     try {
@@ -115,7 +127,7 @@ export function SetupStructureStep({
       void hapticSuccess();
       onComplete(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Struktur konnte nicht gespeichert werden.');
+      showContinueHint(err instanceof Error ? err.message : 'Struktur konnte nicht gespeichert werden.');
     }
   };
 
@@ -126,12 +138,7 @@ export function SetupStructureStep({
 
   return (
     <View style={styles.root}>
-      <SetupStructureHeader
-        activeTab={activeTab}
-        templateName={templateName}
-        onTabChange={switchTab}
-        onBack={onBack}
-      />
+      <SetupStructureHeader activeTab={activeTab} onTabChange={switchTab} onBack={onBack} />
 
       <View style={styles.body}>
         <View style={[styles.tabPane, activeTab !== 'pdf' ? styles.tabPaneHidden : null]}>
@@ -154,26 +161,17 @@ export function SetupStructureStep({
       </View>
 
       {activeTab === 'structure' && !readOnly ? (
-        <View style={[styles.footer, { paddingBottom: systemBottomInset(insets) + spacing.sm }]}>
-          {error ? (
-            <View style={styles.errorBanner}>
-              <MaterialCommunityIcons name="alert-circle-outline" size={18} color={colors.danger} />
-              <Text style={styles.error}>{error}</Text>
+        <View style={[styles.footerWrap, { paddingBottom: systemBottomInset(insets) + spacing.xs }]}>
+          {continueHint ? (
+            <View style={styles.hintBubble}>
+              <MaterialCommunityIcons name="information-outline" size={16} color={colors.accent2} />
+              <Text style={styles.hintText}>{continueHint}</Text>
             </View>
           ) : null}
-          <View style={styles.footerSummary}>
-            <Text style={styles.footerSummaryLabel}>
-              {structure.length === 0
-                ? 'Noch keine Bereiche definiert'
-                : `${structure.length} ${structure.length === 1 ? 'Bereich' : 'Bereiche'} bereit`}
-            </Text>
+          <View style={styles.footer}>
+            <PrimaryButton compact label="Später" variant="ghost" onPress={onBack} style={styles.footerBtn} />
+            <PrimaryButton compact label="Weiter" onPress={handleContinue} style={styles.footerBtnPrimary} />
           </View>
-          <PrimaryButton
-            label="Weiter zur Feldzuordnung"
-            onPress={handleContinue}
-            disabled={structure.length === 0}
-          />
-          <PrimaryButton label="Später fortsetzen" variant="ghost" onPress={onBack} />
         </View>
       ) : null}
 
@@ -214,35 +212,48 @@ const styles = StyleSheet.create({
     opacity: 0,
     pointerEvents: 'none'
   },
-  footer: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.pageX,
-    paddingTop: spacing.md,
+  footerWrap: {
+    position: 'relative',
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.panel,
-    ...shadows.card
+    paddingHorizontal: spacing.pageX,
+    paddingTop: spacing.xs
   },
-  footerSummary: {
-    alignItems: 'center'
+  hintBubble: {
+    position: 'absolute',
+    left: spacing.pageX,
+    right: spacing.pageX,
+    bottom: '100%',
+    marginBottom: spacing.xxs,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 10,
+    backgroundColor: colors.accent2,
+    shadowColor: '#1A1916',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4
   },
-  footerSummaryLabel: {
+  hintText: {
     ...typography.caption,
-    color: colors.muted
+    color: colors.white,
+    flex: 1,
+    lineHeight: 18
   },
-  errorBanner: {
+  footer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    padding: spacing.sm,
-    borderRadius: 12,
-    backgroundColor: 'rgba(161, 44, 36, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(161, 44, 36, 0.2)'
+    gap: spacing.xs
   },
-  error: {
-    ...typography.caption,
-    color: colors.danger,
+  footerBtn: {
     flex: 1
+  },
+  footerBtnPrimary: {
+    flex: 1.4
   }
 });
