@@ -14,6 +14,8 @@ import {
   resolveOverlayPlacement,
   resolveSetupEntryPath,
   shouldShowStructureIntro,
+  markAssignIntroSeen,
+  shouldShowAssignIntro,
   checkMappingTransition,
   getMappingCompletionSummary,
   sortMappingFields,
@@ -79,6 +81,15 @@ test('resolveSetupEntryPath routes wizard steps to setup screens', () => {
   );
   assert.equal(
     String(resolveSetupEntryPath('tpl_1', withWizardState({}, { step: 'assign' }))),
+    '/bautagebuch/setup/tpl_1/assign-intro'
+  );
+  assert.equal(
+    String(
+      resolveSetupEntryPath(
+        'tpl_1',
+        markAssignIntroSeen(withWizardState({}, { step: 'assign' }))
+      )
+    ),
     '/bautagebuch/setup/tpl_1/assign'
   );
   assert.equal(
@@ -95,6 +106,20 @@ test('shouldShowStructureIntro skips after intro seen or structure exists', () =
     shouldShowStructureIntro(
       withWizardState(fresh, {
         structure: [{ id: 'g1', name: 'G', type: 'group', order: 0 }]
+      })
+    ),
+    false
+  );
+});
+
+test('shouldShowAssignIntro skips after intro seen or assignments exist', () => {
+  const fresh = withWizardState({}, { step: 'assign' });
+  assert.equal(shouldShowAssignIntro(fresh), true);
+  assert.equal(shouldShowAssignIntro(markAssignIntroSeen(fresh)), false);
+  assert.equal(
+    shouldShowAssignIntro(
+      withWizardState(fresh, {
+        assignments: { f1: 'g1' }
       })
     ),
     false

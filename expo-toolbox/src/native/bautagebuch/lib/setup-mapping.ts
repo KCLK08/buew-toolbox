@@ -210,7 +210,8 @@ export function getWizardState(setupModel: Record<string, unknown>): SetupWizard
     deferredFieldIds: Array.isArray(raw.deferredFieldIds)
       ? raw.deferredFieldIds.map((fieldId) => String(fieldId))
       : [],
-    structureIntroSeen: raw.structureIntroSeen === true
+    structureIntroSeen: raw.structureIntroSeen === true,
+    assignIntroSeen: raw.assignIntroSeen === true
   };
 }
 
@@ -231,7 +232,9 @@ export function withWizardState(
       tableAssignments: wizard.tableAssignments || current.tableAssignments,
       deferredFieldIds: wizard.deferredFieldIds || current.deferredFieldIds,
       structureIntroSeen:
-        wizard.structureIntroSeen !== undefined ? wizard.structureIntroSeen : current.structureIntroSeen
+        wizard.structureIntroSeen !== undefined ? wizard.structureIntroSeen : current.structureIntroSeen,
+      assignIntroSeen:
+        wizard.assignIntroSeen !== undefined ? wizard.assignIntroSeen : current.assignIntroSeen
     },
     updatedAt: nowIso()
   };
@@ -654,6 +657,21 @@ export function markStructureIntroSeen(setupModel: Record<string, unknown>): Rec
   return withWizardState(setupModel, { structureIntroSeen: true });
 }
 
+export function shouldShowAssignIntro(setupModel: Record<string, unknown>): boolean {
+  const wizard = getWizardState(setupModel);
+  if (wizard.step !== 'assign') return false;
+  if (wizard.assignIntroSeen) return false;
+  const hasAssignments = Object.keys(wizard.assignments).length > 0;
+  const hasTableAssignments = Object.keys(wizard.tableAssignments).length > 0;
+  const hasDeferred = wizard.deferredFieldIds.length > 0;
+  if (hasAssignments || hasTableAssignments || hasDeferred) return false;
+  return true;
+}
+
+export function markAssignIntroSeen(setupModel: Record<string, unknown>): Record<string, unknown> {
+  return withWizardState(setupModel, { assignIntroSeen: true });
+}
+
 export function resolveSetupEntryPath(
   templateId: string,
   setupModel: Record<string, unknown>,
@@ -667,6 +685,9 @@ export function resolveSetupEntryPath(
     return `/bautagebuch/setup/${templateId}/fields` as Href;
   }
   if (wizard.step === 'assign') {
+    if (shouldShowAssignIntro(setupModel)) {
+      return `/bautagebuch/setup/${templateId}/assign-intro` as Href;
+    }
     return `/bautagebuch/setup/${templateId}/assign` as Href;
   }
   if (shouldShowStructureIntro(setupModel)) {

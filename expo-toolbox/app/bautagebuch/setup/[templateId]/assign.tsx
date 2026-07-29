@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 
 import { Screen } from '../../../../src/components/mobile';
 import { colors, spacing, typography } from '../../../../src/constants/theme';
@@ -11,6 +11,7 @@ import {
   ensureWizardInitialized,
   getWizardState,
   rebuildSectionsFromWizard,
+  shouldShowAssignIntro,
   sortMappingFields
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
 import { getTemplateBundle } from '../../../../src/native/bautagebuch/services/templateService';
@@ -49,6 +50,12 @@ export default function SetupAssignScreen() {
       }
 
       const initialized = ensureWizardInitialized(bundle.setupModel);
+      if (shouldShowAssignIntro(initialized)) {
+        setLoading(false);
+        router.replace(`/bautagebuch/setup/${templateId}/assign-intro` as Href);
+        return;
+      }
+
       setTemplateName(bundle.template.templateName);
       setTemplateStatus(bundle.template.status);
       setPdfPath(bundle.template.pdfPath);

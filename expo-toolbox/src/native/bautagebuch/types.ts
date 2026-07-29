@@ -119,6 +119,8 @@ export type SetupWizardState = {
   deferredFieldIds: string[];
   /** True after the user has seen the step-1 introduction screen. */
   structureIntroSeen?: boolean;
+  /** True after the user has seen the step-2 introduction screen. */
+  assignIntroSeen?: boolean;
 };
 
 export type SetupFieldConfig = {
