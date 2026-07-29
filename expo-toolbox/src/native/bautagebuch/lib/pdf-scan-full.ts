@@ -2,6 +2,7 @@ import { PDFDocument } from 'pdf-lib';
 
 import { detectPdfFieldType } from './setup-model.js';
 import { ETB_SCAN_VERSION } from './scan-meta';
+import { logAcroFormImportStats } from './pdf-scan-acroform-geometry';
 import {
   assignFieldIds,
   humanizeFieldName,
@@ -150,6 +151,7 @@ function buildScanResult(pageCount: number, rawFields: MutableScanField[]): PdfS
     scanVersion: String(ETB_SCAN_VERSION),
     hasRects: resultHasRects(fields)
   };
+  logAcroFormImportStats(fields);
   return withDetectedFieldsAlias(result);
 }
 
