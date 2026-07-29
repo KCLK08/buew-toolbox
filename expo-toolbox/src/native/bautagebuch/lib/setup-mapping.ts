@@ -222,7 +222,8 @@ export function getWizardState(setupModel: Record<string, unknown>): SetupWizard
           )
         : {},
     structureIntroSeen: raw.structureIntroSeen === true,
-    assignIntroSeen: raw.assignIntroSeen === true
+    assignIntroSeen: raw.assignIntroSeen === true,
+    fieldsIntroSeen: raw.fieldsIntroSeen === true
   };
 }
 
@@ -246,7 +247,9 @@ export function withWizardState(
       structureIntroSeen:
         wizard.structureIntroSeen !== undefined ? wizard.structureIntroSeen : current.structureIntroSeen,
       assignIntroSeen:
-        wizard.assignIntroSeen !== undefined ? wizard.assignIntroSeen : current.assignIntroSeen
+        wizard.assignIntroSeen !== undefined ? wizard.assignIntroSeen : current.assignIntroSeen,
+      fieldsIntroSeen:
+        wizard.fieldsIntroSeen !== undefined ? wizard.fieldsIntroSeen : current.fieldsIntroSeen
     },
     updatedAt: nowIso()
   };
@@ -771,6 +774,32 @@ export function markAssignIntroSeen(setupModel: Record<string, unknown>): Record
   return withWizardState(setupModel, { assignIntroSeen: true });
 }
 
+export function shouldShowFieldsIntro(
+  setupModel: Record<string, unknown>,
+  templateKind = ''
+): boolean {
+  if (templateKind === 'builtin-etb' || hasTableSections(setupModel)) return false;
+  const wizard = getWizardState(setupModel);
+  if (wizard.step !== 'fields') return false;
+  if (wizard.fieldsIntroSeen) return false;
+  return true;
+}
+
+export function markFieldsIntroSeen(setupModel: Record<string, unknown>): Record<string, unknown> {
+  return withWizardState(setupModel, { fieldsIntroSeen: true });
+}
+
+export function resolveFieldsSetupPath(
+  templateId: string,
+  setupModel: Record<string, unknown>,
+  templateKind = ''
+): Href {
+  if (shouldShowFieldsIntro(setupModel, templateKind)) {
+    return `/bautagebuch/setup/${templateId}/fields-intro` as Href;
+  }
+  return `/bautagebuch/setup/${templateId}/fields` as Href;
+}
+
 export function resolveSetupEntryPath(
   templateId: string,
   setupModel: Record<string, unknown>,
@@ -781,7 +810,7 @@ export function resolveSetupEntryPath(
   }
   const wizard = getWizardState(setupModel);
   if (wizard.step === 'fields') {
-    return `/bautagebuch/setup/${templateId}/fields` as Href;
+    return resolveFieldsSetupPath(templateId, setupModel, templateKind);
   }
   if (wizard.step === 'assign') {
     if (shouldShowAssignIntro(setupModel)) {

@@ -11,6 +11,7 @@ import {
   ensureWizardInitialized,
   getWizardState,
   rebuildSectionsFromWizard,
+  resolveFieldsSetupPath,
   shouldShowAssignIntro,
   sortMappingFields
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
@@ -39,7 +40,7 @@ export default function SetupAssignScreen() {
 
       if (wizard.step === 'fields') {
         setLoading(false);
-        router.replace(`/bautagebuch/setup/${templateId}/fields`);
+        router.replace(resolveFieldsSetupPath(String(templateId), bundle.setupModel));
         return;
       }
       if (wizard.step === 'structure') {
@@ -66,7 +67,7 @@ export default function SetupAssignScreen() {
         schedule(rebuilt);
         await flush();
         setLoading(false);
-        router.replace(`/bautagebuch/setup/${templateId}/fields`);
+        router.replace(resolveFieldsSetupPath(String(templateId), rebuilt));
         return;
       }
 
@@ -97,7 +98,7 @@ export default function SetupAssignScreen() {
     schedule(rebuilt);
     void (async () => {
       await flush();
-      router.replace(`/bautagebuch/setup/${templateId}/fields`);
+      router.replace(resolveFieldsSetupPath(String(templateId), rebuilt));
     })();
   };
 

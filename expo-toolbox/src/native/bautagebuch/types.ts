@@ -123,6 +123,8 @@ export type SetupWizardState = {
   structureIntroSeen?: boolean;
   /** True after the user has seen the step-2 introduction screen. */
   assignIntroSeen?: boolean;
+  /** True after the user has seen the step-3 introduction screen. */
+  fieldsIntroSeen?: boolean;
 };
 
 export type SetupFieldConfig = {
