@@ -4,19 +4,17 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../../../src/constants/theme';
-import { SetupStructureIntro } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupStructureIntro';
+import { SetupFieldSettingsOnboarding } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupFieldSettingsOnboarding';
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
 import {
   ensureWizardInitialized,
   getWizardState,
-  markStructureIntroSeen,
-  resolveSetupEntryPath,
-  shouldShowAssignIntro,
-  shouldShowStructureIntro
+  markFieldsIntroSeen,
+  shouldShowFieldsIntro
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
 import { getTemplateBundle } from '../../../../src/native/bautagebuch/services/templateService';
 
-export default function SetupStructureIntroScreen() {
+export default function SetupFieldsIntroScreen() {
   const router = useRouter();
   const { templateId } = useLocalSearchParams<{ templateId: string }>();
   const [loading, setLoading] = useState(true);
@@ -31,26 +29,24 @@ export default function SetupStructureIntroScreen() {
     try {
       const bundle = await getTemplateBundle(templateId);
       const wizard = getWizardState(bundle.setupModel);
+      const kind = bundle.template.templateKind;
 
-      if (wizard.step === 'fields') {
+      if (wizard.step === 'structure') {
         setLoading(false);
-        router.replace(resolveSetupEntryPath(String(templateId), bundle.setupModel, bundle.template.templateKind));
+        router.replace(`/bautagebuch/setup/${templateId}/mapping` as Href);
         return;
       }
       if (wizard.step === 'assign') {
         setLoading(false);
-        router.replace(
-          shouldShowAssignIntro(bundle.setupModel)
-            ? (`/bautagebuch/setup/${templateId}/assign-intro` as Href)
-            : (`/bautagebuch/setup/${templateId}/assign` as Href)
-        );
+        router.replace(`/bautagebuch/setup/${templateId}/assign` as Href);
         return;
       }
 
       const initialized = ensureWizardInitialized(bundle.setupModel);
-      if (!shouldShowStructureIntro(initialized)) {
+
+      if (!shouldShowFieldsIntro(initialized, kind)) {
         setLoading(false);
-        router.replace(`/bautagebuch/setup/${templateId}/mapping` as Href);
+        router.replace(`/bautagebuch/setup/${templateId}/fields` as Href);
         return;
       }
 
@@ -71,12 +67,12 @@ export default function SetupStructureIntroScreen() {
 
   const handleStart = () => {
     if (!setupModel || !templateId) return;
-    const next = markStructureIntroSeen(setupModel);
+    const next = markFieldsIntroSeen(setupModel);
     setSetupModel(next);
     schedule(next);
     void (async () => {
       await flush();
-      router.replace(`/bautagebuch/setup/${templateId}/mapping` as Href);
+      router.replace(`/bautagebuch/setup/${templateId}/fields` as Href);
     })();
   };
 
@@ -96,7 +92,7 @@ export default function SetupStructureIntroScreen() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {!loading && setupModel ? (
-        <SetupStructureIntro onBack={() => void handleBack()} onStart={handleStart} />
+        <SetupFieldSettingsOnboarding onBack={() => void handleBack()} onStart={handleStart} />
       ) : null}
     </SafeAreaView>
   );

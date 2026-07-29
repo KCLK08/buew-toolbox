@@ -16,7 +16,9 @@ import {
   resolveSetupEntryPath,
   shouldShowStructureIntro,
   markAssignIntroSeen,
+  markFieldsIntroSeen,
   shouldShowAssignIntro,
+  shouldShowFieldsIntro,
   checkMappingTransition,
   getMappingCompletionSummary,
   sortMappingFields,
@@ -95,6 +97,15 @@ test('resolveSetupEntryPath routes wizard steps to setup screens', () => {
   );
   assert.equal(
     String(resolveSetupEntryPath('tpl_1', withWizardState({}, { step: 'fields' }))),
+    '/bautagebuch/setup/tpl_1/fields-intro'
+  );
+  assert.equal(
+    String(
+      resolveSetupEntryPath(
+        'tpl_1',
+        markFieldsIntroSeen(withWizardState({}, { step: 'fields' }))
+      )
+    ),
     '/bautagebuch/setup/tpl_1/fields'
   );
 });
@@ -122,6 +133,20 @@ test('shouldShowAssignIntro skips after intro seen or assignments exist', () => 
       withWizardState(fresh, {
         assignments: { f1: 'g1' }
       })
+    ),
+    false
+  );
+});
+
+test('shouldShowFieldsIntro skips after intro seen or legacy templates', () => {
+  const fresh = withWizardState({}, { step: 'fields' });
+  assert.equal(shouldShowFieldsIntro(fresh), true);
+  assert.equal(shouldShowFieldsIntro(markFieldsIntroSeen(fresh)), false);
+  assert.equal(shouldShowFieldsIntro(fresh, 'builtin-etb'), false);
+  assert.equal(
+    shouldShowFieldsIntro(
+      { ...fresh, table_sections: [{ tableId: 't1', label: 'T', columns: [], rows: [] }] },
+      ''
     ),
     false
   );

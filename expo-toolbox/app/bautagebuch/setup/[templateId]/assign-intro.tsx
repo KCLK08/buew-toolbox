@@ -10,6 +10,7 @@ import {
   ensureWizardInitialized,
   getWizardState,
   markAssignIntroSeen,
+  resolveSetupEntryPath,
   shouldShowAssignIntro
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
 import { getTemplateBundle } from '../../../../src/native/bautagebuch/services/templateService';
@@ -32,7 +33,7 @@ export default function SetupAssignIntroScreen() {
 
       if (wizard.step === 'fields') {
         setLoading(false);
-        router.replace(`/bautagebuch/setup/${templateId}/fields`);
+        router.replace(resolveSetupEntryPath(String(templateId), bundle.setupModel, bundle.template.templateKind));
         return;
       }
       if (wizard.step === 'structure') {

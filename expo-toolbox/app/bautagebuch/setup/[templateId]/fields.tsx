@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 
 import { PrimaryButton, Screen } from '../../../../src/components/mobile';
 import { colors, spacing, typography } from '../../../../src/constants/theme';
@@ -14,7 +14,8 @@ import {
   hasTableSections,
   getWizardState,
   listSetupSections,
-  resolveSetupEntryPath
+  resolveSetupEntryPath,
+  shouldShowFieldsIntro
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
 import { validateSetupModel } from '../../../../src/native/bautagebuch/lib/setup-model.js';
 import {
@@ -71,8 +72,13 @@ export default function SetupFieldsScreen() {
     if (loading || !setupModel || !templateId) return;
     const legacy = templateKind === 'builtin-etb' || hasTableSections(setupModel);
     if (legacy) return;
-    if (getWizardState(setupModel).step !== 'fields') {
+    const wizard = getWizardState(setupModel);
+    if (wizard.step !== 'fields') {
       router.replace(resolveSetupEntryPath(String(templateId), setupModel, templateKind));
+      return;
+    }
+    if (shouldShowFieldsIntro(setupModel, templateKind)) {
+      router.replace(`/bautagebuch/setup/${templateId}/fields-intro` as Href);
     }
   }, [loading, setupModel, templateKind, templateId, router]);
 
