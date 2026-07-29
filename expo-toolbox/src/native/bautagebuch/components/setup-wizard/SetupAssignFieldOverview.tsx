@@ -6,13 +6,16 @@ import { SingleLineText } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 import { hapticSelection } from '../../../../lib/haptics';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
+import { SETUP_FIELD_TYPE_OPTIONS } from '../../lib/setup-field-settings';
 import {
   getWizardState,
   isFieldAssigned,
+  resolveFieldAssignmentSummary,
   resolveFieldDisplayLabel,
   type MappingField
 } from '../../lib/setup-mapping';
-import { fieldSourceLabel } from '../../lib/template-field';
+import { fieldSourceLabel, fieldSourceTone } from '../../lib/template-field';
+import type { SetupFieldType } from '../../types';
 
 type FieldStatus = 'assigned' | 'current' | 'open';
 
@@ -47,6 +50,14 @@ function statusColor(status: FieldStatus): string {
   return colors.muted;
 }
 
+function mappingTypeLabel(type: string): string {
+  const normalized =
+    type === 'dropdown' || type === 'radio' ? 'select' : (type as SetupFieldType);
+  return (
+    SETUP_FIELD_TYPE_OPTIONS.find((option) => option.value === normalized)?.label || 'Textfeld'
+  );
+}
+
 export function SetupAssignFieldOverview({
   visible,
   mappingFields,
@@ -69,21 +80,6 @@ export function SetupAssignFieldOverview({
           <View style={styles.headerBtn} />
         </View>
 
-        <View style={styles.legend}>
-          <View style={styles.legendItem}>
-            <MaterialCommunityIcons name="circle" size={10} color={colors.success} />
-            <Text style={styles.legendLabel}>Zugeordnet</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <MaterialCommunityIcons name="circle" size={10} color={colors.warning} />
-            <Text style={styles.legendLabel}>Aktuell</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <MaterialCommunityIcons name="circle-outline" size={10} color={colors.muted} />
-            <Text style={styles.legendLabel}>Offen</Text>
-          </View>
-        </View>
-
         <ScrollView
           style={styles.list}
           contentContainerStyle={[
@@ -94,6 +90,8 @@ export function SetupAssignFieldOverview({
           {mappingFields.map((field, index) => {
             const status = fieldStatus(field, wizard, currentFieldId);
             const label = resolveFieldDisplayLabel(field, wizard);
+            const assignment = resolveFieldAssignmentSummary(setupModel, field.fieldId);
+            const sourceTone = fieldSourceTone(field.source);
             return (
               <Pressable
                 key={field.fieldId}
@@ -112,8 +110,25 @@ export function SetupAssignFieldOverview({
                 />
                 <View style={styles.rowCopy}>
                   <SingleLineText style={styles.rowLabel}>{label}</SingleLineText>
+                  <Text style={styles.rowMeta}>Typ: {mappingTypeLabel(field.type)}</Text>
+                  <Text
+                    style={[
+                      styles.rowMeta,
+                      sourceTone === 'success'
+                        ? styles.sourceAuto
+                        : sourceTone === 'warning'
+                          ? styles.sourceManual
+                          : null
+                    ]}
+                  >
+                    Quelle: {fieldSourceLabel(field.source)}
+                  </Text>
                   <Text style={styles.rowMeta}>
-                    Seite {field.page} · {fieldSourceLabel(field.source)}
+                    {assignment.kind === 'none'
+                      ? 'Gruppe: —'
+                      : assignment.kind === 'table'
+                        ? `Tabelle: ${assignment.label}`
+                        : `Gruppe: ${assignment.label}`}
                   </Text>
                 </View>
                 <Text style={styles.rowIndex}>{index + 1}</Text>
@@ -152,25 +167,6 @@ const styles = StyleSheet.create({
     ...typography.subtitle,
     color: colors.ink
   },
-  legend: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.pageX,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.panel
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6
-  },
-  legendLabel: {
-    ...typography.caption,
-    color: colors.muted
-  },
   list: {
     flex: 1
   },
@@ -180,11 +176,11 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
     minHeight: spacing.touchMin,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.sm,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
@@ -199,12 +195,18 @@ const styles = StyleSheet.create({
     gap: 2
   },
   rowLabel: {
-    ...typography.body,
+    ...typography.bodyStrong,
     color: colors.ink
   },
   rowMeta: {
     ...typography.caption,
     color: colors.muted
+  },
+  sourceAuto: {
+    color: colors.success
+  },
+  sourceManual: {
+    color: colors.warning
   },
   rowIndex: {
     ...typography.caption,

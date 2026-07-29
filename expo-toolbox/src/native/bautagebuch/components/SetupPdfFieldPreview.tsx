@@ -27,6 +27,7 @@ import { PdfPreviewPanel } from './PdfPreviewPanel';
 type Props = {
   pdfPath: string | null;
   detectedFields?: DetectedField[];
+  fieldLabels?: Record<string, string>;
   activeFieldId?: string | null;
   activeFieldLabel?: string | null;
   activeFieldPage?: number;
@@ -53,6 +54,7 @@ type PreviewState = {
 export function SetupPdfFieldPreview({
   pdfPath,
   detectedFields = [],
+  fieldLabels = {},
   activeFieldId,
   activeFieldLabel,
   activeFieldPage = 1,
@@ -84,13 +86,18 @@ export function SetupPdfFieldPreview({
     () =>
       detectedFields
         .filter((field) => fieldHasGeometry(field))
-        .map((field) => ({
+        .map((field, index) => ({
           fieldId: String(field.fieldId),
           fieldName: String(field.fieldName || ''),
+          label: String(
+            fieldLabels[field.fieldId] || field.labelCandidate || field.fieldName || 'Feld'
+          ).trim(),
+          source: field.source,
+          index: index + 1,
           page: getFieldPage(field),
           rect: fieldToPreviewLegacyRect(field) as number[]
         })),
-    [detectedFields]
+    [detectedFields, fieldLabels]
   );
 
   const resolvedActiveFieldId = useMemo(() => {
@@ -106,7 +113,7 @@ export function SetupPdfFieldPreview({
   const activeFieldRect = useMemo(() => {
     if (!activeFieldId) return null;
     const match = detectedFields.find((field) => field.fieldId === activeFieldId);
-    return Array.isArray(match?.rect) ? match.rect : null;
+    return match ? fieldToPreviewLegacyRect(match) : null;
   }, [activeFieldId, detectedFields]);
 
   const overlayPlacement = useMemo(

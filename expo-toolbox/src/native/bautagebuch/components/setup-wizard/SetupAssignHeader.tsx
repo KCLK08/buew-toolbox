@@ -4,10 +4,10 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, shadows, spacing, typography } from '../../../../constants/theme';
 import { hapticSelection } from '../../../../lib/haptics';
 
-export type SetupAssignViewTab = 'pdf' | 'assign';
+export type SetupAssignViewTab = 'pdf' | 'fields';
 
 const INFO_TEXT =
-  'Ordne jedes erkannte PDF-Feld einer Gruppe oder Tabelle zu. Die Struktur hast du in Schritt 1 festgelegt — hier entstehen die digitalen Felder.';
+  'Prüfen Sie erkannte PDF-Felder, markieren Sie fehlende Bereiche manuell und ordnen Sie jedes Feld einer Gruppe oder Tabelle zu.';
 
 type Props = {
   activeTab: SetupAssignViewTab;
@@ -73,16 +73,16 @@ export function SetupAssignHeader({ activeTab, onTabChange, onBack, onOpenFields
         </Pressable>
         <Pressable
           accessibilityRole="tab"
-          accessibilityState={{ selected: activeTab === 'assign' }}
-          style={[styles.tab, activeTab === 'assign' ? styles.tabActive : null]}
-          onPress={() => selectTab('assign')}
+          accessibilityState={{ selected: activeTab === 'fields' }}
+          style={[styles.tab, activeTab === 'fields' ? styles.tabActive : null]}
+          onPress={() => selectTab('fields')}
         >
           <MaterialCommunityIcons
-            name="shape-outline"
+            name="format-list-bulleted"
             size={16}
-            color={activeTab === 'assign' ? colors.accent : colors.muted}
+            color={activeTab === 'fields' ? colors.accent : colors.muted}
           />
-          <Text style={activeTab === 'assign' ? styles.tabLabelActive : styles.tabLabel}>Zuordnung</Text>
+          <Text style={activeTab === 'fields' ? styles.tabLabelActive : styles.tabLabel}>Felder</Text>
         </Pressable>
       </View>
     </View>
