@@ -209,7 +209,8 @@ export function getWizardState(setupModel: Record<string, unknown>): SetupWizard
         : {},
     deferredFieldIds: Array.isArray(raw.deferredFieldIds)
       ? raw.deferredFieldIds.map((fieldId) => String(fieldId))
-      : []
+      : [],
+    structureIntroSeen: raw.structureIntroSeen === true
   };
 }
 
@@ -228,7 +229,9 @@ export function withWizardState(
       structure: wizard.structure || current.structure,
       assignments: wizard.assignments || current.assignments,
       tableAssignments: wizard.tableAssignments || current.tableAssignments,
-      deferredFieldIds: wizard.deferredFieldIds || current.deferredFieldIds
+      deferredFieldIds: wizard.deferredFieldIds || current.deferredFieldIds,
+      structureIntroSeen:
+        wizard.structureIntroSeen !== undefined ? wizard.structureIntroSeen : current.structureIntroSeen
     },
     updatedAt: nowIso()
   };
@@ -639,6 +642,18 @@ export function hasTableSections(setupModel: Record<string, unknown>): boolean {
   return Array.isArray(setupModel.table_sections) && setupModel.table_sections.length > 0;
 }
 
+export function shouldShowStructureIntro(setupModel: Record<string, unknown>): boolean {
+  const wizard = getWizardState(setupModel);
+  if (wizard.step !== 'structure') return false;
+  if (wizard.structureIntroSeen) return false;
+  if (wizard.structure.length > 0) return false;
+  return true;
+}
+
+export function markStructureIntroSeen(setupModel: Record<string, unknown>): Record<string, unknown> {
+  return withWizardState(setupModel, { structureIntroSeen: true });
+}
+
 export function resolveSetupEntryPath(
   templateId: string,
   setupModel: Record<string, unknown>,
@@ -653,6 +668,9 @@ export function resolveSetupEntryPath(
   }
   if (wizard.step === 'assign') {
     return `/bautagebuch/setup/${templateId}/assign` as Href;
+  }
+  if (shouldShowStructureIntro(setupModel)) {
+    return `/bautagebuch/setup/${templateId}/intro` as Href;
   }
   return `/bautagebuch/setup/${templateId}/mapping` as Href;
 }

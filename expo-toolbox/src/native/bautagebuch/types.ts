@@ -117,6 +117,8 @@ export type SetupWizardState = {
   assignments: Record<string, string>;
   tableAssignments: Record<string, SetupWizardTableAssignment>;
   deferredFieldIds: string[];
+  /** True after the user has seen the step-1 introduction screen. */
+  structureIntroSeen?: boolean;
 };
 
 export type SetupFieldConfig = {
