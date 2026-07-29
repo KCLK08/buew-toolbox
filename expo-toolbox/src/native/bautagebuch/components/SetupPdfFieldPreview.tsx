@@ -25,7 +25,8 @@ type Props = {
   activeFieldId?: string | null;
   activeFieldLabel?: string | null;
   activeFieldPage?: number;
-  variant?: 'default' | 'pinned' | 'mapping' | 'overlay';
+  assignedFieldIds?: string[];
+  variant?: 'default' | 'pinned' | 'mapping' | 'assign' | 'overlay';
   emphasizeActiveHighlight?: boolean;
 };
 
@@ -45,11 +46,13 @@ export function SetupPdfFieldPreview({
   activeFieldId,
   activeFieldLabel,
   activeFieldPage = 1,
+  assignedFieldIds = [],
   variant = 'default',
   emphasizeActiveHighlight = false
 }: Props) {
   const pinned = variant === 'pinned';
-  const mapping = variant === 'mapping';
+  const mapping = variant === 'mapping' || variant === 'assign';
+  const assign = variant === 'assign';
   const overlay = variant === 'overlay';
   const highQuality = overlay || mapping;
   const highlightActive = emphasizeActiveHighlight || mapping || overlay;
@@ -99,7 +102,15 @@ export function SetupPdfFieldPreview({
     [activeFieldRect]
   );
 
-  const htmlMode: PreviewHtmlMode = mapping ? 'mapping' : overlay ? 'overlay' : pinned ? 'pinned' : 'default';
+  const htmlMode: PreviewHtmlMode = assign
+    ? 'assign'
+    : mapping
+      ? 'mapping'
+      : overlay
+        ? 'overlay'
+        : pinned
+          ? 'pinned'
+          : 'default';
 
   useEffect(() => {
     let cancelled = false;
@@ -124,6 +135,7 @@ export function SetupPdfFieldPreview({
           base64,
           ...assets,
           highlights,
+          assignedFieldIds,
           mode: htmlMode,
           highlightActive,
           highQuality
@@ -150,7 +162,7 @@ export function SetupPdfFieldPreview({
     return () => {
       cancelled = true;
     };
-  }, [pdfPath, highlights, htmlMode, highlightActive, highQuality, overlay]);
+  }, [pdfPath, highlights, assignedFieldIds, htmlMode, highlightActive, highQuality, overlay]);
 
   const postPreviewCommand = useCallback((payload: Record<string, unknown>) => {
     const json = JSON.stringify(payload);
@@ -166,7 +178,8 @@ export function SetupPdfFieldPreview({
       type: 'setActive',
       fieldId: resolvedActiveFieldId,
       page: Number(activeFieldPage || previewState.page || 1),
-      overlayPlacement
+      overlayPlacement,
+      assignedFieldIds
     });
   }, [
     resolvedActiveFieldId,
@@ -174,7 +187,8 @@ export function SetupPdfFieldPreview({
     overlayPlacement,
     previewState.ready,
     useFallback,
-    postPreviewCommand
+    postPreviewCommand,
+    assignedFieldIds
   ]);
 
   const goToPage = (page: number) => {
@@ -226,7 +240,7 @@ export function SetupPdfFieldPreview({
   }
 
   const showPageControls = !mapping && !overlay;
-  const showBanner = !mapping;
+  const showBanner = !mapping && !assign;
 
   const banner = activeFieldLabel
     ? `Aktiv: ${activeFieldLabel}${activeFieldPage ? ` · Seite ${activeFieldPage}` : ''}`
@@ -288,7 +302,8 @@ export function SetupPdfFieldPreview({
               type: 'setActive',
               fieldId: resolvedActiveFieldId,
               page: Number(activeFieldPage || previewState.page || 1),
-              overlayPlacement
+              overlayPlacement,
+              assignedFieldIds
             });
           }}
           onError={(event) => {

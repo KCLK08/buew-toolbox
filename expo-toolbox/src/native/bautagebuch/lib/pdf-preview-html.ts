@@ -3,7 +3,7 @@ export const PDFJS_VERSION = '3.11.174';
 
 export const PDF_PREVIEW_LOAD_ERROR = 'PDF Vorschau konnte nicht geladen werden';
 
-export type PreviewHtmlMode = 'default' | 'mapping' | 'overlay' | 'pinned';
+export type PreviewHtmlMode = 'default' | 'mapping' | 'assign' | 'overlay' | 'pinned';
 
 export type PreviewHighlight = {
   fieldId: string;
@@ -22,6 +22,7 @@ export type PdfPreviewRuntimeAssets = {
 export type BuildPreviewHtmlOptions = PdfPreviewRuntimeAssets & {
   base64: string;
   highlights?: PreviewHighlight[];
+  assignedFieldIds?: string[];
   mode?: PreviewHtmlMode;
   highlightActive?: boolean;
   highQuality?: boolean;
@@ -121,13 +122,16 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
     workerSrc,
     workerSource,
     highlights = [],
+    assignedFieldIds = [],
     mode = 'default',
     highlightActive = false,
     highQuality = false
   } = options;
 
-  const mappingMode = mode === 'mapping';
+  const mappingMode = mode === 'mapping' || mode === 'assign';
+  const assignMode = mode === 'assign';
   const highlightsJson = JSON.stringify(highlights);
+  const assignedFieldIdsJson = JSON.stringify(assignedFieldIds);
 
   return `<!DOCTYPE html>
 <html>
@@ -179,6 +183,15 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
         border-color: rgba(26, 25, 22, 0.15);
         border-width: 1px;
       }
+      .highlight.assigned {
+        border: 2px solid rgba(46, 125, 50, 0.72);
+        background: rgba(46, 125, 50, 0.08);
+        opacity: 0.92;
+      }
+      .highlight.assigned.dim {
+        opacity: 0.78;
+        border-color: rgba(46, 125, 50, 0.55);
+      }
       @keyframes pulse {
         0%, 100% { transform: scale(1); opacity: 1; }
         50% { transform: scale(1.03); opacity: 0.94; }
@@ -204,11 +217,13 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
     <div id="zoomHint">Zwei Finger zum Zoomen</div>
     <script>
       const mappingMode = ${mappingMode ? 'true' : 'false'};
+      const assignMode = ${assignMode ? 'true' : 'false'};
       const highlightActive = ${highlightActive ? 'true' : 'false'};
       const highQuality = ${highQuality ? 'true' : 'false'};
       ${previewBootHelpers(PDF_PREVIEW_LOAD_ERROR, workerSrc)}
 
       const highlights = ${highlightsJson};
+      let assignedFieldIds = ${assignedFieldIdsJson};
       let pdfDoc = null;
       let currentPage = 1;
       let activeFieldId = '';
@@ -245,8 +260,10 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
           const isActive =
             String(entry.fieldId) === String(activeFieldId) ||
             String(entry.fieldName || '') === String(activeFieldId);
+          const isAssigned = assignedFieldIds.includes(String(entry.fieldId));
           let className = 'highlight';
           if (isActive) className += ' active';
+          else if (isAssigned) className += ' assigned';
           else if ((mappingMode || highlightActive) && activeFieldId) className += ' dim';
           box.className = className;
           box.style.left = left + 'px';
@@ -406,6 +423,9 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
             activeFieldId = String(message.fieldId || '');
             if (message.overlayPlacement) {
               overlayPlacement = String(message.overlayPlacement);
+            }
+            if (Array.isArray(message.assignedFieldIds)) {
+              assignedFieldIds = message.assignedFieldIds.map((entry) => String(entry));
             }
             const page = Number(message.page || currentPage || 1);
             void renderPage(page);

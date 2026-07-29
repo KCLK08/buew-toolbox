@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   assignFieldToGroup,
   assignFieldToTableCell,
+  assignFieldToTableColumn,
   deferField,
   ensureWizardInitialized,
   getMappingProgress,
@@ -178,8 +179,10 @@ test('getMappingProgress counts deferred fields as handled', () => {
     )
   );
   const progress = getMappingProgress(fields, wizard);
-  assert.equal(progress.percent, 67);
+  assert.equal(progress.percent, 33);
   assert.equal(progress.remaining, 1);
+  assert.equal(progress.assigned, 1);
+  assert.equal(progress.open, 2);
 });
 
 test('resolveOverlayPlacement keeps panel away from field edges', () => {
@@ -292,6 +295,45 @@ test('rebuildSectionsFromWizard preserves field options and builds table section
   assert.equal(tables[0]?.rows[0]?.cells[0]?.fieldId, 'cb1');
   assert.equal(tables[0]?.rows[0]?.cells[0]?.type, 'checkbox');
   assert.deepEqual(tables[0]?.rows[0]?.cells[0]?.options, ['Ja', 'Nein']);
+});
+
+test('assignFieldToGroup stores custom field label', () => {
+  const fields = sortMappingFields([field('a')]);
+  const model = assignFieldToGroup(
+    withWizardState({}, { groups: [{ sectionId: 'g1', label: 'Allgemein' }] }),
+    'a',
+    'g1',
+    'Baumaßnahme'
+  );
+  const wizard = getWizardState(model);
+  assert.equal(wizard.fieldLabels?.a, 'Baumaßnahme');
+  const rebuilt = rebuildSectionsFromWizard(model, fields);
+  const sections = rebuilt.single_sections as Array<{ fields: Array<{ label: string }> }>;
+  assert.equal(sections[0]?.fields[0]?.label, 'Baumaßnahme');
+});
+
+test('assignFieldToTableColumn creates column and assigns field', () => {
+  const fields = sortMappingFields([field('t1')]);
+  let model = withWizardState(
+    {},
+    {
+      groups: [],
+      tables: [{ tableId: 'tbl_1', label: 'Arbeitsleistungen', rowCount: 1, columns: [] }],
+      structure: [
+        { id: 'tbl_1', name: 'Arbeitsleistungen', type: 'table', order: 0, columns: [] }
+      ]
+    }
+  );
+  model = assignFieldToTableColumn(model, 't1', 'tbl_1', {
+    newColumnName: 'Tätigkeit',
+    fieldLabel: 'Tätigkeit'
+  });
+  const wizard = getWizardState(model);
+  assert.equal(wizard.tables[0]?.columns.length, 1);
+  assert.equal(wizard.tableAssignments.t1?.columnId, wizard.tables[0]?.columns[0]?.columnId);
+  const rebuilt = rebuildSectionsFromWizard(model, fields);
+  const tables = rebuilt.table_sections as Array<{ rows: Array<{ cells: Array<{ label: string }> }> }>;
+  assert.equal(tables[0]?.rows[0]?.cells[0]?.label, 'Tätigkeit');
 });
 
 console.log(`\n${passed} tests passed`);

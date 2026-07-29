@@ -8,6 +8,7 @@ import type {
   SetupWizardState,
   SetupWizardStep
 } from '../types';
+import { updateStructureTable } from './setup-structure';
 import { buildTableSectionsFromWizard } from './setup-wizard-tables';
 import { buildLegacySectionOrder, syncSectionOrder } from './setup-model.js';
 
@@ -28,6 +29,7 @@ export type MappingProgress = {
   percent: number;
   remaining: number;
   assigned: number;
+  open: number;
 };
 
 export type OverlayPlacement = 'top' | 'bottom' | 'left' | 'right';
@@ -210,6 +212,15 @@ export function getWizardState(setupModel: Record<string, unknown>): SetupWizard
     deferredFieldIds: Array.isArray(raw.deferredFieldIds)
       ? raw.deferredFieldIds.map((fieldId) => String(fieldId))
       : [],
+    fieldLabels:
+      raw.fieldLabels && typeof raw.fieldLabels === 'object'
+        ? Object.fromEntries(
+            Object.entries(raw.fieldLabels).map(([fieldId, label]) => [
+              String(fieldId),
+              String(label)
+            ])
+          )
+        : {},
     structureIntroSeen: raw.structureIntroSeen === true,
     assignIntroSeen: raw.assignIntroSeen === true
   };
@@ -231,6 +242,7 @@ export function withWizardState(
       assignments: wizard.assignments || current.assignments,
       tableAssignments: wizard.tableAssignments || current.tableAssignments,
       deferredFieldIds: wizard.deferredFieldIds || current.deferredFieldIds,
+      fieldLabels: wizard.fieldLabels || current.fieldLabels,
       structureIntroSeen:
         wizard.structureIntroSeen !== undefined ? wizard.structureIntroSeen : current.structureIntroSeen,
       assignIntroSeen:
@@ -245,22 +257,50 @@ export function getMappingProgress(
   wizard: SetupWizardState
 ): MappingProgress {
   const total = fields.length;
-  const assigned = fields.filter((field) => Boolean(wizard.assignments[field.fieldId])).length;
+  const assigned = fields.filter(
+    (field) =>
+      Boolean(wizard.assignments[field.fieldId]) ||
+      Boolean(wizard.tableAssignments[field.fieldId])
+  ).length;
   const handled = fields.filter(
     (field) =>
       Boolean(wizard.assignments[field.fieldId]) ||
       Boolean(wizard.tableAssignments[field.fieldId]) ||
       wizard.deferredFieldIds.includes(field.fieldId)
   ).length;
+  const open = Math.max(0, total - assigned);
   const current = total > 0 ? Math.min(total, Math.max(1, handled + 1)) : 0;
-  const percent = total > 0 ? Math.round((handled / total) * 100) : 100;
+  const percent = total > 0 ? Math.round((assigned / total) * 100) : 100;
   return {
     current,
     total,
     percent,
     remaining: Math.max(0, total - handled),
-    assigned
+    assigned,
+    open
   };
+}
+
+export function getAssignedFieldIds(wizard: SetupWizardState): string[] {
+  const ids = new Set<string>();
+  for (const fieldId of Object.keys(wizard.assignments)) ids.add(fieldId);
+  for (const fieldId of Object.keys(wizard.tableAssignments)) ids.add(fieldId);
+  return [...ids];
+}
+
+export function resolveFieldDisplayLabel(
+  field: MappingField,
+  wizard: SetupWizardState
+): string {
+  const custom = wizard.fieldLabels?.[field.fieldId];
+  if (custom && custom.trim()) return custom.trim();
+  return String(field.labelCandidate || field.fieldName || 'Feld').trim();
+}
+
+export function isFieldAssigned(fieldId: string, wizard: SetupWizardState): boolean {
+  return (
+    Boolean(wizard.assignments[fieldId]) || Boolean(wizard.tableAssignments[fieldId])
+  );
 }
 
 export function getNextUnassignedIndex(
@@ -294,14 +334,69 @@ export function isMappingComplete(fields: MappingField[], wizard: SetupWizardSta
 export function assignFieldToGroup(
   setupModel: Record<string, unknown>,
   fieldId: string,
-  sectionId: string
+  sectionId: string,
+  label?: string
 ): Record<string, unknown> {
   const wizard = getWizardState(setupModel);
   const assignments = { ...wizard.assignments, [fieldId]: sectionId };
   const tableAssignments = { ...wizard.tableAssignments };
   delete tableAssignments[fieldId];
   const deferredFieldIds = wizard.deferredFieldIds.filter((entry) => entry !== fieldId);
-  return withWizardState(setupModel, { assignments, tableAssignments, deferredFieldIds });
+  const trimmedLabel = String(label || '').trim();
+  const fieldLabels =
+    trimmedLabel.length > 0
+      ? { ...wizard.fieldLabels, [fieldId]: trimmedLabel }
+      : wizard.fieldLabels;
+  return withWizardState(setupModel, {
+    assignments,
+    tableAssignments,
+    deferredFieldIds,
+    fieldLabels
+  });
+}
+
+export function assignFieldToTableColumn(
+  setupModel: Record<string, unknown>,
+  fieldId: string,
+  tableId: string,
+  input: { columnId?: string; newColumnName?: string; fieldLabel?: string }
+): Record<string, unknown> {
+  let model = setupModel;
+  let columnId = input.columnId ? String(input.columnId) : '';
+
+  if (!columnId) {
+    const columnName =
+      String(input.newColumnName || input.fieldLabel || '').trim() || 'Spalte';
+    model = addWizardTableColumn(model, tableId, { label: columnName, type: 'text' });
+    const wizardAfterColumn = getWizardState(model);
+    const table = wizardAfterColumn.tables.find((entry) => entry.tableId === tableId);
+    columnId = table?.columns[table.columns.length - 1]?.columnId || '';
+    if (table) {
+      model = updateStructureTable(model, tableId, {
+        columns: table.columns.map((column) => ({ id: column.columnId, name: column.label }))
+      });
+    }
+  }
+
+  if (!columnId) {
+    throw new Error('Spalte konnte nicht erstellt werden.');
+  }
+
+  model = assignFieldToTableCell(model, fieldId, {
+    tableId,
+    rowIndex: 0,
+    columnId
+  });
+
+  const trimmedLabel = String(input.fieldLabel || '').trim();
+  if (trimmedLabel.length > 0) {
+    const wizard = getWizardState(model);
+    model = withWizardState(model, {
+      fieldLabels: { ...wizard.fieldLabels, [fieldId]: trimmedLabel }
+    });
+  }
+
+  return model;
 }
 
 export function deferField(
@@ -399,12 +494,15 @@ export function addWizardGroup(
 
 function fieldConfigFromDetected(
   field: MappingField,
-  existing?: SetupFieldConfig
+  existing?: SetupFieldConfig,
+  customLabel?: string
 ): SetupFieldConfig {
   return {
     fieldId: field.fieldId,
     fieldName: field.fieldName,
-    label: String(existing?.label || field.labelCandidate || field.fieldName || 'Feld').trim(),
+    label: String(
+      customLabel || existing?.label || field.labelCandidate || field.fieldName || 'Feld'
+    ).trim(),
     type: field.type,
     options: Array.isArray(existing?.options)
       ? [...existing.options]
@@ -460,7 +558,8 @@ export function rebuildSectionsFromWizard(
     bucket.push(
       fieldConfigFromDetected(
         field,
-        findExistingFieldConfig(setupModel, field.fieldId) || undefined
+        findExistingFieldConfig(setupModel, field.fieldId) || undefined,
+        wizard.fieldLabels?.[field.fieldId]
       )
     );
     grouped.set(sectionId, bucket);
