@@ -7,17 +7,19 @@ import { colors, spacing, typography } from '../../../../src/constants/theme';
 import { SetupEditor } from '../../../../src/native/bautagebuch/components/SetupEditor';
 import { SetupFieldsStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupFieldsStep';
 import { SetupWizardStepNav } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupWizardStepNav';
-import { getDetectedFields, saveSetupModel } from '../../../../src/native/bautagebuch/db/database';
+import { getDetectedFields, saveSetupModel, updateTemplateField } from '../../../../src/native/bautagebuch/db/database';
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
 import {
   hasTableSections,
   getWizardState,
   markSetupCompleted,
+  rebuildSectionsFromWizard,
   resolveSetupEditStepPath,
   resolveSetupEntryPath,
   resolveTemplateDetailPath,
   resolveTemplateEditPath,
-  shouldShowFieldsIntro
+  shouldShowFieldsIntro,
+  sortMappingFields
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
 import { validateSetupModel } from '../../../../src/native/bautagebuch/lib/setup-model.js';
 import { getTemplateBundle } from '../../../../src/native/bautagebuch/services/templateService';
@@ -46,14 +48,38 @@ export default function SetupFieldsScreen() {
       setTemplateKind(bundle.template.templateKind);
       setTemplateStatus(bundle.template.status);
       setPdfPath(bundle.template.pdfPath);
-      setDetectedFields(await getDetectedFields(templateId));
-      setSetupModel(bundle.setupModel);
+      const fields = await getDetectedFields(templateId);
+      setDetectedFields(fields);
+      const mappingFields = sortMappingFields(fields);
+      let nextModel = bundle.setupModel;
+      const wizard = getWizardState(nextModel);
+      if (wizard.editMode && wizard.step === 'fields') {
+        nextModel = rebuildSectionsFromWizard(nextModel, mappingFields);
+      }
+      setSetupModel(nextModel);
+      if (nextModel !== bundle.setupModel) {
+        schedule(nextModel);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Setup konnte nicht geladen werden.');
     } finally {
       setLoading(false);
     }
+  }, [templateId, schedule]);
+
+  const reloadFields = useCallback(async () => {
+    if (!templateId) return;
+    setDetectedFields(await getDetectedFields(templateId));
   }, [templateId]);
+
+  const handleUpdateField = useCallback(
+    async (fieldId: string, patch: { labelCandidate?: string; type?: string }) => {
+      if (!templateId) return;
+      await updateTemplateField(templateId, fieldId, patch);
+      await reloadFields();
+    },
+    [templateId, reloadFields]
+  );
 
   useEffect(() => {
     void load();
@@ -171,6 +197,7 @@ export default function SetupFieldsScreen() {
           onChange={handleChange}
           onFinish={() => void handleFinish()}
           onBack={() => void handleBack()}
+          onUpdateField={handleUpdateField}
         />
       ) : null}
 

@@ -9,13 +9,16 @@ import { systemBottomInset } from '../../../../navigation/systemInsets';
 import {
   advanceFieldSettingsWalkthrough,
   applyFieldTypeChange,
+  buildFieldLabelResolver,
   getFieldSettingsProgress,
   isFieldSettingsWalkthroughComplete,
   listFieldSettingsTargets,
   normalizeSetupFieldType,
   resolveCurrentFieldSettingsIndex,
   resolveDetectedFieldTypeLabel,
+  resolveFieldDisplayOrder,
   resolveFieldFromTarget,
+  resolveFieldPreviewPage,
   resolveTargetDisplayName,
   updateFieldSettingsTarget
 } from '../../lib/setup-field-settings';
@@ -40,6 +43,10 @@ type Props = {
   onChange: (next: Record<string, unknown>) => void;
   onFinish: () => void;
   onBack: () => void;
+  onUpdateField?: (
+    fieldId: string,
+    patch: { labelCandidate?: string; type?: string }
+  ) => Promise<void>;
 };
 
 export function SetupFieldsStep({
@@ -49,13 +56,15 @@ export function SetupFieldsStep({
   readOnly = false,
   onChange,
   onFinish,
-  onBack
+  onBack,
+  onUpdateField
 }: Props) {
   const insets = useSafeAreaInsets();
   const indexSyncedRef = useRef(false);
   const [activeTab, setActiveTab] = useState<SetupFieldsViewTab>('settings');
   const [typePickerOpen, setTypePickerOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
+  const [draftLabels, setDraftLabels] = useState<Record<string, string>>({});
 
   const targets = useMemo(() => listFieldSettingsTargets(setupModel), [setupModel]);
   const mappingFields = useMemo(() => sortMappingFields(detectedFields), [detectedFields]);
@@ -65,10 +74,15 @@ export function SetupFieldsStep({
   const currentField = currentTarget ? resolveFieldFromTarget(setupModel, currentTarget) : null;
   const progress = useMemo(() => getFieldSettingsProgress(targets, wizard), [targets, wizard]);
   const walkthroughDone = isFieldSettingsWalkthroughComplete(targets, wizard);
-  const fieldNumber = currentTarget ? currentIndex + 1 : 0;
+  const fieldDisplayOrder = resolveFieldDisplayOrder(mappingFields, currentField?.fieldId);
+  const fieldNumber = fieldDisplayOrder ?? (currentTarget ? currentIndex + 1 : 0);
   const displayName = currentTarget
-    ? resolveTargetDisplayName(setupModel, currentTarget, currentField)
+    ? resolveTargetDisplayName(setupModel, currentTarget, currentField, mappingFields, draftLabels)
     : null;
+  const resolveFieldLabel = useMemo(
+    () => buildFieldLabelResolver(setupModel, targets, mappingFields, draftLabels),
+    [setupModel, targets, mappingFields, draftLabels]
+  );
   const detectedTypeLabel =
     currentTarget && currentTarget.kind !== 'table-meta'
       ? resolveDetectedFieldTypeLabel(currentField, detectedFields)
@@ -76,6 +90,7 @@ export function SetupFieldsStep({
   const activeFieldType = currentField
     ? normalizeSetupFieldType(currentField, detectedFields)
     : 'text';
+  const activeFieldPage = resolveFieldPreviewPage(currentField, mappingFields);
 
   useEffect(() => {
     if (indexSyncedRef.current || targets.length === 0) return;
@@ -99,6 +114,23 @@ export function SetupFieldsStep({
     if (!currentField || !currentTarget || currentTarget.kind === 'table-meta') return;
     const patch = applyFieldTypeChange(currentField, nextType, detectedFields);
     onChange(updateFieldSettingsTarget(setupModel, currentTarget, patch));
+    void (async () => {
+      await onUpdateField?.(currentField.fieldId, { type: nextType });
+    })();
+  };
+
+  const handleFieldLabelChange = (fieldId: string, label: string) => {
+    if (!currentTarget || currentTarget.kind === 'table-meta') return;
+    setDraftLabels((current) => ({ ...current, [fieldId]: label }));
+    onChange(updateFieldSettingsTarget(setupModel, currentTarget, { label: label.trim() }));
+    void (async () => {
+      await onUpdateField?.(fieldId, { labelCandidate: label.trim() });
+      setDraftLabels((current) => {
+        const next = { ...current };
+        delete next[fieldId];
+        return next;
+      });
+    })();
   };
 
   const handleSaveAndNext = () => {
@@ -112,6 +144,16 @@ export function SetupFieldsStep({
   const selectTargetAtIndex = (index: number) => {
     onChange(withWizardState(setupModel, { currentFieldSettingsIndex: index }));
     switchTab('pdf');
+  };
+
+  const selectFieldById = (fieldId: string) => {
+    const index = targets.findIndex(
+      (target) => target.kind !== 'table-meta' && target.fieldId === fieldId
+    );
+    if (index >= 0) {
+      selectTargetAtIndex(index);
+      switchTab('settings');
+    }
   };
 
   return (
@@ -136,10 +178,12 @@ export function SetupFieldsStep({
             pdfPath={pdfPath}
             detectedFields={detectedFields}
             mappingFields={mappingFields}
+            resolveFieldLabel={resolveFieldLabel}
             activeFieldId={currentField?.fieldId || null}
             activeFieldLabel={displayName}
-            activeFieldPage={currentField?.page || 1}
+            activeFieldPage={activeFieldPage}
             variant="assign"
+            onFieldSelect={selectFieldById}
           />
         </View>
         <View style={[styles.tabPane, activeTab !== 'settings' ? styles.tabPaneHidden : null]}>
@@ -147,8 +191,11 @@ export function SetupFieldsStep({
             setupModel={setupModel}
             target={currentTarget}
             detectedFields={detectedFields}
+            mappingFields={mappingFields}
+            draftLabels={draftLabels}
             readOnly={readOnly}
             onChange={onChange}
+            onFieldLabelChange={handleFieldLabelChange}
             onOpenTypePicker={() => setTypePickerOpen(true)}
             onSaveAndNext={handleSaveAndNext}
             showSaveButton={Boolean(currentTarget) && !walkthroughDone}
@@ -173,6 +220,7 @@ export function SetupFieldsStep({
         visible={overviewOpen}
         setupModel={setupModel}
         detectedFields={detectedFields}
+        mappingFields={mappingFields}
         targets={targets}
         currentTargetKey={currentTarget?.key || null}
         onClose={() => setOverviewOpen(false)}

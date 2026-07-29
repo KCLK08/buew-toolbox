@@ -5,7 +5,8 @@ import type {
   SetupFieldType,
   SetupWizardState
 } from '../types';
-import { getWizardState, withWizardState } from './setup-mapping';
+import { getWizardState, type MappingField, withWizardState } from './setup-mapping';
+import { getFieldPage } from './template-field';
 import { syncSectionOrder } from './setup-model.js';
 
 export type FieldSettingsProgress = {
@@ -264,15 +265,87 @@ export function resolveTargetGroupLabel(
   return String(table?.label || 'Tabelle');
 }
 
-export function resolveTargetDisplayName(
+export function resolveFieldDisplayOrder(
+  mappingFields: MappingField[],
+  fieldId: string | undefined
+): number | null {
+  if (!fieldId) return null;
+  const match = mappingFields.find((field) => field.fieldId === fieldId);
+  return match?.displayOrder ?? null;
+}
+
+export function resolveFieldPreviewPage(
+  field: SetupFieldConfig | null,
+  mappingFields: MappingField[] = []
+): number {
+  if (!field) return 1;
+  const mapping = mappingFields.find((entry) => entry.fieldId === field.fieldId);
+  if (mapping) return mapping.page;
+  return getFieldPage(field as Parameters<typeof getFieldPage>[0]);
+}
+
+export function resolveHybridFieldSource(
+  field: SetupFieldConfig | null,
+  detectedFields: DetectedField[]
+): SetupFieldConfig['source'] | null {
+  if (!field) return null;
+  if (field.source) return field.source;
+  const detected = detectedFields.find((entry) => entry.fieldId === field.fieldId);
+  return detected?.source ?? null;
+}
+
+export function resolveHybridFieldLabel(
   setupModel: Record<string, unknown>,
   target: FieldSettingsTarget,
-  field: SetupFieldConfig | null
+  field: SetupFieldConfig | null,
+  mappingFields: MappingField[] = [],
+  draftLabels: Record<string, string> = {}
 ): string {
   if (target.kind === 'table-meta') {
     return resolveTargetGroupLabel(setupModel, target);
   }
-  return String(field?.label || field?.fieldName || field?.fieldId || 'Feld').trim();
+  const draft = field?.fieldId ? draftLabels[field.fieldId] : undefined;
+  if (draft !== undefined && draft.trim()) return draft.trim();
+  const sectionLabel = String(field?.label || '').trim();
+  if (sectionLabel) return sectionLabel;
+  const mapping = mappingFields.find((entry) => entry.fieldId === field?.fieldId);
+  if (mapping) {
+    return String(mapping.labelCandidate || mapping.fieldName || 'Feld').trim();
+  }
+  return String(field?.fieldName || field?.fieldId || 'Feld').trim();
+}
+
+export function resolveTargetDisplayName(
+  setupModel: Record<string, unknown>,
+  target: FieldSettingsTarget,
+  field: SetupFieldConfig | null,
+  mappingFields: MappingField[] = [],
+  draftLabels: Record<string, string> = {}
+): string {
+  return resolveHybridFieldLabel(setupModel, target, field, mappingFields, draftLabels);
+}
+
+export function buildFieldLabelResolver(
+  setupModel: Record<string, unknown>,
+  targets: FieldSettingsTarget[],
+  mappingFields: MappingField[],
+  draftLabels: Record<string, string> = {}
+): (mappingField: MappingField) => string {
+  const targetByFieldId = new Map(
+    targets
+      .filter((target): target is Extract<FieldSettingsTarget, { kind: 'single' | 'table-cell' }> =>
+        target.kind !== 'table-meta'
+      )
+      .map((target) => [String(target.fieldId), target])
+  );
+  return (mappingField: MappingField) => {
+    const target = targetByFieldId.get(mappingField.fieldId);
+    if (!target) {
+      return String(mappingField.labelCandidate || mappingField.fieldName || 'Feld').trim();
+    }
+    const field = resolveFieldFromTarget(setupModel, target);
+    return resolveHybridFieldLabel(setupModel, target, field, mappingFields, draftLabels);
+  };
 }
 
 export function updateFieldSettingsTarget(

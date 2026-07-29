@@ -2,14 +2,18 @@ import assert from 'node:assert/strict';
 
 import {
   applyFieldTypeChange,
+  buildFieldLabelResolver,
   getFieldSettingsProgress,
   listFieldSettingsTargets,
   markFieldSettingsTargetConfigured,
   normalizeSetupFieldType,
-  resolveCurrentFieldSettingsIndex
+  resolveCurrentFieldSettingsIndex,
+  resolveFieldDisplayOrder,
+  resolveHybridFieldLabel,
+  resolveHybridFieldSource
 } from './setup-field-settings';
-import { getWizardState, withWizardState } from './setup-mapping';
-import type { SetupFieldConfig } from '../types';
+import { getWizardState, sortMappingFields, withWizardState } from './setup-mapping';
+import type { DetectedField, SetupFieldConfig } from '../types';
 
 let passed = 0;
 
@@ -91,6 +95,117 @@ test('resolveCurrentFieldSettingsIndex prefers first open target', () => {
     })
   );
   assert.equal(resolveCurrentFieldSettingsIndex(targets, wizard), 0);
+});
+
+test('resolveHybridFieldLabel prefers section label over mapping labelCandidate', () => {
+  const targets = listFieldSettingsTargets(setupModel);
+  const field = targets[0];
+  const config = setupModel.single_sections[0].fields[0] as SetupFieldConfig;
+  const mappingFields = sortMappingFields([
+    {
+      id: 'd1',
+      templateId: 't',
+      fieldId: 'f1',
+      fieldName: 'Temp',
+      labelCandidate: 'Alt',
+      type: 'text',
+      options: [],
+      page: 1,
+      orderIndex: 0,
+      rect: null,
+      geometry: null,
+      source: 'acroform',
+      createdAt: '',
+      updatedAt: ''
+    } satisfies DetectedField
+  ]);
+  const label = resolveHybridFieldLabel(setupModel, targets[0], config, mappingFields);
+  assert.equal(label, 'Temperatur');
+});
+
+test('resolveHybridFieldSource falls back to detected field source', () => {
+  const config: SetupFieldConfig = { fieldId: 'f1', label: 'Temperatur', type: 'text' };
+  const source = resolveHybridFieldSource(config, [
+    {
+      id: 'd1',
+      templateId: 't',
+      fieldId: 'f1',
+      fieldName: 'Temp',
+      labelCandidate: 'Temperatur',
+      type: 'text',
+      options: [],
+      page: 1,
+      orderIndex: 0,
+      rect: null,
+      geometry: null,
+      source: 'manual',
+      createdAt: '',
+      updatedAt: ''
+    }
+  ]);
+  assert.equal(source, 'manual');
+});
+
+test('buildFieldLabelResolver uses section labels for PDF overlay', () => {
+  const targets = listFieldSettingsTargets(setupModel);
+  const mappingFields = sortMappingFields([
+    {
+      id: 'd1',
+      templateId: 't',
+      fieldId: 'f1',
+      fieldName: 'Temp',
+      labelCandidate: 'DB Name',
+      type: 'text',
+      options: [],
+      page: 1,
+      orderIndex: 0,
+      rect: null,
+      geometry: null,
+      source: 'acroform',
+      createdAt: '',
+      updatedAt: ''
+    } satisfies DetectedField
+  ]);
+  const resolveLabel = buildFieldLabelResolver(setupModel, targets, mappingFields);
+  assert.equal(resolveLabel(mappingFields[0]), 'Temperatur');
+});
+
+test('resolveFieldDisplayOrder returns mapping displayOrder', () => {
+  const mappingFields = sortMappingFields([
+    {
+      id: 'd1',
+      templateId: 't',
+      fieldId: 'f1',
+      fieldName: 'A',
+      labelCandidate: 'A',
+      type: 'text',
+      options: [],
+      page: 1,
+      orderIndex: 0,
+      rect: null,
+      geometry: null,
+      source: 'acroform',
+      createdAt: '',
+      updatedAt: ''
+    },
+    {
+      id: 'd2',
+      templateId: 't',
+      fieldId: 'f2',
+      fieldName: 'B',
+      labelCandidate: 'B',
+      type: 'text',
+      options: [],
+      page: 1,
+      orderIndex: 1,
+      rect: null,
+      geometry: null,
+      source: 'manual',
+      createdAt: '',
+      updatedAt: ''
+    } satisfies DetectedField
+  ]);
+  assert.equal(resolveFieldDisplayOrder(mappingFields, 'f2'), 2);
 });
 
 console.log(`\n${passed} tests passed`);
