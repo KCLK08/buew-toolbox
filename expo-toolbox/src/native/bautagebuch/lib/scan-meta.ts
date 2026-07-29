@@ -2,7 +2,7 @@ import type { FieldGeometry } from '../types';
 import { fieldHasGeometry } from './template-field';
 
 /** Bump when scan logic changes — triggers template re-scan on next load. */
-export const ETB_SCAN_VERSION = 4;
+export const ETB_SCAN_VERSION = 5;
 
 type RescanField = {
   fieldId?: string;

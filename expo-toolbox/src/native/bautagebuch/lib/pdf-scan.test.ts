@@ -57,7 +57,10 @@ async function run() {
     assert.equal(result.fields[0].fieldName, 'Text1');
     assert.equal(result.fields[0].type, 'text');
     assert.ok(result.fields[0].fieldId.includes('text1'));
-    assert.equal(result.hasRects, false);
+    assert.equal(result.fields[0].page, 1);
+    assert.ok(Array.isArray(result.fields[0].rect));
+    assert.equal(result.fields[0].rect!.length, 4);
+    assert.equal(result.hasRects, true);
   });
 
   await test('scanTemplatePdfFull provides page and rect when widgets exist', async () => {
@@ -82,11 +85,12 @@ async function run() {
     await assert.rejects(() => scanTemplatePdfLite(bytes), /AcroForm/);
   });
 
-  await test('multi-page PDF keeps lite page fallback', async () => {
+  await test('multi-page PDF lite scan assigns widget page', async () => {
     const bytes = await buildTextFieldPdf({ pages: 2, fieldName: 'FeldP2' });
     const result = await scanTemplatePdfLite(bytes);
     assert.equal(result.pageCount, 2);
-    assert.equal(result.fields[0].page, 1);
+    assert.equal(result.fields[0].page, 2);
+    assert.ok(Array.isArray(result.fields[0].rect));
   });
 
   await test('multi-page full scan assigns widget page', async () => {

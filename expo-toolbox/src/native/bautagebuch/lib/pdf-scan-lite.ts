@@ -3,6 +3,10 @@ import { PDFDocument } from 'pdf-lib';
 import { detectPdfFieldType } from './setup-model.js';
 import { ETB_SCAN_VERSION } from './scan-meta';
 import {
+  extractFieldWidgetMetadata,
+  logAcroFormImportStats
+} from './pdf-scan-acroform-geometry';
+import {
   assignFieldIds,
   humanizeFieldName,
   readSelectOptions,
@@ -21,6 +25,7 @@ function buildScanResult(pageCount: number, rawFields: MutableScanField[]): PdfS
     scanVersion: String(ETB_SCAN_VERSION),
     hasRects: resultHasRects(fields)
   };
+  logAcroFormImportStats(fields);
   return withDetectedFieldsAlias(result);
 }
 
@@ -47,14 +52,16 @@ export async function scanTemplatePdfLite(pdfBytes: Uint8Array): Promise<PdfScan
     const fieldName = String(field.getName() || '').trim();
     const fieldType = detectPdfFieldType(field);
     const options = readSelectOptions(field as { getOptions?: () => string[] });
+    const widget = extractFieldWidgetMetadata(pdfDoc, field, index);
+
     return {
       fieldName,
       labelCandidate: humanizeFieldName(fieldName),
       type: fieldType,
       options,
-      page: 1,
-      orderIndex: index,
-      rect: null as number[] | null
+      page: widget.page,
+      orderIndex: widget.orderIndex,
+      rect: widget.rect
     };
   });
 
