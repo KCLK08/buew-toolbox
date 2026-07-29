@@ -27,17 +27,17 @@ export function SetupAssignSourceBanner({ fields }: Props) {
         {hasAuto ? (
           <>
             <Text style={styles.title}>
-              {stats.acroform} Feld{stats.acroform === 1 ? '' : 'er'} automatisch erkannt
+              {stats.acroform} Feld{stats.acroform === 1 ? '' : 'er'} wurden automatisch erkannt.
             </Text>
             <Text style={styles.text}>
-              Quelle: AcroForm. Bitte überprüfen und ergänzen Sie fehlende Bereiche.
+              Bitte prüfen Sie die Zuordnung und ergänzen Sie fehlende Bereiche.
             </Text>
           </>
         ) : (
           <>
-            <Text style={styles.title}>Keine Felder automatisch erkannt</Text>
+            <Text style={styles.title}>Es wurden keine Felder automatisch erkannt.</Text>
             <Text style={styles.text}>
-              Markieren Sie die benötigten Bereiche in der PDF mit „+ Feld hinzufügen“.
+              Markieren Sie die benötigten Bereiche in der PDF mit „+ Feld markieren“.
             </Text>
           </>
         )}

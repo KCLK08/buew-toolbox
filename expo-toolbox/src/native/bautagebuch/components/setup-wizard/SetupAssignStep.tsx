@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
+import { LayoutAnimation, Modal, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -15,14 +15,17 @@ import {
   getNextUnassignedIndex,
   getWizardState,
   isMappingComplete,
+  removeFieldFromWizard,
   resolveCurrentMappingIndex,
   resolveFieldDisplayLabel,
+  updateFieldDisplayLabel,
   type MappingField
 } from '../../lib/setup-mapping';
 import { createManualFieldInput } from '../../lib/template-field';
 import { getStructureItems } from '../../lib/setup-structure';
-import type { DetectedField, FieldRect, SetupStructureItem } from '../../types';
+import type { DetectedField, FieldRect, SetupFieldType, SetupStructureItem } from '../../types';
 import { SetupPdfFieldPreview } from '../SetupPdfFieldPreview';
+import { SetupAssignFieldListPanel } from './SetupAssignFieldListPanel';
 import { SetupAssignFieldOverview } from './SetupAssignFieldOverview';
 import { SetupAssignGroupFieldModal } from './SetupAssignGroupFieldModal';
 import { SetupAssignHeader, type SetupAssignViewTab } from './SetupAssignHeader';
@@ -51,6 +54,11 @@ type Props = {
   onComplete: (next: Record<string, unknown>) => void;
   onBack: () => void;
   onFieldsChanged?: () => void;
+  onUpdateField?: (
+    fieldId: string,
+    patch: { labelCandidate?: string; type?: string }
+  ) => Promise<void>;
+  onDeleteField?: (fieldId: string) => Promise<void>;
   onCreateManualField?: (
     field: ReturnType<typeof createManualFieldInput>,
     target: { kind: 'group'; id: string } | { kind: 'table'; id: string } | null
@@ -67,6 +75,8 @@ export function SetupAssignStep({
   onComplete,
   onBack,
   onFieldsChanged,
+  onUpdateField,
+  onDeleteField,
   onCreateManualField
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -74,6 +84,7 @@ export function SetupAssignStep({
   const [activeTab, setActiveTab] = useState<SetupAssignViewTab>('pdf');
   const [pendingTarget, setPendingTarget] = useState<PendingTarget>(null);
   const [showFieldOverview, setShowFieldOverview] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
   const [drawMode, setDrawMode] = useState(false);
   const [pendingDraw, setPendingDraw] = useState<{ page: number; rect: FieldRect } | null>(null);
 
@@ -85,6 +96,7 @@ export function SetupAssignStep({
   const mappingDone = isMappingComplete(mappingFields, wizard);
   const fieldNumber = currentField ? currentIndex + 1 : 0;
   const currentLabel = currentField ? resolveFieldDisplayLabel(currentField, wizard) : null;
+  const fieldLabels = wizard.fieldLabels || {};
 
   useEffect(() => {
     if (indexSyncedRef.current || mappingFields.length === 0) return;
@@ -104,6 +116,7 @@ export function SetupAssignStep({
   const switchTab = (tab: SetupAssignViewTab) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveTab(tab);
+    setDrawMode(false);
   };
 
   const advanceAfterAssign = (next: Record<string, unknown>) => {
@@ -131,6 +144,7 @@ export function SetupAssignStep({
       fieldName
     );
     setPendingTarget(null);
+    setShowAssignModal(false);
     void hapticSuccess();
     advanceAfterAssign(next);
   };
@@ -148,6 +162,7 @@ export function SetupAssignStep({
       input
     );
     setPendingTarget(null);
+    setShowAssignModal(false);
     void hapticSuccess();
     advanceAfterAssign(next);
   };
@@ -160,7 +175,32 @@ export function SetupAssignStep({
         currentFieldIndex: index
       }
     });
-    switchTab('pdf');
+  };
+
+  const handleFieldNameChange = (fieldId: string, name: string) => {
+    const next = updateFieldDisplayLabel(setupModel, fieldId, name);
+    onChange(next);
+    void onUpdateField?.(fieldId, { labelCandidate: name.trim() });
+  };
+
+  const handleFieldTypeChange = (fieldId: string, type: SetupFieldType) => {
+    void onUpdateField?.(fieldId, { type });
+    onFieldsChanged?.();
+  };
+
+  const handleDeleteField = (fieldId: string) => {
+    void (async () => {
+      await onDeleteField?.(fieldId);
+      const next = removeFieldFromWizard(setupModel, fieldId, mappingFields.length - 1);
+      onChange(next);
+      onFieldsChanged?.();
+      void hapticSuccess();
+    })();
+  };
+
+  const openAssignForCurrentField = () => {
+    if (!currentField) return;
+    setShowAssignModal(true);
   };
 
   const pendingGroup =
@@ -178,16 +218,20 @@ export function SetupAssignStep({
         activeTab={activeTab}
         onTabChange={switchTab}
         onBack={onBack}
-        onOpenFields={() => setShowFieldOverview(true)}
+        onOpenFields={() => {
+          switchTab('fields');
+        }}
       />
 
       <SetupAssignSourceBanner fields={detectedFields} />
 
-      <SetupAssignProgressBar
-        progress={progress}
-        fieldNumber={fieldNumber}
-        fieldLabel={currentLabel}
-      />
+      {activeTab === 'fields' ? (
+        <SetupAssignProgressBar
+          progress={progress}
+          fieldNumber={fieldNumber}
+          fieldLabel={currentLabel}
+        />
+      ) : null}
 
       <View style={styles.body}>
         <View style={[styles.tabPane, activeTab !== 'pdf' ? styles.tabPaneHidden : null]}>
@@ -204,7 +248,7 @@ export function SetupAssignStep({
                   color={drawMode ? colors.white : colors.accent}
                 />
                 <Text style={drawMode ? styles.addFieldLabelActive : styles.addFieldLabel}>
-                  {drawMode ? 'Bereich markieren…' : '+ Feld hinzufügen'}
+                  {drawMode ? 'Bereich markieren…' : '+ Feld markieren'}
                 </Text>
               </Pressable>
             </View>
@@ -212,6 +256,7 @@ export function SetupAssignStep({
           <SetupPdfFieldPreview
             pdfPath={pdfPath}
             detectedFields={detectedFields}
+            fieldLabels={fieldLabels}
             activeFieldId={currentField?.fieldId || null}
             activeFieldLabel={currentLabel}
             activeFieldPage={currentField?.page || 1}
@@ -224,14 +269,24 @@ export function SetupAssignStep({
             }}
           />
         </View>
-        <View style={[styles.tabPane, activeTab !== 'assign' ? styles.tabPaneHidden : null]}>
-          <SetupAssignStructurePanel
-            setupModel={setupModel}
+        <View style={[styles.tabPane, activeTab !== 'fields' ? styles.tabPaneHidden : null]}>
+          <SetupAssignFieldListPanel
             mappingFields={mappingFields}
+            setupModel={setupModel}
             currentField={currentField}
             readOnly={readOnly}
-            onSelectGroup={(item) => setPendingTarget({ kind: 'group', item })}
-            onSelectTable={(item) => setPendingTarget({ kind: 'table', item })}
+            onSelectField={selectFieldAtIndex}
+            onShowInPdf={() => switchTab('pdf')}
+            onAssignField={openAssignForCurrentField}
+            onChangeFieldName={handleFieldNameChange}
+            onChangeFieldType={handleFieldTypeChange}
+            onDeleteField={handleDeleteField}
+            onSelectGroup={(item) => {
+              setPendingTarget({ kind: 'group', item });
+            }}
+            onSelectTable={(item) => {
+              setPendingTarget({ kind: 'table', item });
+            }}
           />
         </View>
       </View>
@@ -241,6 +296,26 @@ export function SetupAssignStep({
           <PrimaryButton compact label="Weiter zu Schritt 3" onPress={() => onComplete(setupModel)} />
         </View>
       ) : null}
+
+      <Modal visible={showAssignModal} animationType="slide" onRequestClose={() => setShowAssignModal(false)}>
+        <View style={[styles.assignModal, { paddingTop: insets.top }]}>
+          <View style={styles.assignModalHeader}>
+            <Pressable accessibilityRole="button" onPress={() => setShowAssignModal(false)}>
+              <Text style={styles.assignModalClose}>Schließen</Text>
+            </Pressable>
+            <Text style={styles.assignModalTitle}>Feld zuordnen</Text>
+            <View style={styles.assignModalSpacer} />
+          </View>
+          <SetupAssignStructurePanel
+            setupModel={setupModel}
+            mappingFields={mappingFields}
+            currentField={currentField}
+            readOnly={readOnly}
+            onSelectGroup={(item) => setPendingTarget({ kind: 'group', item })}
+            onSelectTable={(item) => setPendingTarget({ kind: 'table', item })}
+          />
+        </View>
+      </Modal>
 
       <SetupAssignGroupFieldModal
         visible={Boolean(pendingGroup)}
@@ -267,7 +342,10 @@ export function SetupAssignStep({
         setupModel={setupModel}
         currentFieldId={currentField?.fieldId || null}
         onClose={() => setShowFieldOverview(false)}
-        onSelectField={selectFieldAtIndex}
+        onSelectField={(index) => {
+          selectFieldAtIndex(index);
+          switchTab('pdf');
+        }}
       />
 
       <SetupManualFieldModal
@@ -294,23 +372,29 @@ export function SetupAssignStep({
             if (!saved) return;
             void hapticSuccess();
             onFieldsChanged?.();
+            const withLabel = updateFieldDisplayLabel(setupModel, saved.fieldId, input.name);
             if (input.target?.kind === 'group') {
-              const next = assignFieldToGroup(setupModel, saved.fieldId, input.target.id, input.name);
+              const next = assignFieldToGroup(withLabel, saved.fieldId, input.target.id, input.name);
               onChange(next);
             } else if (input.target?.kind === 'table') {
-              const table = getStructureItems(setupModel).find(
+              const table = getStructureItems(withLabel).find(
                 (item) => item.id === input.target?.id && item.type === 'table'
               );
               const firstColumn =
                 table && table.type === 'table' ? table.columns[0]?.id : undefined;
               if (firstColumn) {
-                const next = assignFieldToTableColumn(setupModel, saved.fieldId, input.target.id, {
+                const next = assignFieldToTableColumn(withLabel, saved.fieldId, input.target.id, {
                   columnId: firstColumn,
                   fieldLabel: input.name
                 });
                 onChange(next);
+              } else {
+                onChange(withLabel);
               }
+            } else {
+              onChange(withLabel);
             }
+            switchTab('fields');
           })();
         }}
       />
@@ -343,7 +427,7 @@ const styles = StyleSheet.create({
   },
   pdfToolbar: {
     paddingHorizontal: spacing.pageX,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.xxs,
     backgroundColor: colors.panel,
     borderBottomWidth: 1,
     borderBottomColor: colors.border
@@ -353,7 +437,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
-    minHeight: spacing.touchMin,
+    minHeight: 40,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.accent,
@@ -373,5 +457,31 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.white,
     fontFamily: 'SpaceGrotesk_600SemiBold'
+  },
+  assignModal: {
+    flex: 1,
+    backgroundColor: colors.bg
+  },
+  assignModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.pageX,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.panel
+  },
+  assignModalClose: {
+    ...typography.bodyStrong,
+    color: colors.accent,
+    minWidth: 88
+  },
+  assignModalTitle: {
+    ...typography.subtitle,
+    color: colors.ink
+  },
+  assignModalSpacer: {
+    minWidth: 88
   }
 });

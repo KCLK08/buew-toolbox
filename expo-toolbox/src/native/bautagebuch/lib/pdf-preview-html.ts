@@ -8,6 +8,9 @@ export type PreviewHtmlMode = 'default' | 'mapping' | 'assign' | 'overlay' | 'pi
 export type PreviewHighlight = {
   fieldId: string;
   fieldName?: string;
+  label?: string;
+  source?: 'acroform' | 'manual' | 'ocr';
+  index?: number;
   page: number;
   rect: number[];
 };
@@ -183,6 +186,37 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
         border-color: rgba(26, 25, 22, 0.15);
         border-width: 1px;
       }
+      .highlight.source-acroform:not(.active) {
+        border-color: rgba(34, 139, 84, 0.55);
+        background: rgba(34, 139, 84, 0.1);
+      }
+      .highlight.source-manual:not(.active) {
+        border-color: rgba(196, 140, 40, 0.75);
+        background: rgba(196, 140, 40, 0.12);
+      }
+      .highlight-label {
+        position: absolute;
+        left: 0;
+        top: 0;
+        max-width: 100%;
+        padding: 2px 6px;
+        font: 600 10px/1.3 system-ui, sans-serif;
+        color: #fff;
+        background: rgba(26, 25, 22, 0.78);
+        border-radius: 4px 4px 4px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+      }
+      .highlight-index {
+        position: absolute;
+        right: 4px;
+        bottom: 2px;
+        font: 700 10px/1 system-ui, sans-serif;
+        color: rgba(26, 25, 22, 0.5);
+        pointer-events: none;
+      }
       .highlight.assigned {
         border: 2px solid rgba(46, 125, 50, 0.72);
         background: rgba(46, 125, 50, 0.08);
@@ -270,6 +304,21 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
           box.style.top = top + 'px';
           box.style.width = width + 'px';
           box.style.height = height + 'px';
+          if (entry.source === 'manual') box.classList.add('source-manual');
+          else if (entry.source === 'acroform') box.classList.add('source-acroform');
+          const labelText = String(entry.label || entry.fieldName || '').trim();
+          if (labelText) {
+            const labelEl = document.createElement('div');
+            labelEl.className = 'highlight-label';
+            labelEl.textContent = labelText;
+            box.appendChild(labelEl);
+          }
+          if (entry.index) {
+            const indexEl = document.createElement('div');
+            indexEl.className = 'highlight-index';
+            indexEl.textContent = String(entry.index);
+            box.appendChild(indexEl);
+          }
           overlay.appendChild(box);
         }
       }
@@ -702,6 +751,37 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         border-color: rgba(26, 25, 22, 0.15);
         border-width: 1px;
       }
+      .highlight.source-acroform:not(.active) {
+        border-color: rgba(34, 139, 84, 0.55);
+        background: rgba(34, 139, 84, 0.1);
+      }
+      .highlight.source-manual:not(.active) {
+        border-color: rgba(196, 140, 40, 0.75);
+        background: rgba(196, 140, 40, 0.12);
+      }
+      .highlight-label {
+        position: absolute;
+        left: 0;
+        top: 0;
+        max-width: 100%;
+        padding: 2px 6px;
+        font: 600 10px/1.3 system-ui, sans-serif;
+        color: #fff;
+        background: rgba(26, 25, 22, 0.78);
+        border-radius: 4px 4px 4px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+      }
+      .highlight-index {
+        position: absolute;
+        right: 4px;
+        bottom: 2px;
+        font: 700 10px/1 system-ui, sans-serif;
+        color: rgba(26, 25, 22, 0.5);
+        pointer-events: none;
+      }
       @keyframes pulse {
         0%, 100% { transform: scale(1); opacity: 1; }
         50% { transform: scale(1.03); opacity: 0.94; }
@@ -776,6 +856,21 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           box.style.top = top + 'px';
           box.style.width = width + 'px';
           box.style.height = height + 'px';
+          if (entry.source === 'manual') box.classList.add('source-manual');
+          else if (entry.source === 'acroform') box.classList.add('source-acroform');
+          const labelText = String(entry.label || entry.fieldName || '').trim();
+          if (labelText) {
+            const labelEl = document.createElement('div');
+            labelEl.className = 'highlight-label';
+            labelEl.textContent = labelText;
+            box.appendChild(labelEl);
+          }
+          if (entry.index) {
+            const indexEl = document.createElement('div');
+            indexEl.className = 'highlight-index';
+            indexEl.textContent = String(entry.index);
+            box.appendChild(indexEl);
+          }
           overlayEl.appendChild(box);
         }
       }

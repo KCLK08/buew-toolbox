@@ -388,6 +388,70 @@ export async function addTemplateField(
   });
 }
 
+export async function updateTemplateField(
+  templateId: string,
+  fieldId: string,
+  patch: Partial<Omit<TemplateFieldInput, 'fieldId' | 'source'>>
+): Promise<DetectedField | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<Record<string, unknown>>(
+    'SELECT * FROM detected_fields WHERE templateId = ? AND fieldId = ?',
+    templateId,
+    fieldId
+  );
+  if (!row) return null;
+
+  const existing = normalizeDetectedField(row);
+  const timestamp = nowIso();
+  const merged: TemplateFieldInput = {
+    fieldId: existing.fieldId,
+    fieldName: patch.fieldName ?? existing.fieldName,
+    labelCandidate: patch.labelCandidate ?? existing.labelCandidate,
+    type: patch.type ?? existing.type,
+    options: patch.options ?? existing.options,
+    page: patch.page ?? existing.page,
+    orderIndex: patch.orderIndex ?? existing.orderIndex,
+    source: existing.source,
+    geometry: patch.geometry !== undefined ? patch.geometry : existing.geometry,
+    rect: patch.rect !== undefined ? patch.rect : existing.rect
+  };
+  const serialized = serializeFieldForDb(templateId, merged, timestamp);
+  await db.runAsync(
+    `UPDATE detected_fields SET
+      fieldName = ?, labelCandidate = ?, type = ?, optionsJson = ?,
+      page = ?, orderIndex = ?, rectJson = ?, geometryJson = ?, updatedAt = ?
+     WHERE templateId = ? AND fieldId = ?`,
+    serialized.fieldName,
+    serialized.labelCandidate,
+    serialized.type,
+    serialized.optionsJson,
+    serialized.page,
+    serialized.orderIndex,
+    serialized.rectJson,
+    serialized.geometryJson,
+    timestamp,
+    templateId,
+    fieldId
+  );
+  void requestDatabaseBackup('manual');
+  return normalizeDetectedField({
+    ...serialized,
+    optionsJson: serialized.optionsJson,
+    createdAt: existing.createdAt
+  });
+}
+
+export async function deleteTemplateField(templateId: string, fieldId: string): Promise<boolean> {
+  const db = await getDb();
+  const result = await db.runAsync(
+    'DELETE FROM detected_fields WHERE templateId = ? AND fieldId = ?',
+    templateId,
+    fieldId
+  );
+  void requestDatabaseBackup('record_deleted');
+  return Number(result.changes || 0) > 0;
+}
+
 export async function getDetectedFields(templateId: string): Promise<DetectedField[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<Record<string, unknown>>(

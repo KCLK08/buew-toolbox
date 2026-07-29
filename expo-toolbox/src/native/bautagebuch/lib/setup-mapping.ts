@@ -327,6 +327,83 @@ export function isFieldAssigned(fieldId: string, wizard: SetupWizardState): bool
   );
 }
 
+export type FieldAssignmentSummary = {
+  kind: 'group' | 'table' | 'none';
+  label: string;
+  sectionId?: string;
+  tableId?: string;
+};
+
+export function resolveFieldAssignmentSummary(
+  setupModel: Record<string, unknown>,
+  fieldId: string
+): FieldAssignmentSummary {
+  const wizard = getWizardState(setupModel);
+  const groupId = wizard.assignments[fieldId];
+  if (groupId) {
+    const group = wizard.groups.find((entry) => entry.sectionId === groupId);
+    return {
+      kind: 'group',
+      label: group?.label || 'Gruppe',
+      sectionId: groupId
+    };
+  }
+  const tableAssignment = wizard.tableAssignments[fieldId];
+  if (tableAssignment) {
+    const table = wizard.tables.find((entry) => entry.tableId === tableAssignment.tableId);
+    const column = table?.columns.find((entry) => entry.columnId === tableAssignment.columnId);
+    const tableLabel = table?.label || 'Tabelle';
+    const columnLabel = column?.label ? ` · ${column.label}` : '';
+    return {
+      kind: 'table',
+      label: `${tableLabel}${columnLabel}`,
+      tableId: tableAssignment.tableId
+    };
+  }
+  return { kind: 'none', label: '' };
+}
+
+export function removeFieldFromWizard(
+  setupModel: Record<string, unknown>,
+  fieldId: string,
+  fieldCount = 0
+): Record<string, unknown> {
+  const wizard = getWizardState(setupModel);
+  const assignments = { ...wizard.assignments };
+  delete assignments[fieldId];
+  const tableAssignments = { ...wizard.tableAssignments };
+  delete tableAssignments[fieldId];
+  const deferredFieldIds = wizard.deferredFieldIds.filter((entry) => entry !== fieldId);
+  const fieldLabels = { ...(wizard.fieldLabels || {}) };
+  delete fieldLabels[fieldId];
+  const maxIndex = Math.max(0, fieldCount - 1);
+  const nextIndex = Math.min(wizard.currentFieldIndex, maxIndex);
+  return withWizardState(setupModel, {
+    assignments,
+    tableAssignments,
+    deferredFieldIds,
+    fieldLabels,
+    currentFieldIndex: nextIndex
+  });
+}
+
+export function updateFieldDisplayLabel(
+  setupModel: Record<string, unknown>,
+  fieldId: string,
+  label: string
+): Record<string, unknown> {
+  const wizard = getWizardState(setupModel);
+  const trimmed = String(label || '').trim();
+  if (!trimmed) {
+    const fieldLabels = { ...(wizard.fieldLabels || {}) };
+    delete fieldLabels[fieldId];
+    return withWizardState(setupModel, { fieldLabels });
+  }
+  return withWizardState(setupModel, {
+    fieldLabels: { ...wizard.fieldLabels, [fieldId]: trimmed }
+  });
+}
+
 export function getNextUnassignedIndex(
   fields: MappingField[],
   wizard: SetupWizardState,

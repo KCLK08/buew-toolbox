@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../../../../src/constants/theme';
 import { SetupAssignStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupAssignStep';
 import { SetupWizardStepNav } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupWizardStepNav';
-import { addTemplateField, getDetectedFields } from '../../../../src/native/bautagebuch/db/database';
+import { addTemplateField, deleteTemplateField, getDetectedFields, updateTemplateField } from '../../../../src/native/bautagebuch/db/database';
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
 import {
   ensureWizardInitialized,
@@ -128,6 +128,24 @@ export default function SetupAssignScreen() {
     [templateId]
   );
 
+  const handleUpdateField = useCallback(
+    async (fieldId: string, patch: { labelCandidate?: string; type?: string }) => {
+      if (!templateId) return;
+      await updateTemplateField(templateId, fieldId, patch);
+      await reloadFields();
+    },
+    [templateId, reloadFields]
+  );
+
+  const handleDeleteField = useCallback(
+    async (fieldId: string) => {
+      if (!templateId) return;
+      await deleteTemplateField(templateId, fieldId);
+      await reloadFields();
+    },
+    [templateId, reloadFields]
+  );
+
   const readOnly = templateStatus === 'archived';
 
   return (
@@ -155,6 +173,8 @@ export default function SetupAssignScreen() {
           onComplete={handleComplete}
           onBack={() => void handleBack()}
           onFieldsChanged={() => void reloadFields()}
+          onUpdateField={handleUpdateField}
+          onDeleteField={handleDeleteField}
           onCreateManualField={handleCreateManualField}
         />
       ) : null}

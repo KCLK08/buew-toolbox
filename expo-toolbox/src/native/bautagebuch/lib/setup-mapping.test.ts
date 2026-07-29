@@ -11,7 +11,9 @@ import {
   isMappingComplete,
   markStructureIntroSeen,
   rebuildSectionsFromWizard,
+  removeFieldFromWizard,
   resolveCurrentMappingIndex,
+  resolveFieldAssignmentSummary,
   resolveOverlayPlacement,
   resolveSetupEntryPath,
   shouldShowStructureIntro,
@@ -294,6 +296,50 @@ test('isMappingComplete treats table assignments as handled', () => {
 
 test('isMappingComplete requires at least one field', () => {
   assert.equal(isMappingComplete([], getWizardState({ wizard: { groups: [] } })), false);
+});
+
+test('resolveFieldAssignmentSummary reports group and table assignments', () => {
+  const model = withWizardState(
+    {},
+    {
+      groups: [{ sectionId: 'g1', label: 'Allgemeine Angaben' }],
+      tables: [
+        {
+          tableId: 't1',
+          label: 'Arbeitszeiten',
+          rowCount: 1,
+          columns: [{ columnId: 'c1', label: 'Stunden', type: 'text' }]
+        }
+      ],
+      assignments: { f1: 'g1' },
+      tableAssignments: { f2: { tableId: 't1', rowIndex: 0, columnId: 'c1' } }
+    }
+  );
+  assert.deepEqual(resolveFieldAssignmentSummary(model, 'f1'), {
+    kind: 'group',
+    label: 'Allgemeine Angaben',
+    sectionId: 'g1'
+  });
+  assert.equal(resolveFieldAssignmentSummary(model, 'f2').kind, 'table');
+  assert.equal(resolveFieldAssignmentSummary(model, 'missing').kind, 'none');
+});
+
+test('removeFieldFromWizard clears assignments and labels', () => {
+  const model = withWizardState(
+    {},
+    {
+      assignments: { f1: 'g1' },
+      tableAssignments: { f2: { tableId: 't1', rowIndex: 0, columnId: 'c1' } },
+      fieldLabels: { f1: 'Datum', f2: 'Stunden' },
+      deferredFieldIds: ['f2'],
+      currentFieldIndex: 2
+    }
+  );
+  const next = removeFieldFromWizard(model, 'f1', 2);
+  const wizard = getWizardState(next);
+  assert.equal(wizard.assignments.f1, undefined);
+  assert.equal(wizard.fieldLabels?.f1, undefined);
+  assert.equal(wizard.currentFieldIndex, 1);
 });
 
 test('rebuildSectionsFromWizard preserves field options and builds table sections', () => {
