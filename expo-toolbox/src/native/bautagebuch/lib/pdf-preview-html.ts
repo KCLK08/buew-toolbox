@@ -740,7 +740,7 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
       #wrap {
         display: flex; flex-direction: column; align-items: center;
         gap: 12px; padding: 8px 0 16px;
-        transform-origin: center top;
+        transform-origin: 0 0;
         will-change: transform;
       }
       .page-sheet {

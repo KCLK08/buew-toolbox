@@ -120,6 +120,76 @@ test('buildScrollableFieldPreviewHtml uses scrollable layout with field overlays
   assert.doesNotMatch(html, /Seite/);
 });
 
+test('buildScrollableFieldPreviewHtml uses framesOnly overlay without labels', () => {
+  const html = buildScrollableFieldPreviewHtml({
+    base64: 'UEZERg==',
+    ...mockAssets,
+    highlights: [
+      {
+        fieldId: 'f1',
+        fieldName: 'Text1',
+        label: 'Baustelle',
+        index: 3,
+        page: 1,
+        rect: [10, 10, 50, 50]
+      }
+    ],
+    highlightActive: true
+  });
+
+  assert.match(html, /const framesOnly = true/);
+  assert.match(html, /if \(!framesOnly\)/);
+  assert.match(html, /labelEl\.className = 'highlight-label'/);
+});
+
+test('buildScrollableFieldPreviewHtml supports touch draw mode with scroll lock', () => {
+  const html = buildScrollableFieldPreviewHtml({
+    base64: 'UEZERg==',
+    ...mockAssets
+  });
+
+  assert.match(html, /attachDrawHandlers/);
+  assert.match(html, /touchstart/);
+  assert.match(html, /setDrawMode/);
+  assert.match(html, /viewport\.style\.overflow = drawModeEnabled \? 'hidden' : 'auto'/);
+  assert.match(html, /drawModeEnabled\) return/);
+});
+
+test('buildScrollableFieldPreviewHtml anchors pinch zoom to finger center', () => {
+  const html = buildScrollableFieldPreviewHtml({
+    base64: 'UEZERg==',
+    ...mockAssets
+  });
+
+  assert.match(html, /function touchCenter/);
+  assert.match(html, /viewport\.scrollLeft = \(viewport\.scrollLeft \+ offsetX\) \* scaleRatio - offsetX/);
+  assert.match(html, /wrap\.style\.transformOrigin = '0 0'/);
+});
+
+test('buildFieldPreviewHtml anchors pinch zoom to finger center', () => {
+  const html = buildFieldPreviewHtml({
+    base64: 'UEZERg==',
+    ...mockAssets,
+    mode: 'assign'
+  });
+
+  assert.match(html, /function touchCenter/);
+  assert.match(html, /viewport\.scrollTop = \(viewport\.scrollTop \+ offsetY\) \* scaleRatio - offsetY/);
+  assert.doesNotMatch(html, /transformOrigin = 'center top'/);
+});
+
+test('buildFieldPreviewHtml assign mode skips overlay labels', () => {
+  const html = buildFieldPreviewHtml({
+    base64: 'UEZERg==',
+    ...mockAssets,
+    mode: 'assign',
+    highlights: [{ fieldId: 'f1', fieldName: 'Text1', label: 'Label', index: 1, page: 1, rect: [10, 10, 50, 50] }]
+  });
+
+  assert.match(html, /const assignMode = true/);
+  assert.match(html, /if \(!assignMode\)/);
+});
+
 test('offline simulation: bundled asset files exist for pdf.js 3.11.174', () => {
   const corePath = path.join(assetsDir, 'pdf.min.bundle');
   const workerPath = path.join(assetsDir, 'pdf.worker.min.bundle');

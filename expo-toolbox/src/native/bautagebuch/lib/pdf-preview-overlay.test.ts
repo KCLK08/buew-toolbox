@@ -14,7 +14,7 @@ function test(name: string, fn: () => void) {
 }
 
 test('resolvePreviewOverlayPlacement avoids center-band overlap via bottom-sheet', () => {
-  assert.equal(resolvePreviewOverlayPlacement([200, 500, 280, 540]), 'bottom-sheet');
+  assert.equal(resolvePreviewOverlayPlacement([200, 400, 280, 440]), 'bottom-sheet');
 });
 
 test('resolvePreviewOverlayPlacement maps top field to bottom panel slot', () => {
