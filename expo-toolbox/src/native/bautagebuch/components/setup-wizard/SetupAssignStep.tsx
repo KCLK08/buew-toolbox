@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutAnimation, Modal, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
+import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
+import { debounce } from '../../../../lib/debounce';
 import { hapticSuccess } from '../../../../lib/haptics';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
 import {
@@ -26,22 +27,14 @@ import type { DetectedField, FieldRect, SetupFieldType, SetupStructureItem } fro
 import { SetupPdfFieldPreview } from '../SetupPdfFieldPreview';
 import { SetupAssignFieldListPanel } from './SetupAssignFieldListPanel';
 import { SetupAssignFieldOverview } from './SetupAssignFieldOverview';
-import { SetupAssignGroupFieldModal } from './SetupAssignGroupFieldModal';
 import { SetupAssignHeader, type SetupAssignViewTab } from './SetupAssignHeader';
 import { SetupAssignProgressBar } from './SetupAssignProgressBar';
 import { SetupAssignSourceBanner } from './SetupAssignSourceBanner';
-import { SetupAssignStructurePanel } from './SetupAssignStructurePanel';
-import { SetupAssignTableColumnModal } from './SetupAssignTableColumnModal';
 import { SetupManualFieldModal } from './SetupManualFieldModal';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
-
-type PendingTarget =
-  | { kind: 'group'; item: SetupStructureItem }
-  | { kind: 'table'; item: SetupStructureItem }
-  | null;
 
 type Props = {
   pdfPath: string | null;
@@ -49,6 +42,7 @@ type Props = {
   mappingFields: MappingField[];
   setupModel: Record<string, unknown>;
   readOnly?: boolean;
+  editMode?: boolean;
   onChange: (next: Record<string, unknown>) => void;
   onComplete: (next: Record<string, unknown>) => void;
   onBack: () => void;
@@ -70,6 +64,7 @@ export function SetupAssignStep({
   mappingFields,
   setupModel,
   readOnly = false,
+  editMode = false,
   onChange,
   onComplete,
   onBack,
@@ -81,12 +76,17 @@ export function SetupAssignStep({
   const insets = useSafeAreaInsets();
   const indexSyncedRef = useRef(false);
   const [activeTab, setActiveTab] = useState<SetupAssignViewTab>('pdf');
-  const [pendingTarget, setPendingTarget] = useState<PendingTarget>(null);
   const [showFieldOverview, setShowFieldOverview] = useState(false);
-  const [showAssignModal, setShowAssignModal] = useState(false);
   const [drawMode, setDrawMode] = useState(false);
   const [pendingDraw, setPendingDraw] = useState<{ page: number; rect: FieldRect } | null>(null);
   const [draftLabels, setDraftLabels] = useState<Record<string, string>>({});
+  const persistFieldNameRef = useRef(
+    debounce((fieldId: string, name: string) => {
+      void onUpdateField?.(fieldId, { labelCandidate: name.trim() });
+    }, 450)
+  );
+
+  useEffect(() => () => persistFieldNameRef.current.cancel(), [onUpdateField]);
 
   const wizard = useMemo(() => getWizardState(setupModel), [setupModel]);
   const currentIndex = resolveCurrentMappingIndex(mappingFields, wizard);
@@ -136,17 +136,10 @@ export function SetupAssignStep({
     });
   };
 
-  const confirmGroupField = (fieldName: string) => {
-    if (!currentField || pendingTarget?.kind !== 'group') return;
-    const trimmed = fieldName.trim();
-    const next = assignFieldToGroup(
-      setupModel,
-      currentField.fieldId,
-      pendingTarget.item.id,
-      trimmed
-    );
-    setPendingTarget(null);
-    setShowAssignModal(false);
+  const assignToGroup = (item: SetupStructureItem) => {
+    if (!currentField || readOnly || item.type !== 'group') return;
+    const trimmed = resolveLabel(currentField);
+    const next = assignFieldToGroup(setupModel, currentField.fieldId, item.id, trimmed);
     void hapticSuccess();
     void (async () => {
       if (trimmed) {
@@ -156,23 +149,17 @@ export function SetupAssignStep({
     })();
   };
 
-  const confirmTableColumn = (input: {
-    columnId?: string;
-    newColumnName?: string;
-    fieldLabel: string;
-  }) => {
-    if (!currentField || pendingTarget?.kind !== 'table') return;
-    const next = assignFieldToTableColumn(
-      setupModel,
-      currentField.fieldId,
-      pendingTarget.item.id,
-      input
-    );
-    setPendingTarget(null);
-    setShowAssignModal(false);
+  const assignToTable = (item: SetupStructureItem) => {
+    if (!currentField || readOnly || item.type !== 'table') return;
+    const trimmed = resolveLabel(currentField);
+    const firstColumn = item.columns[0]?.id;
+    const next = assignFieldToTableColumn(setupModel, currentField.fieldId, item.id, {
+      columnId: firstColumn,
+      newColumnName: firstColumn ? undefined : trimmed,
+      fieldLabel: trimmed
+    });
     void hapticSuccess();
     void (async () => {
-      const trimmed = input.fieldLabel.trim();
       if (trimmed) {
         await onUpdateField?.(currentField.fieldId, { labelCandidate: trimmed });
       }
@@ -192,14 +179,7 @@ export function SetupAssignStep({
 
   const handleFieldNameChange = (fieldId: string, name: string) => {
     setDraftLabels((current) => ({ ...current, [fieldId]: name }));
-    void (async () => {
-      await onUpdateField?.(fieldId, { labelCandidate: name.trim() });
-      setDraftLabels((current) => {
-        const next = { ...current };
-        delete next[fieldId];
-        return next;
-      });
-    })();
+    persistFieldNameRef.current(fieldId, name);
   };
 
   const handleFieldTypeChange = (fieldId: string, type: SetupFieldType) => {
@@ -218,11 +198,6 @@ export function SetupAssignStep({
     })();
   };
 
-  const openAssignForCurrentField = () => {
-    if (!currentField) return;
-    setShowAssignModal(true);
-  };
-
   const selectFieldById = (fieldId: string) => {
     const index = mappingFields.findIndex((field) => field.fieldId === fieldId);
     if (index >= 0) {
@@ -231,21 +206,13 @@ export function SetupAssignStep({
     }
   };
 
-  const pendingGroup =
-    pendingTarget?.kind === 'group' && pendingTarget.item.type === 'group'
-      ? pendingTarget.item
-      : null;
-  const pendingTable =
-    pendingTarget?.kind === 'table' && pendingTarget.item.type === 'table'
-      ? pendingTarget.item
-      : null;
-
   return (
     <View style={styles.root}>
       <SetupAssignHeader
         activeTab={activeTab}
         onTabChange={switchTab}
         onBack={onBack}
+        applyTopInset={!editMode}
         onOpenFields={() => {
           switchTab('fields');
         }}
@@ -290,6 +257,7 @@ export function SetupAssignStep({
             activeFieldLabel={currentLabel}
             activeFieldPage={currentField?.page || 1}
             assignedFieldIds={assignedFieldIds}
+            overlayFramesOnly
             variant="assign"
             drawMode={drawMode}
             onFieldSelect={selectFieldById}
@@ -308,16 +276,11 @@ export function SetupAssignStep({
             readOnly={readOnly}
             onSelectField={selectFieldAtIndex}
             onShowInPdf={() => switchTab('pdf')}
-            onAssignField={openAssignForCurrentField}
+            onAssignGroup={assignToGroup}
+            onAssignTable={assignToTable}
             onChangeFieldName={handleFieldNameChange}
             onChangeFieldType={handleFieldTypeChange}
             onDeleteField={handleDeleteField}
-            onSelectGroup={(item) => {
-              setPendingTarget({ kind: 'group', item });
-            }}
-            onSelectTable={(item) => {
-              setPendingTarget({ kind: 'table', item });
-            }}
           />
         </View>
       </View>
@@ -327,45 +290,6 @@ export function SetupAssignStep({
           <PrimaryButton compact label="Weiter zu Schritt 3" onPress={() => onComplete(setupModel)} />
         </View>
       ) : null}
-
-      <Modal visible={showAssignModal} animationType="slide" onRequestClose={() => setShowAssignModal(false)}>
-        <View style={[styles.assignModal, { paddingTop: insets.top }]}>
-          <View style={styles.assignModalHeader}>
-            <Pressable accessibilityRole="button" onPress={() => setShowAssignModal(false)}>
-              <Text style={styles.assignModalClose}>Schließen</Text>
-            </Pressable>
-            <Text style={styles.assignModalTitle}>Feld zuordnen</Text>
-            <View style={styles.assignModalSpacer} />
-          </View>
-          <SetupAssignStructurePanel
-            setupModel={setupModel}
-            mappingFields={mappingFields}
-            currentField={currentField}
-            readOnly={readOnly}
-            onSelectGroup={(item) => setPendingTarget({ kind: 'group', item })}
-            onSelectTable={(item) => setPendingTarget({ kind: 'table', item })}
-          />
-        </View>
-      </Modal>
-
-      <SetupAssignGroupFieldModal
-        visible={Boolean(pendingGroup)}
-        groupName={pendingGroup?.name || ''}
-        initialFieldName={currentLabel || ''}
-        readOnly={readOnly}
-        onClose={() => setPendingTarget(null)}
-        onConfirm={confirmGroupField}
-      />
-
-      <SetupAssignTableColumnModal
-        visible={Boolean(pendingTable)}
-        tableName={pendingTable?.name || ''}
-        columns={pendingTable?.columns || []}
-        suggestedFieldName={currentLabel || 'Feld'}
-        readOnly={readOnly}
-        onClose={() => setPendingTarget(null)}
-        onConfirm={confirmTableColumn}
-      />
 
       <SetupAssignFieldOverview
         visible={showFieldOverview}
@@ -485,31 +409,5 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.white,
     fontFamily: 'SpaceGrotesk_600SemiBold'
-  },
-  assignModal: {
-    flex: 1,
-    backgroundColor: colors.bg
-  },
-  assignModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.pageX,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.panel
-  },
-  assignModalClose: {
-    ...typography.bodyStrong,
-    color: colors.accent,
-    minWidth: 88
-  },
-  assignModalTitle: {
-    ...typography.subtitle,
-    color: colors.ink
-  },
-  assignModalSpacer: {
-    minWidth: 88
   }
 });

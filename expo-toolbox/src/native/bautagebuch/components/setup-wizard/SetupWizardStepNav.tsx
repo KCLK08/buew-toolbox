@@ -1,8 +1,10 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../../../constants/theme';
 import { hapticSelection } from '../../../../lib/haptics';
+import { systemTopInset } from '../../../../navigation/systemInsets';
 import type { SetupWizardStep } from '../../types';
 
 type StepDef = {
@@ -24,8 +26,11 @@ type Props = {
 };
 
 export function SetupWizardStepNav({ activeStep, onSelectStep }: Props) {
+  const insets = useSafeAreaInsets();
+  const topInset = systemTopInset(insets);
+
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingTop: topInset }]}>
       {STEPS.map((entry, index) => {
         const active = entry.step === activeStep;
         return (

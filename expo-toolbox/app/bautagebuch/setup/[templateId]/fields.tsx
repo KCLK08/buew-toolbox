@@ -67,18 +67,15 @@ export default function SetupFieldsScreen() {
     }
   }, [templateId, schedule]);
 
-  const reloadFields = useCallback(async () => {
-    if (!templateId) return;
-    setDetectedFields(await getDetectedFields(templateId));
-  }, [templateId]);
-
   const handleUpdateField = useCallback(
     async (fieldId: string, patch: { labelCandidate?: string; type?: string }) => {
       if (!templateId) return;
       await updateTemplateField(templateId, fieldId, patch);
-      await reloadFields();
+      setDetectedFields((current) =>
+        current.map((field) => (field.fieldId === fieldId ? { ...field, ...patch } : field))
+      );
     },
-    [templateId, reloadFields]
+    [templateId]
   );
 
   useEffect(() => {
@@ -155,7 +152,7 @@ export default function SetupFieldsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.root} edges={['left', 'right']}>
       {editMode ? (
         <SetupWizardStepNav activeStep="fields" onSelectStep={(step) => void handleStepNav(step)} />
       ) : null}
@@ -194,6 +191,7 @@ export default function SetupFieldsScreen() {
           detectedFields={detectedFields}
           setupModel={setupModel}
           readOnly={readOnly}
+          editMode={editMode}
           onChange={handleChange}
           onFinish={() => void handleFinish()}
           onBack={() => void handleBack()}

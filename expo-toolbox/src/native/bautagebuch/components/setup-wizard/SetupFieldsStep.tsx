@@ -4,12 +4,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '../../../../components/mobile';
 import { colors, spacing } from '../../../../constants/theme';
+import { debounce } from '../../../../lib/debounce';
 import { hapticSuccess } from '../../../../lib/haptics';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
 import {
   advanceFieldSettingsWalkthrough,
   applyFieldTypeChange,
-  buildFieldLabelResolver,
   getFieldSettingsProgress,
   isFieldSettingsWalkthroughComplete,
   listFieldSettingsTargets,
@@ -40,6 +40,7 @@ type Props = {
   detectedFields: DetectedField[];
   setupModel: Record<string, unknown>;
   readOnly?: boolean;
+  editMode?: boolean;
   onChange: (next: Record<string, unknown>) => void;
   onFinish: () => void;
   onBack: () => void;
@@ -54,6 +55,7 @@ export function SetupFieldsStep({
   detectedFields,
   setupModel,
   readOnly = false,
+  editMode = false,
   onChange,
   onFinish,
   onBack,
@@ -65,6 +67,13 @@ export function SetupFieldsStep({
   const [typePickerOpen, setTypePickerOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [draftLabels, setDraftLabels] = useState<Record<string, string>>({});
+  const persistLabelRef = useRef(
+    debounce((fieldId: string, label: string) => {
+      void onUpdateField?.(fieldId, { labelCandidate: label.trim() });
+    }, 450)
+  );
+
+  useEffect(() => () => persistLabelRef.current.cancel(), [onUpdateField]);
 
   const targets = useMemo(() => listFieldSettingsTargets(setupModel), [setupModel]);
   const mappingFields = useMemo(() => sortMappingFields(detectedFields), [detectedFields]);
@@ -79,10 +88,6 @@ export function SetupFieldsStep({
   const displayName = currentTarget
     ? resolveTargetDisplayName(setupModel, currentTarget, currentField, mappingFields, draftLabels)
     : null;
-  const resolveFieldLabel = useMemo(
-    () => buildFieldLabelResolver(setupModel, targets, mappingFields, draftLabels),
-    [setupModel, targets, mappingFields, draftLabels]
-  );
   const detectedTypeLabel =
     currentTarget && currentTarget.kind !== 'table-meta'
       ? resolveDetectedFieldTypeLabel(currentField, detectedFields)
@@ -123,14 +128,7 @@ export function SetupFieldsStep({
     if (!currentTarget || currentTarget.kind === 'table-meta') return;
     setDraftLabels((current) => ({ ...current, [fieldId]: label }));
     onChange(updateFieldSettingsTarget(setupModel, currentTarget, { label: label.trim() }));
-    void (async () => {
-      await onUpdateField?.(fieldId, { labelCandidate: label.trim() });
-      setDraftLabels((current) => {
-        const next = { ...current };
-        delete next[fieldId];
-        return next;
-      });
-    })();
+    persistLabelRef.current(fieldId, label);
   };
 
   const handleSaveAndNext = () => {
@@ -162,6 +160,7 @@ export function SetupFieldsStep({
         activeTab={activeTab}
         onTabChange={switchTab}
         onBack={onBack}
+        applyTopInset={!editMode}
         onOpenOverview={() => setOverviewOpen(true)}
       />
 
@@ -173,19 +172,21 @@ export function SetupFieldsStep({
       />
 
       <View style={styles.body}>
-        <View style={[styles.tabPane, activeTab !== 'pdf' ? styles.tabPaneHidden : null]}>
-          <SetupPdfFieldPreview
-            pdfPath={pdfPath}
-            detectedFields={detectedFields}
-            mappingFields={mappingFields}
-            resolveFieldLabel={resolveFieldLabel}
-            activeFieldId={currentField?.fieldId || null}
-            activeFieldLabel={displayName}
-            activeFieldPage={activeFieldPage}
-            variant="assign"
-            onFieldSelect={selectFieldById}
-          />
-        </View>
+        {activeTab === 'pdf' ? (
+          <View style={styles.tabPane}>
+            <SetupPdfFieldPreview
+              pdfPath={pdfPath}
+              detectedFields={detectedFields}
+              mappingFields={mappingFields}
+              overlayFramesOnly
+              activeFieldId={currentField?.fieldId || null}
+              activeFieldLabel={displayName}
+              activeFieldPage={activeFieldPage}
+              variant="assign"
+              onFieldSelect={selectFieldById}
+            />
+          </View>
+        ) : null}
         <View style={[styles.tabPane, activeTab !== 'settings' ? styles.tabPaneHidden : null]}>
           <SetupFieldsSettingsPanel
             setupModel={setupModel}

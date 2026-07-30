@@ -1,4 +1,4 @@
-import { PDFCheckBox, PDFDropdown, PDFOptionList, PDFRadioGroup, PDFTextField } from 'pdf-lib';
+import { PDFCheckBox, PDFDropdown, PDFOptionList, PDFName, PDFRadioGroup, PDFTextField } from 'pdf-lib';
 
 import { getPdfFieldRectangle, prepareMultilinePdfText } from './pdf-text-fit.js';
 
@@ -128,6 +128,12 @@ export function detectPdfFieldType(field) {
   if (field instanceof PDFDropdown || field instanceof PDFOptionList) {
     return 'dropdown';
   }
+
+  const acroType = detectAcroFormFieldType(field);
+  if (acroType) {
+    return acroType;
+  }
+
   if (constructorName.includes('text')) {
     return 'text';
   }
@@ -140,7 +146,51 @@ export function detectPdfFieldType(field) {
   if (constructorName.includes('drop') || constructorName.includes('option')) {
     return 'dropdown';
   }
+  if (constructorName.includes('sign')) {
+    return 'signature';
+  }
   return 'unsupported';
+}
+
+function detectAcroFormFieldType(field) {
+  try {
+    const acroField = field?.acroField;
+    const dict = acroField?.dict;
+    if (!dict?.lookup) {
+      return null;
+    }
+    const ft = dict.lookup(PDFName.of('FT'));
+    const ftName = String(ft?.decodeText?.() || ft?.asName?.() || ft || '')
+      .replace(/^\//, '')
+      .trim();
+    if (ftName === 'Tx') {
+      return 'text';
+    }
+    if (ftName === 'Ch') {
+      return 'dropdown';
+    }
+    if (ftName === 'Sig') {
+      return 'signature';
+    }
+    if (ftName === 'Btn') {
+      const ffEntry = dict.lookup(PDFName.of('Ff'));
+      const ff = Number(ffEntry?.asNumber?.() ?? ffEntry?.value?.() ?? ffEntry ?? 0);
+      if (ff & 0x8000) {
+        return 'unsupported';
+      }
+      if (ff & 0x800000) {
+        return 'radio';
+      }
+      const options = typeof field?.getOptions === 'function' ? field.getOptions() : [];
+      if (Array.isArray(options) && options.length > 1) {
+        return 'radio';
+      }
+      return 'checkbox';
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export function inputKeyForField(field) {

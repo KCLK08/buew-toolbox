@@ -18,6 +18,14 @@ export function systemBottomInset(insets: { bottom: number }): number {
   return Math.max(insets.bottom, spacing.sm);
 }
 
+/** Top inset for headers when edge-to-edge reports zero on Android. */
+export function systemTopInset(insets: { top: number }): number {
+  if (Platform.OS === 'android') {
+    return Math.max(insets.top, spacing.sm);
+  }
+  return Math.max(insets.top, 0);
+}
+
 /** Bottom inset for tab screens: system nav bar + small gap above it for tab labels. */
 export function tabBarBottomInset(insets: { bottom: number }): number {
   if (Platform.OS === 'android') {

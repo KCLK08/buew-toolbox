@@ -113,7 +113,7 @@ export default function SetupStructureScreen() {
   const readOnly = templateStatus === 'archived';
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.root} edges={['left', 'right']}>
       {editMode ? (
         <SetupWizardStepNav activeStep="structure" onSelectStep={(step) => void handleStepNav(step)} />
       ) : null}
@@ -131,6 +131,7 @@ export default function SetupStructureScreen() {
           pdfPath={pdfPath}
           setupModel={setupModel}
           readOnly={readOnly}
+          editMode={editMode}
           onChange={handleChange}
           onComplete={handleComplete}
           onBack={() => void handleBack()}
