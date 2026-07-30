@@ -132,9 +132,11 @@ export default function SetupAssignScreen() {
     async (fieldId: string, patch: { labelCandidate?: string; type?: string }) => {
       if (!templateId) return;
       await updateTemplateField(templateId, fieldId, patch);
-      await reloadFields();
+      setDetectedFields((current) =>
+        current.map((field) => (field.fieldId === fieldId ? { ...field, ...patch } : field))
+      );
     },
-    [templateId, reloadFields]
+    [templateId]
   );
 
   const handleDeleteField = useCallback(
@@ -149,7 +151,7 @@ export default function SetupAssignScreen() {
   const readOnly = templateStatus === 'archived';
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.root} edges={['left', 'right']}>
       {editMode ? (
         <SetupWizardStepNav activeStep="assign" onSelectStep={(step) => void handleStepNav(step)} />
       ) : null}
@@ -169,6 +171,7 @@ export default function SetupAssignScreen() {
           mappingFields={mappingFields}
           setupModel={setupModel}
           readOnly={readOnly}
+          editMode={editMode}
           onChange={handleChange}
           onComplete={handleComplete}
           onBack={() => void handleBack()}

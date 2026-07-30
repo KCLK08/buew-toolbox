@@ -40,6 +40,7 @@ type Props = {
   pdfPath: string | null;
   setupModel: Record<string, unknown>;
   readOnly?: boolean;
+  editMode?: boolean;
   onChange: (next: Record<string, unknown>) => void;
   onComplete: (next: Record<string, unknown>) => void;
   onBack: () => void;
@@ -50,6 +51,7 @@ export function SetupStructureStep({
   pdfPath,
   setupModel,
   readOnly = false,
+  editMode = false,
   onChange,
   onComplete,
   onBack,
@@ -167,7 +169,12 @@ export function SetupStructureStep({
 
   return (
     <View style={styles.root}>
-      <SetupStructureHeader activeTab={activeTab} onTabChange={switchTab} onBack={onBack} />
+      <SetupStructureHeader
+        activeTab={activeTab}
+        onTabChange={switchTab}
+        onBack={onBack}
+        applyTopInset={!editMode}
+      />
 
       <View style={styles.body}>
         <View style={[styles.tabPane, activeTab !== 'pdf' ? styles.tabPaneHidden : null]}>

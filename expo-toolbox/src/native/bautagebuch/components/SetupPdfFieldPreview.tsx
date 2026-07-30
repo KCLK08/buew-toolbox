@@ -41,6 +41,7 @@ type Props = {
   variant?: 'default' | 'pinned' | 'mapping' | 'assign' | 'overlay';
   emphasizeActiveHighlight?: boolean;
   drawMode?: boolean;
+  overlayFramesOnly?: boolean;
   onFieldDrawn?: (payload: {
     page: number;
     rect: { x: number; y: number; width: number; height: number };
@@ -70,6 +71,7 @@ export function SetupPdfFieldPreview({
   variant = 'default',
   emphasizeActiveHighlight = false,
   drawMode = false,
+  overlayFramesOnly = false,
   onFieldDrawn,
   onFieldSelect
 }: Props) {
@@ -101,7 +103,10 @@ export function SetupPdfFieldPreview({
 
   const highlights = useMemo((): PreviewHighlight[] => {
     if (mappingFields && mappingFields.length > 0) {
-      return buildFieldPreviewHighlights(mappingFields, labelResolver);
+      const labelFn = overlayFramesOnly
+        ? () => ''
+        : resolveFieldLabel || ((field: MappingField) => String(field.labelCandidate || field.fieldName || 'Feld').trim());
+      return buildFieldPreviewHighlights(mappingFields, labelFn);
     }
     return detectedFields
       .filter((field) => fieldHasGeometry(field))
@@ -114,7 +119,7 @@ export function SetupPdfFieldPreview({
         page: getFieldPage(field),
         rect: fieldToPreviewLegacyRect(field) as number[]
       }));
-  }, [detectedFields, mappingFields, labelResolver]);
+  }, [detectedFields, mappingFields, labelResolver, overlayFramesOnly]);
 
   const resolvedActiveFieldId = useMemo(() => {
     if (!activeFieldId) return '';
@@ -210,14 +215,39 @@ export function SetupPdfFieldPreview({
     );
   }, []);
 
+  const highlightSignatureRef = useRef('');
+
   useEffect(() => {
     if (!previewState.ready || useFallback) return;
-    postPreviewCommand({
-      type: 'updateHighlights',
+    const signature = JSON.stringify({
       highlights,
-      page: Number(activeFieldPage || previewState.page || 1)
+      activeFieldId: resolvedActiveFieldId,
+      activeFieldPage,
+      assignedFieldIds
     });
-  }, [highlights, previewState.ready, useFallback, postPreviewCommand, activeFieldPage, previewState.page]);
+    if (signature === highlightSignatureRef.current) return;
+    highlightSignatureRef.current = signature;
+
+    const timer = setTimeout(() => {
+      postPreviewCommand({
+        type: 'updateHighlights',
+        highlights,
+        page: Number(activeFieldPage || previewState.page || 1)
+      });
+    }, overlayFramesOnly ? 80 : 150);
+
+    return () => clearTimeout(timer);
+  }, [
+    highlights,
+    resolvedActiveFieldId,
+    activeFieldPage,
+    assignedFieldIds,
+    previewState.ready,
+    useFallback,
+    postPreviewCommand,
+    previewState.page,
+    overlayFramesOnly
+  ]);
 
   useEffect(() => {
     if (!previewState.ready || useFallback) return;

@@ -1,8 +1,10 @@
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, shadows, spacing, typography } from '../../../../constants/theme';
 import { hapticSelection } from '../../../../lib/haptics';
+import { systemTopInset } from '../../../../navigation/systemInsets';
 
 export type SetupFieldsViewTab = 'pdf' | 'settings';
 
@@ -11,9 +13,18 @@ type Props = {
   onTabChange: (tab: SetupFieldsViewTab) => void;
   onBack: () => void;
   onOpenOverview?: () => void;
+  applyTopInset?: boolean;
 };
 
-export function SetupFieldsHeader({ activeTab, onTabChange, onBack, onOpenOverview }: Props) {
+export function SetupFieldsHeader({
+  activeTab,
+  onTabChange,
+  onBack,
+  onOpenOverview,
+  applyTopInset = true
+}: Props) {
+  const insets = useSafeAreaInsets();
+  const topInset = applyTopInset ? systemTopInset(insets) : 0;
   const selectTab = (tab: SetupFieldsViewTab) => {
     if (tab === activeTab) return;
     void hapticSelection();
@@ -28,7 +39,7 @@ export function SetupFieldsHeader({ activeTab, onTabChange, onBack, onOpenOvervi
   };
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingTop: topInset + 2 }]}>
       <View style={styles.topRow}>
         <Pressable accessibilityRole="button" style={styles.backBtn} onPress={onBack}>
           <MaterialCommunityIcons name="chevron-left" size={20} color={colors.accent} />
@@ -91,7 +102,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     paddingHorizontal: spacing.pageX,
-    paddingTop: 2,
     paddingBottom: spacing.xs,
     gap: spacing.xs
   },

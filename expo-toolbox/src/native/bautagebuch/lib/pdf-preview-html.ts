@@ -157,7 +157,7 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
       #wrap {
         position: relative; display: flex; justify-content: center;
         padding: ${mappingMode ? '4px 0 28px' : '8px 0'};
-        transform-origin: center top;
+        transform-origin: 0 0;
         will-change: transform;
       }
       canvas {
@@ -310,18 +310,20 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
           box.style.height = height + 'px';
           if (entry.source === 'manual') box.classList.add('source-manual');
           else if (entry.source === 'acroform') box.classList.add('source-acroform');
-          const labelText = String(entry.label || entry.fieldName || '').trim();
-          if (labelText) {
-            const labelEl = document.createElement('div');
-            labelEl.className = 'highlight-label';
-            labelEl.textContent = labelText;
-            box.appendChild(labelEl);
-          }
-          if (entry.index) {
-            const indexEl = document.createElement('div');
-            indexEl.className = 'highlight-index';
-            indexEl.textContent = String(entry.index);
-            box.appendChild(indexEl);
+          if (!assignMode) {
+            const labelText = String(entry.label || entry.fieldName || '').trim();
+            if (labelText) {
+              const labelEl = document.createElement('div');
+              labelEl.className = 'highlight-label';
+              labelEl.textContent = labelText;
+              box.appendChild(labelEl);
+            }
+            if (entry.index != null) {
+              const indexEl = document.createElement('div');
+              indexEl.className = 'highlight-index';
+              indexEl.textContent = String(entry.index);
+              box.appendChild(indexEl);
+            }
           }
           if (assignMode) {
             box.classList.add('selectable');
@@ -337,6 +339,7 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
       function resetPinchZoom() {
         pinchScale = 1;
         wrap.style.transform = 'scale(1)';
+        wrap.style.transformOrigin = '0 0';
       }
 
       function touchDistance(touches) {
@@ -345,9 +348,16 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
         return Math.hypot(dx, dy);
       }
 
+      function touchCenter(touches) {
+        return {
+          x: (touches[0].clientX + touches[1].clientX) / 2,
+          y: (touches[0].clientY + touches[1].clientY) / 2
+        };
+      }
+
       function applyPinchScale() {
         wrap.style.transform = 'scale(' + pinchScale + ')';
-        wrap.style.transformOrigin = 'center top';
+        wrap.style.transformOrigin = '0 0';
       }
 
       viewport.addEventListener('touchstart', (event) => {
@@ -361,12 +371,23 @@ export function buildFieldPreviewHtml(options: BuildPreviewHtmlOptions): string 
       viewport.addEventListener('touchmove', (event) => {
         if (event.touches.length !== 2 || pinchStartDistance <= 0) return;
         event.preventDefault();
-        const ratio = touchDistance(event.touches) / pinchStartDistance;
-        pinchScale = Math.min(4, Math.max(1, pinchStartScale * ratio));
+        const newDistance = touchDistance(event.touches);
+        const nextScale = Math.min(4, Math.max(1, pinchStartScale * (newDistance / pinchStartDistance)));
+        const center = touchCenter(event.touches);
+        const rect = viewport.getBoundingClientRect();
+        const offsetX = center.x - rect.left;
+        const offsetY = center.y - rect.top;
+        const scaleRatio = nextScale / pinchScale;
+        viewport.scrollLeft = (viewport.scrollLeft + offsetX) * scaleRatio - offsetX;
+        viewport.scrollTop = (viewport.scrollTop + offsetY) * scaleRatio - offsetY;
+        pinchScale = nextScale;
         applyPinchScale();
       }, { passive: false });
 
-      viewport.addEventListener('touchend', () => {
+      viewport.addEventListener('touchend', (event) => {
+        if (event.touches.length < 2) {
+          pinchStartDistance = 0;
+        }
         if (pinchScale <= 1.01) {
           resetPinchZoom();
         }
@@ -826,6 +847,7 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
     <script>
       const highlightActive = ${highlightActive ? 'true' : 'false'};
       const highQuality = ${highQuality ? 'true' : 'false'};
+      const framesOnly = true;
       ${previewBootHelpers(PDF_PREVIEW_LOAD_ERROR, workerSrc)}
 
       let highlights = ${highlightsJson};
@@ -880,18 +902,20 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           box.style.height = height + 'px';
           if (entry.source === 'manual') box.classList.add('source-manual');
           else if (entry.source === 'acroform') box.classList.add('source-acroform');
-          const labelText = String(entry.label || entry.fieldName || '').trim();
-          if (labelText) {
-            const labelEl = document.createElement('div');
-            labelEl.className = 'highlight-label';
-            labelEl.textContent = labelText;
-            box.appendChild(labelEl);
-          }
-          if (entry.index) {
-            const indexEl = document.createElement('div');
-            indexEl.className = 'highlight-index';
-            indexEl.textContent = String(entry.index);
-            box.appendChild(indexEl);
+          if (!framesOnly) {
+            const labelText = String(entry.label || entry.fieldName || '').trim();
+            if (labelText) {
+              const labelEl = document.createElement('div');
+              labelEl.className = 'highlight-label';
+              labelEl.textContent = labelText;
+              box.appendChild(labelEl);
+            }
+            if (entry.index != null) {
+              const indexEl = document.createElement('div');
+              indexEl.className = 'highlight-index';
+              indexEl.textContent = String(entry.index);
+              box.appendChild(indexEl);
+            }
           }
           if (!drawModeEnabled) {
             box.classList.add('selectable');
@@ -909,12 +933,16 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         for (const frame of wrap.querySelectorAll('.page-frame')) {
           frame.classList.toggle('draw-enabled', drawModeEnabled);
         }
+        viewport.style.overflow = drawModeEnabled ? 'hidden' : 'auto';
+        viewport.style.touchAction = drawModeEnabled ? 'none' : 'pan-y pinch-zoom';
+        if (drawModeEnabled) {
+          pinchStartDistance = 0;
+        }
         if (!drawModeEnabled && drawPreviewEl) {
           drawPreviewEl.remove();
           drawPreviewEl = null;
           drawStart = null;
         }
-        refreshAllOverlays();
       }
 
       function cssToPdfRect(pageNumber, cssX, cssY, cssWidth, cssHeight) {
@@ -942,15 +970,32 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           drawStart = null;
         };
 
+        const localPoint = (clientX, clientY) => {
+          const rect = frame.getBoundingClientRect();
+          return {
+            x: clientX - rect.left,
+            y: clientY - rect.top
+          };
+        };
+
+        const updatePreview = (clientX, clientY) => {
+          if (!drawStart || !drawPreviewEl) return;
+          const current = localPoint(clientX, clientY);
+          const left = Math.min(drawStart.x, current.x);
+          const top = Math.min(drawStart.y, current.y);
+          drawPreviewEl.style.left = left + 'px';
+          drawPreviewEl.style.top = top + 'px';
+          drawPreviewEl.style.width = Math.abs(current.x - drawStart.x) + 'px';
+          drawPreviewEl.style.height = Math.abs(current.y - drawStart.y) + 'px';
+        };
+
         const finishDraw = (clientX, clientY) => {
           if (!drawStart || !drawPreviewEl) return;
-          const rect = frame.getBoundingClientRect();
-          const endX = clientX - rect.left;
-          const endY = clientY - rect.top;
-          const left = Math.min(drawStart.x, endX);
-          const top = Math.min(drawStart.y, endY);
-          const width = Math.abs(endX - drawStart.x);
-          const height = Math.abs(endY - drawStart.y);
+          const current = localPoint(clientX, clientY);
+          const left = Math.min(drawStart.x, current.x);
+          const top = Math.min(drawStart.y, current.y);
+          const width = Math.abs(current.x - drawStart.x);
+          const height = Math.abs(current.y - drawStart.y);
           clearPreview();
           if (width < 8 || height < 8) return;
           const pdfRect = cssToPdfRect(pageNumber, left, top, width, height);
@@ -962,36 +1007,54 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           });
         };
 
-        layer.addEventListener('pointerdown', (event) => {
+        const beginDraw = (clientX, clientY) => {
           if (!drawModeEnabled) return;
-          event.preventDefault();
-          const rect = frame.getBoundingClientRect();
           drawPageNumber = pageNumber;
-          drawStart = {
-            x: event.clientX - rect.left,
-            y: event.clientY - rect.top
-          };
+          drawStart = localPoint(clientX, clientY);
           drawPreviewEl = document.createElement('div');
           drawPreviewEl.className = 'draw-preview';
           layer.appendChild(drawPreviewEl);
+        };
+
+        layer.addEventListener('touchstart', (event) => {
+          if (!drawModeEnabled || event.touches.length !== 1) return;
+          event.preventDefault();
+          event.stopPropagation();
+          beginDraw(event.touches[0].clientX, event.touches[0].clientY);
+        }, { passive: false });
+
+        layer.addEventListener('touchmove', (event) => {
+          if (!drawModeEnabled || !drawStart || event.touches.length !== 1) return;
+          event.preventDefault();
+          event.stopPropagation();
+          updatePreview(event.touches[0].clientX, event.touches[0].clientY);
+        }, { passive: false });
+
+        layer.addEventListener('touchend', (event) => {
+          if (!drawModeEnabled || !drawStart) return;
+          event.preventDefault();
+          const touch = event.changedTouches[0];
+          if (touch) finishDraw(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        layer.addEventListener('touchcancel', () => clearPreview());
+
+        layer.addEventListener('pointerdown', (event) => {
+          if (!drawModeEnabled || event.pointerType === 'touch') return;
+          event.preventDefault();
+          beginDraw(event.clientX, event.clientY);
+          try { layer.setPointerCapture(event.pointerId); } catch (_) {}
         });
 
         layer.addEventListener('pointermove', (event) => {
-          if (!drawModeEnabled || !drawStart || !drawPreviewEl) return;
-          const rect = frame.getBoundingClientRect();
-          const currentX = event.clientX - rect.left;
-          const currentY = event.clientY - rect.top;
-          const left = Math.min(drawStart.x, currentX);
-          const top = Math.min(drawStart.y, currentY);
-          drawPreviewEl.style.left = left + 'px';
-          drawPreviewEl.style.top = top + 'px';
-          drawPreviewEl.style.width = Math.abs(currentX - drawStart.x) + 'px';
-          drawPreviewEl.style.height = Math.abs(currentY - drawStart.y) + 'px';
+          if (!drawModeEnabled || !drawStart || event.pointerType === 'touch') return;
+          updatePreview(event.clientX, event.clientY);
         });
 
         layer.addEventListener('pointerup', (event) => {
-          if (!drawModeEnabled) return;
+          if (!drawModeEnabled || event.pointerType === 'touch') return;
           finishDraw(event.clientX, event.clientY);
+          try { layer.releasePointerCapture(event.pointerId); } catch (_) {}
         });
 
         layer.addEventListener('pointercancel', () => clearPreview());
@@ -1022,6 +1085,7 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
       function resetPinchZoom() {
         pinchScale = 1;
         wrap.style.transform = 'scale(1)';
+        wrap.style.transformOrigin = '0 0';
       }
 
       function touchDistance(touches) {
@@ -1030,12 +1094,20 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         return Math.hypot(dx, dy);
       }
 
+      function touchCenter(touches) {
+        return {
+          x: (touches[0].clientX + touches[1].clientX) / 2,
+          y: (touches[0].clientY + touches[1].clientY) / 2
+        };
+      }
+
       function applyPinchScale() {
         wrap.style.transform = 'scale(' + pinchScale + ')';
-        wrap.style.transformOrigin = 'center top';
+        wrap.style.transformOrigin = '0 0';
       }
 
       viewport.addEventListener('touchstart', (event) => {
+        if (drawModeEnabled) return;
         if (event.touches.length === 2) {
           pinchStartDistance = touchDistance(event.touches);
           pinchStartScale = pinchScale;
@@ -1043,14 +1115,27 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
       }, { passive: true });
 
       viewport.addEventListener('touchmove', (event) => {
+        if (drawModeEnabled) return;
         if (event.touches.length !== 2 || pinchStartDistance <= 0) return;
         event.preventDefault();
-        const ratio = touchDistance(event.touches) / pinchStartDistance;
-        pinchScale = Math.min(4, Math.max(1, pinchStartScale * ratio));
+        const newDistance = touchDistance(event.touches);
+        const nextScale = Math.min(4, Math.max(1, pinchStartScale * (newDistance / pinchStartDistance)));
+        const center = touchCenter(event.touches);
+        const rect = viewport.getBoundingClientRect();
+        const offsetX = center.x - rect.left;
+        const offsetY = center.y - rect.top;
+        const scaleRatio = nextScale / pinchScale;
+        viewport.scrollLeft = (viewport.scrollLeft + offsetX) * scaleRatio - offsetX;
+        viewport.scrollTop = (viewport.scrollTop + offsetY) * scaleRatio - offsetY;
+        pinchScale = nextScale;
         applyPinchScale();
       }, { passive: false });
 
-      viewport.addEventListener('touchend', () => {
+      viewport.addEventListener('touchend', (event) => {
+        if (drawModeEnabled) return;
+        if (event.touches.length < 2) {
+          pinchStartDistance = 0;
+        }
         if (pinchScale <= 1.01) resetPinchZoom();
       }, { passive: true });
 

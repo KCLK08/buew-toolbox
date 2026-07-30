@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -68,6 +69,11 @@ export function SetupFieldSettingsForm({
   onChange,
   onFieldLabelChange
 }: Props) {
+  const checkboxGroups = useMemo(
+    () => listCheckboxGroupOptions(setupModel, detectedFields),
+    [setupModel, detectedFields]
+  );
+
   if (target.kind === 'table-meta') {
     return (
       <TableMetaForm
@@ -88,7 +94,6 @@ export function SetupFieldSettingsForm({
   }
 
   const fieldType = normalizeSetupFieldType(field, detectedFields);
-  const checkboxGroups = listCheckboxGroupOptions(setupModel, detectedFields);
 
   const patchField = (patch: Partial<SetupFieldConfig>) => {
     onChange(updateFieldSettingsTarget(setupModel, target, patch));

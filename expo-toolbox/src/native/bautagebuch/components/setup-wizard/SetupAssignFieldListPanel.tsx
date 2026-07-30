@@ -39,12 +39,11 @@ type Props = {
   readOnly?: boolean;
   onSelectField: (index: number) => void;
   onShowInPdf: () => void;
-  onAssignField: () => void;
+  onAssignGroup: (item: SetupStructureItem) => void;
+  onAssignTable: (item: SetupStructureItem) => void;
   onChangeFieldName: (fieldId: string, name: string) => void;
   onChangeFieldType: (fieldId: string, type: SetupFieldType) => void;
   onDeleteField: (fieldId: string) => void;
-  onSelectGroup: (item: SetupStructureItem) => void;
-  onSelectTable: (item: SetupStructureItem) => void;
 };
 
 export function SetupAssignFieldListPanel({
@@ -55,15 +54,16 @@ export function SetupAssignFieldListPanel({
   readOnly = false,
   onSelectField,
   onShowInPdf,
-  onAssignField,
+  onAssignGroup,
+  onAssignTable,
   onChangeFieldName,
   onChangeFieldType,
-  onDeleteField,
-  onSelectGroup,
-  onSelectTable
+  onDeleteField
 }: Props) {
   const wizard = getWizardState(setupModel);
   const structureItems = getStructureItems(setupModel);
+  const groups = structureItems.filter((item) => item.type === 'group');
+  const tables = structureItems.filter((item) => item.type === 'table');
   const resolveLabel = (field: MappingField) =>
     resolveFieldDisplayLabel(field, wizard, draftLabels);
   const assignment = currentField
@@ -201,14 +201,7 @@ export function SetupAssignFieldListPanel({
 
           <Text style={styles.detailLabel}>Zuordnung</Text>
           {assignment?.kind === 'none' ? (
-            <View style={styles.unassignedRow}>
-              <Text style={styles.unassigned}>Keine Gruppe zugewiesen</Text>
-              {!readOnly ? (
-                <Pressable accessibilityRole="button" style={styles.assignBtn} onPress={onAssignField}>
-                  <Text style={styles.assignBtnLabel}>Zuordnen</Text>
-                </Pressable>
-              ) : null}
-            </View>
+            <Text style={styles.unassigned}>Keine Gruppe zugewiesen</Text>
           ) : (
             <Text style={styles.detailValue}>
               {assignment?.kind === 'table' ? 'Tabelle' : 'Gruppe'}: {assignment?.label}
@@ -216,21 +209,39 @@ export function SetupAssignFieldListPanel({
           )}
 
           {!readOnly && assignment?.kind === 'none' ? (
-            <View style={styles.quickAssign}>
-              <Text style={styles.detailLabel}>Schnell zuordnen</Text>
-              <View style={styles.quickAssignList}>
-                {structureItems.slice(0, 6).map((item) => (
-                  <Pressable
-                    key={item.id}
-                    style={styles.quickAssignChip}
-                    onPress={() =>
-                      item.type === 'group' ? onSelectGroup(item) : onSelectTable(item)
-                    }
-                  >
-                    <Text style={styles.quickAssignLabel}>{item.name}</Text>
-                  </Pressable>
-                ))}
-              </View>
+            <View style={styles.assignSection}>
+              {groups.length > 0 ? (
+                <View style={styles.assignBlock}>
+                  <Text style={styles.assignHeading}>Gruppe</Text>
+                  {groups.map((item) => (
+                    <Pressable
+                      key={item.id}
+                      accessibilityRole="button"
+                      style={styles.assignRow}
+                      onPress={() => onAssignGroup(item)}
+                    >
+                      <MaterialCommunityIcons name="circle-outline" size={18} color={colors.accent} />
+                      <Text style={styles.assignRowLabel}>{item.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              {tables.length > 0 ? (
+                <View style={styles.assignBlock}>
+                  <Text style={styles.assignHeading}>Tabellen</Text>
+                  {tables.map((item) => (
+                    <Pressable
+                      key={item.id}
+                      accessibilityRole="button"
+                      style={styles.assignRow}
+                      onPress={() => onAssignTable(item)}
+                    >
+                      <MaterialCommunityIcons name="circle-outline" size={18} color={colors.accent} />
+                      <Text style={styles.assignRowLabel}>{item.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
             </View>
           ) : null}
 
@@ -388,50 +399,36 @@ const styles = StyleSheet.create({
     color: colors.accent2,
     fontFamily: 'SpaceGrotesk_600SemiBold'
   },
-  unassignedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm
-  },
   unassigned: {
     ...typography.body,
-    color: colors.muted,
-    flex: 1
+    color: colors.muted
   },
-  assignBtn: {
-    minHeight: 36,
-    paddingHorizontal: spacing.sm,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center'
+  assignSection: {
+    gap: spacing.sm,
+    marginTop: spacing.xxs
   },
-  assignBtnLabel: {
-    ...typography.caption,
-    color: colors.accent,
-    fontFamily: 'SpaceGrotesk_600SemiBold'
-  },
-  quickAssign: {
+  assignBlock: {
     gap: spacing.xxs
   },
-  quickAssignList: {
+  assignHeading: {
+    ...typography.label,
+    color: colors.muted
+  },
+  assignRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xxs
-  },
-  quickAssignChip: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: 44,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
-    borderRadius: 999,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.panelElevated
   },
-  quickAssignLabel: {
-    ...typography.caption,
-    color: colors.ink
+  assignRowLabel: {
+    ...typography.body,
+    color: colors.ink,
+    flex: 1
   },
   detailActions: {
     flexDirection: 'row',
