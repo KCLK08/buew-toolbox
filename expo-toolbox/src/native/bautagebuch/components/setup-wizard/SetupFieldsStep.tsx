@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutAnimation, Platform, StyleSheet, UIManager, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '../../../../components/mobile';
 import { colors, spacing } from '../../../../constants/theme';
 import { debounce } from '../../../../lib/debounce';
 import { hapticSuccess } from '../../../../lib/haptics';
-import { systemBottomInset } from '../../../../navigation/systemInsets';
 import {
   advanceFieldSettingsWalkthrough,
   applyFieldTypeChange,
@@ -40,7 +38,7 @@ type Props = {
   detectedFields: DetectedField[];
   setupModel: Record<string, unknown>;
   readOnly?: boolean;
-  editMode?: boolean;
+  showWizardNav?: boolean;
   onChange: (next: Record<string, unknown>) => void;
   onFinish: () => void;
   onBack: () => void;
@@ -55,13 +53,12 @@ export function SetupFieldsStep({
   detectedFields,
   setupModel,
   readOnly = false,
-  editMode = false,
+  showWizardNav = false,
   onChange,
   onFinish,
   onBack,
   onUpdateField
 }: Props) {
-  const insets = useSafeAreaInsets();
   const indexSyncedRef = useRef(false);
   const [activeTab, setActiveTab] = useState<SetupFieldsViewTab>('settings');
   const [typePickerOpen, setTypePickerOpen] = useState(false);
@@ -136,12 +133,10 @@ export function SetupFieldsStep({
     void hapticSuccess();
     const next = advanceFieldSettingsWalkthrough(setupModel, targets, currentTarget);
     onChange(next);
-    switchTab('pdf');
   };
 
   const selectTargetAtIndex = (index: number) => {
     onChange(withWizardState(setupModel, { currentFieldSettingsIndex: index }));
-    switchTab('pdf');
   };
 
   const selectFieldById = (fieldId: string) => {
@@ -160,7 +155,7 @@ export function SetupFieldsStep({
         activeTab={activeTab}
         onTabChange={switchTab}
         onBack={onBack}
-        applyTopInset={!editMode}
+        applyTopInset={!showWizardNav}
         onOpenOverview={() => setOverviewOpen(true)}
       />
 
@@ -200,12 +195,13 @@ export function SetupFieldsStep({
             onOpenTypePicker={() => setTypePickerOpen(true)}
             onSaveAndNext={handleSaveAndNext}
             showSaveButton={Boolean(currentTarget) && !walkthroughDone}
+            bottomInset={spacing.sm}
           />
         </View>
       </View>
 
       {walkthroughDone && !readOnly ? (
-        <View style={[styles.footer, { paddingBottom: systemBottomInset(insets) + spacing.xs }]}>
+        <View style={[styles.footer, { paddingBottom: spacing.xs }]}>
           <PrimaryButton compact label="Vorlage abschließen" onPress={onFinish} />
         </View>
       ) : null}

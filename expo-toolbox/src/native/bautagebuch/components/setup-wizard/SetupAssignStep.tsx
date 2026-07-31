@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 import { debounce } from '../../../../lib/debounce';
 import { hapticSuccess } from '../../../../lib/haptics';
-import { systemBottomInset } from '../../../../navigation/systemInsets';
 import {
   assignFieldToGroup,
   assignFieldToTableColumn,
@@ -31,6 +29,7 @@ import { SetupAssignHeader, type SetupAssignViewTab } from './SetupAssignHeader'
 import { SetupAssignProgressBar } from './SetupAssignProgressBar';
 import { SetupAssignSourceBanner } from './SetupAssignSourceBanner';
 import { SetupManualFieldModal } from './SetupManualFieldModal';
+import { SetupDrawConfirmPanel } from './SetupDrawConfirmPanel';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -42,7 +41,7 @@ type Props = {
   mappingFields: MappingField[];
   setupModel: Record<string, unknown>;
   readOnly?: boolean;
-  editMode?: boolean;
+  showWizardNav?: boolean;
   onChange: (next: Record<string, unknown>) => void;
   onComplete: (next: Record<string, unknown>) => void;
   onBack: () => void;
@@ -64,7 +63,7 @@ export function SetupAssignStep({
   mappingFields,
   setupModel,
   readOnly = false,
-  editMode = false,
+  showWizardNav = false,
   onChange,
   onComplete,
   onBack,
@@ -73,11 +72,12 @@ export function SetupAssignStep({
   onDeleteField,
   onCreateManualField
 }: Props) {
-  const insets = useSafeAreaInsets();
   const indexSyncedRef = useRef(false);
   const [activeTab, setActiveTab] = useState<SetupAssignViewTab>('pdf');
   const [showFieldOverview, setShowFieldOverview] = useState(false);
   const [drawMode, setDrawMode] = useState(false);
+  const [draftDraw, setDraftDraw] = useState<{ page: number; rect: FieldRect } | null>(null);
+  const [draftRectEditable, setDraftRectEditable] = useState(false);
   const [pendingDraw, setPendingDraw] = useState<{ page: number; rect: FieldRect } | null>(null);
   const [draftLabels, setDraftLabels] = useState<Record<string, string>>({});
   const persistFieldNameRef = useRef(
@@ -118,6 +118,21 @@ export function SetupAssignStep({
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveTab(tab);
     setDrawMode(false);
+    setDraftDraw(null);
+    setDraftRectEditable(false);
+  };
+
+  const cancelDraftDraw = () => {
+    setDraftDraw(null);
+    setDraftRectEditable(false);
+    setDrawMode(false);
+  };
+
+  const confirmDraftDraw = () => {
+    if (!draftDraw) return;
+    setPendingDraw(draftDraw);
+    setDraftDraw(null);
+    setDraftRectEditable(false);
   };
 
   const advanceAfterAssign = (next: Record<string, unknown>) => {
@@ -212,7 +227,7 @@ export function SetupAssignStep({
         activeTab={activeTab}
         onTabChange={switchTab}
         onBack={onBack}
-        applyTopInset={!editMode}
+        applyTopInset={!showWizardNav}
         onOpenFields={() => {
           switchTab('fields');
         }}
@@ -230,12 +245,19 @@ export function SetupAssignStep({
 
       <View style={styles.body}>
         <View style={[styles.tabPane, activeTab !== 'pdf' ? styles.tabPaneHidden : null]}>
-          {!readOnly ? (
+          {!readOnly && !draftDraw ? (
             <View style={styles.pdfToolbar}>
               <Pressable
                 accessibilityRole="button"
                 style={[styles.addFieldBtn, drawMode ? styles.addFieldBtnActive : null]}
-                onPress={() => setDrawMode((value) => !value)}
+                onPress={() => {
+                  if (drawMode) {
+                    setDrawMode(false);
+                    return;
+                  }
+                  cancelDraftDraw();
+                  setDrawMode(true);
+                }}
               >
                 <MaterialCommunityIcons
                   name={drawMode ? 'gesture-tap' : 'plus'}
@@ -259,13 +281,28 @@ export function SetupAssignStep({
             assignedFieldIds={assignedFieldIds}
             overlayFramesOnly
             variant="assign"
-            drawMode={drawMode}
+            drawMode={drawMode && !draftDraw}
+            draftRect={draftDraw}
+            draftRectEditable={draftRectEditable}
             onFieldSelect={selectFieldById}
-            onFieldDrawn={(payload) => {
+            onFieldDrawDraft={(payload) => {
               setDrawMode(false);
-              setPendingDraw(payload);
+              setDraftDraw({ page: payload.page, rect: payload.rect });
+              setDraftRectEditable(false);
+            }}
+            onFieldDraftUpdated={(payload) => {
+              setDraftDraw({ page: payload.page, rect: payload.rect });
             }}
           />
+          {draftDraw ? (
+            <SetupDrawConfirmPanel
+              rectEditEnabled={draftRectEditable}
+              bottomInset={spacing.sm}
+              onEnableEdit={() => setDraftRectEditable(true)}
+              onConfirm={confirmDraftDraw}
+              onCancel={cancelDraftDraw}
+            />
+          ) : null}
         </View>
         <View style={[styles.tabPane, activeTab !== 'fields' ? styles.tabPaneHidden : null]}>
           <SetupAssignFieldListPanel
@@ -281,12 +318,13 @@ export function SetupAssignStep({
             onChangeFieldName={handleFieldNameChange}
             onChangeFieldType={handleFieldTypeChange}
             onDeleteField={handleDeleteField}
+            bottomInset={spacing.sm}
           />
         </View>
       </View>
 
       {mappingDone ? (
-        <View style={[styles.footer, { paddingBottom: systemBottomInset(insets) + spacing.xs }]}>
+        <View style={[styles.footer, { paddingBottom: spacing.xs }]}>
           <PrimaryButton compact label="Weiter zu Schritt 3" onPress={() => onComplete(setupModel)} />
         </View>
       ) : null}

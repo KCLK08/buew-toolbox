@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../../../src/constants/theme';
 import { SetupAssignStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupAssignStep';
@@ -13,15 +13,16 @@ import {
   getWizardState,
   rebuildSectionsFromWizard,
   resolveFieldsSetupPath,
-  resolveSetupEditStepPath,
-  resolveTemplateEditPath,
   shouldShowAssignIntro,
   sortMappingFields
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
+import { exitSetupWizardToOverview, navigateSetupWizardStep } from '../../../../src/native/bautagebuch/lib/setup-wizard-exit';
 import { getTemplateBundle } from '../../../../src/native/bautagebuch/services/templateService';
+import { systemBottomInset } from '../../../../src/navigation/systemInsets';
 
 export default function SetupAssignScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { templateId } = useLocalSearchParams<{ templateId: string }>();
   const [loading, setLoading] = useState(true);
   const [templateStatus, setTemplateStatus] = useState('');
@@ -29,7 +30,7 @@ export default function SetupAssignScreen() {
   const [detectedFields, setDetectedFields] = useState<Awaited<ReturnType<typeof getDetectedFields>>>([]);
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { schedule, flush } = useSetupAutosave(String(templateId || ''));
+  const { schedule, flush, isPending } = useSetupAutosave(String(templateId || ''));
 
   const load = useCallback(async () => {
     if (!templateId) return;
@@ -95,21 +96,25 @@ export default function SetupAssignScreen() {
     })();
   };
 
-  const handleBack = async () => {
-    await flush();
-    const wizard = setupModel ? getWizardState(setupModel) : null;
-    if (wizard?.editMode) {
-      router.replace(resolveTemplateEditPath(String(templateId)));
-      return;
-    }
-    router.replace(`/bautagebuch/setup/${templateId}/mapping`);
+  const handleBack = () => {
+    void exitSetupWizardToOverview({
+      autosave: { schedule, flush, isPending },
+      router
+    });
   };
 
-  const editMode = setupModel ? getWizardState(setupModel).editMode === true : false;
+  const showWizardNav = Boolean(setupModel && !loading);
 
   const handleStepNav = async (step: 'structure' | 'assign' | 'fields') => {
-    await flush();
-    router.replace(resolveSetupEditStepPath(String(templateId), step));
+    if (!setupModel || !templateId) return;
+    await navigateSetupWizardStep({
+      templateId: String(templateId),
+      step,
+      setupModel,
+      autosave: { schedule, flush, isPending },
+      setSetupModel,
+      router
+    });
   };
 
   const reloadFields = useCallback(async () => {
@@ -151,8 +156,11 @@ export default function SetupAssignScreen() {
   const readOnly = templateStatus === 'archived';
 
   return (
-    <SafeAreaView style={styles.root} edges={['left', 'right']}>
-      {editMode ? (
+    <SafeAreaView
+      style={[styles.root, { paddingBottom: systemBottomInset(insets) }]}
+      edges={['left', 'right']}
+    >
+      {showWizardNav ? (
         <SetupWizardStepNav activeStep="assign" onSelectStep={(step) => void handleStepNav(step)} />
       ) : null}
       {loading ? (
@@ -171,7 +179,7 @@ export default function SetupAssignScreen() {
           mappingFields={mappingFields}
           setupModel={setupModel}
           readOnly={readOnly}
-          editMode={editMode}
+          showWizardNav={showWizardNav}
           onChange={handleChange}
           onComplete={handleComplete}
           onBack={() => void handleBack()}

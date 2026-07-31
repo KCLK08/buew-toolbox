@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../../../src/constants/theme';
 import { SetupEditor } from '../../../../src/native/bautagebuch/components/SetupEditor';
@@ -14,18 +14,19 @@ import {
   getWizardState,
   markSetupCompleted,
   rebuildSectionsFromWizard,
-  resolveSetupEditStepPath,
   resolveSetupEntryPath,
   resolveTemplateDetailPath,
-  resolveTemplateEditPath,
   shouldShowFieldsIntro,
   sortMappingFields
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
+import { exitSetupWizardToOverview, navigateSetupWizardStep } from '../../../../src/native/bautagebuch/lib/setup-wizard-exit';
 import { validateSetupModel } from '../../../../src/native/bautagebuch/lib/setup-model.js';
 import { getTemplateBundle } from '../../../../src/native/bautagebuch/services/templateService';
+import { systemBottomInset } from '../../../../src/navigation/systemInsets';
 
 export default function SetupFieldsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { templateId } = useLocalSearchParams<{ templateId: string }>();
   const [loading, setLoading] = useState(true);
   const [templateName, setTemplateName] = useState('');
@@ -36,7 +37,7 @@ export default function SetupFieldsScreen() {
   const [setupModel, setSetupModel] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const { schedule, flush } = useSetupAutosave(String(templateId || ''));
+  const { schedule, flush, isPending } = useSetupAutosave(String(templateId || ''));
 
   const load = useCallback(async () => {
     if (!templateId) return;
@@ -104,7 +105,6 @@ export default function SetupFieldsScreen() {
         (hasTableSections(setupModel) && wizard?.step !== 'fields'))
   );
   const readOnly = templateStatus === 'archived';
-  const editMode = wizard?.editMode === true;
 
   const handleChange = (next: Record<string, unknown>) => {
     setSetupModel(next);
@@ -137,23 +137,33 @@ export default function SetupFieldsScreen() {
     }
   };
 
-  const handleBack = async () => {
-    await flush();
-    if (editMode) {
-      router.replace(resolveTemplateEditPath(String(templateId)));
-      return;
-    }
-    router.replace(`/bautagebuch/setup/${templateId}/assign` as Href);
+  const handleBack = () => {
+    void exitSetupWizardToOverview({
+      autosave: { schedule, flush, isPending },
+      router
+    });
   };
 
+  const showWizardNav = Boolean(setupModel && !loading && !useLegacyEditor);
+
   const handleStepNav = async (step: 'structure' | 'assign' | 'fields') => {
-    await flush();
-    router.replace(resolveSetupEditStepPath(String(templateId), step));
+    if (!setupModel || !templateId) return;
+    await navigateSetupWizardStep({
+      templateId: String(templateId),
+      step,
+      setupModel,
+      autosave: { schedule, flush, isPending },
+      setSetupModel,
+      router
+    });
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={['left', 'right']}>
-      {editMode ? (
+    <SafeAreaView
+      style={[styles.root, { paddingBottom: systemBottomInset(insets) }]}
+      edges={['left', 'right']}
+    >
+      {showWizardNav ? (
         <SetupWizardStepNav activeStep="fields" onSelectStep={(step) => void handleStepNav(step)} />
       ) : null}
 
@@ -191,7 +201,7 @@ export default function SetupFieldsScreen() {
           detectedFields={detectedFields}
           setupModel={setupModel}
           readOnly={readOnly}
-          editMode={editMode}
+          showWizardNav={showWizardNav}
           onChange={handleChange}
           onFinish={() => void handleFinish()}
           onBack={() => void handleBack()}

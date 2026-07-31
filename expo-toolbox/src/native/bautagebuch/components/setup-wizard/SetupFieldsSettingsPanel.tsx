@@ -30,6 +30,7 @@ type Props = {
   onOpenTypePicker: () => void;
   onSaveAndNext: () => void;
   showSaveButton?: boolean;
+  bottomInset?: number;
 };
 
 export function SetupFieldsSettingsPanel({
@@ -43,7 +44,8 @@ export function SetupFieldsSettingsPanel({
   onFieldLabelChange,
   onOpenTypePicker,
   onSaveAndNext,
-  showSaveButton = true
+  showSaveButton = true,
+  bottomInset = 0
 }: Props) {
   if (!target) {
     return (
@@ -74,7 +76,7 @@ export function SetupFieldsSettingsPanel({
   return (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + bottomInset }]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >

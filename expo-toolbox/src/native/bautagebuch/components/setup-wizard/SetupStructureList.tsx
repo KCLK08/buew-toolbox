@@ -14,6 +14,7 @@ type Props = {
   onDelete: (item: SetupStructureItem) => void;
   onDeletePress?: (item: SetupStructureItem) => void;
   onMove: (id: string, direction: -1 | 1) => void;
+  bottomInset?: number;
 };
 
 type ItemVisual = {
@@ -48,7 +49,8 @@ export function SetupStructureList({
   onEdit,
   onDelete,
   onDeletePress,
-  onMove
+  onMove,
+  bottomInset = 0
 }: Props) {
   const confirmDelete = (item: SetupStructureItem) => {
     Alert.alert(
@@ -86,7 +88,7 @@ export function SetupStructureList({
   return (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + bottomInset }]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
