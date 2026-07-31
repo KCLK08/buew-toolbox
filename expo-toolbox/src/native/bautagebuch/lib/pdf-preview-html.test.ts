@@ -151,8 +151,9 @@ test('buildScrollableFieldPreviewHtml supports touch draw mode with scroll lock'
   assert.match(html, /attachDrawHandlers/);
   assert.match(html, /touchstart/);
   assert.match(html, /setDrawMode/);
-  assert.match(html, /viewport\.style\.overflow = drawModeEnabled \? 'hidden' : 'auto'/);
-  assert.match(html, /drawModeEnabled\) return/);
+  assert.match(html, /setDraftRect/);
+  assert.match(html, /fieldDrawDraft/);
+  assert.match(html, /fieldDraftUpdated/);
 });
 
 test('buildScrollableFieldPreviewHtml anchors pinch zoom to finger center', () => {

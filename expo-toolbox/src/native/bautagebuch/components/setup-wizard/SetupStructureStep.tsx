@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 import { hapticLight, hapticSuccess } from '../../../../lib/haptics';
-import { systemBottomInset } from '../../../../navigation/systemInsets';
 import { countAssignedFieldsForStructureItem } from '../../lib/setup-mapping';
 import {
   addStructureGroup,
@@ -40,7 +38,7 @@ type Props = {
   pdfPath: string | null;
   setupModel: Record<string, unknown>;
   readOnly?: boolean;
-  editMode?: boolean;
+  showWizardNav?: boolean;
   onChange: (next: Record<string, unknown>) => void;
   onComplete: (next: Record<string, unknown>) => void;
   onBack: () => void;
@@ -51,13 +49,12 @@ export function SetupStructureStep({
   pdfPath,
   setupModel,
   readOnly = false,
-  editMode = false,
+  showWizardNav = false,
   onChange,
   onComplete,
   onBack,
   onNavigateToAssign
 }: Props) {
-  const insets = useSafeAreaInsets();
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeTab, setActiveTab] = useState<SetupStructureViewTab>('structure');
   const [editor, setEditor] = useState<EditorState>(null);
@@ -173,7 +170,7 @@ export function SetupStructureStep({
         activeTab={activeTab}
         onTabChange={switchTab}
         onBack={onBack}
-        applyTopInset={!editMode}
+        applyTopInset={!showWizardNav}
       />
 
       <View style={styles.body}>
@@ -193,12 +190,13 @@ export function SetupStructureStep({
             onDelete={handleDelete}
             onDeletePress={handleDelete}
             onMove={handleMove}
+            bottomInset={spacing.sm}
           />
         </View>
       </View>
 
       {activeTab === 'structure' && !readOnly ? (
-        <View style={[styles.footerWrap, { paddingBottom: systemBottomInset(insets) + spacing.xs }]}>
+        <View style={[styles.footerWrap, { paddingBottom: spacing.xs }]}>
           {continueHint ? (
             <View style={styles.hintBubble}>
               <MaterialCommunityIcons name="information-outline" size={16} color={colors.accent2} />

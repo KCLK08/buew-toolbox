@@ -769,6 +769,31 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         border-radius: 4px;
         pointer-events: none;
       }
+      .draft-rect {
+        position: absolute;
+        border: 3px solid rgba(196, 75, 50, 0.98);
+        background: rgba(196, 75, 50, 0.22);
+        border-radius: 4px;
+        z-index: 6;
+        box-shadow: 0 0 0 3px rgba(196, 75, 50, 0.22);
+      }
+      .draft-rect.editable {
+        pointer-events: auto;
+        touch-action: none;
+        cursor: move;
+      }
+      .draft-handle {
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        margin: -8px 0 0 -8px;
+        border-radius: 999px;
+        background: #fff;
+        border: 2px solid rgba(196, 75, 50, 0.98);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+        pointer-events: auto;
+        touch-action: none;
+      }
       .highlight {
         position: absolute;
         border: 2px solid rgba(47, 111, 237, 0.45);
@@ -861,6 +886,9 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
       let drawStart = null;
       let drawPreviewEl = null;
       let drawPageNumber = 1;
+      let draftRectState = null;
+      let draftRectEl = null;
+      let draftInteraction = null;
 
       const MAX_CANVAS_PIXELS = 12000000;
       const viewport = document.getElementById('viewport');
@@ -957,6 +985,192 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         return { x, y, width, height };
       }
 
+      function pdfToCssRect(pageNumber, pdfRect) {
+        const meta = pageMeta.get(pageNumber);
+        if (!meta || !pdfRect) return null;
+        const scale = meta.cssScale;
+        const pdfHeight = meta.baseViewportHeight;
+        const left = Number(pdfRect.x || 0) * scale;
+        const width = Number(pdfRect.width || 0) * scale;
+        const height = Number(pdfRect.height || 0) * scale;
+        const top = (pdfHeight - Number(pdfRect.y || 0) - Number(pdfRect.height || 0)) * scale;
+        return { left, top, width, height };
+      }
+
+      function emitDraftRectUpdate() {
+        if (!draftRectState) return;
+        post({
+          type: 'fieldDraftUpdated',
+          page: draftRectState.page,
+          rect: draftRectState.pdfRect
+        });
+      }
+
+      function removeDraftRectEl() {
+        if (draftRectEl) {
+          draftRectEl.remove();
+          draftRectEl = null;
+        }
+        draftInteraction = null;
+      }
+
+      function findPageFrame(pageNumber) {
+        const sheet = wrap.querySelector('.page-sheet[data-page="' + pageNumber + '"]');
+        return sheet ? sheet.querySelector('.page-frame') : null;
+      }
+
+      function applyDraftCssRect(cssRect) {
+        if (!draftRectEl || !cssRect) return;
+        draftRectEl.style.left = cssRect.left + 'px';
+        draftRectEl.style.top = cssRect.top + 'px';
+        draftRectEl.style.width = Math.max(8, cssRect.width) + 'px';
+        draftRectEl.style.height = Math.max(8, cssRect.height) + 'px';
+      }
+
+      function attachDraftRectInteractions(frame, pageNumber) {
+        if (!draftRectEl || !draftRectState || !draftRectState.editable) return;
+
+        const handles = draftRectEl.querySelectorAll('.draft-handle');
+        const onPointerDown = (event, mode, handleName) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const cssRect = pdfToCssRect(pageNumber, draftRectState.pdfRect);
+          if (!cssRect) return;
+          draftInteraction = {
+            mode,
+            handle: handleName,
+            startX: event.clientX,
+            startY: event.clientY,
+            origin: { ...cssRect }
+          };
+          try {
+            (event.currentTarget || draftRectEl).setPointerCapture(event.pointerId);
+          } catch (_) {}
+        };
+
+        draftRectEl.onpointerdown = (event) => {
+          if (!draftRectState.editable) return;
+          if (event.target && event.target.classList && event.target.classList.contains('draft-handle')) return;
+          onPointerDown(event, 'move');
+        };
+
+        handles.forEach((handle) => {
+          handle.onpointerdown = (event) => {
+            onPointerDown(event, 'resize', String(handle.dataset.handle || 'se'));
+          };
+        });
+
+        const onPointerMove = (event) => {
+          if (!draftInteraction || !draftRectState) return;
+          event.preventDefault();
+          const dx = event.clientX - draftInteraction.startX;
+          const dy = event.clientY - draftInteraction.startY;
+          const origin = draftInteraction.origin;
+          let next = { ...origin };
+
+          if (draftInteraction.mode === 'move') {
+            next.left = origin.left + dx;
+            next.top = origin.top + dy;
+          } else {
+            const handle = draftInteraction.handle || 'se';
+            if (handle.includes('e')) next.width = Math.max(8, origin.width + dx);
+            if (handle.includes('s')) next.height = Math.max(8, origin.height + dy);
+            if (handle.includes('w')) {
+              next.width = Math.max(8, origin.width - dx);
+              next.left = origin.left + dx;
+            }
+            if (handle.includes('n')) {
+              next.height = Math.max(8, origin.height - dy);
+              next.top = origin.top + dy;
+            }
+          }
+
+          const maxW = frame.clientWidth;
+          const maxH = frame.clientHeight;
+          next.left = Math.max(0, Math.min(next.left, maxW - next.width));
+          next.top = Math.max(0, Math.min(next.top, maxH - next.height));
+          applyDraftCssRect(next);
+        };
+
+        const onPointerUp = (event) => {
+          if (!draftInteraction || !draftRectState) return;
+          event.preventDefault();
+          const cssLeft = parseFloat(draftRectEl.style.left || '0');
+          const cssTop = parseFloat(draftRectEl.style.top || '0');
+          const cssWidth = parseFloat(draftRectEl.style.width || '0');
+          const cssHeight = parseFloat(draftRectEl.style.height || '0');
+          const pdfRect = cssToPdfRect(pageNumber, cssLeft, cssTop, cssWidth, cssHeight);
+          draftInteraction = null;
+          if (!pdfRect) return;
+          draftRectState.pdfRect = pdfRect;
+          emitDraftRectUpdate();
+          try {
+            draftRectEl.releasePointerCapture(event.pointerId);
+          } catch (_) {}
+        };
+
+        draftRectEl.onpointermove = onPointerMove;
+        draftRectEl.onpointerup = onPointerUp;
+        draftRectEl.onpointercancel = onPointerUp;
+      }
+
+      function renderDraftRect() {
+        removeDraftRectEl();
+        if (!draftRectState) return;
+        const frame = findPageFrame(draftRectState.page);
+        if (!frame) return;
+        const layer = frame.querySelector('.draw-layer');
+        if (!layer) return;
+        const cssRect = pdfToCssRect(draftRectState.page, draftRectState.pdfRect);
+        if (!cssRect) return;
+
+        draftRectEl = document.createElement('div');
+        draftRectEl.className = 'draft-rect' + (draftRectState.editable ? ' editable' : '');
+        applyDraftCssRect(cssRect);
+
+        if (draftRectState.editable) {
+          ['nw', 'ne', 'sw', 'se'].forEach((handleName) => {
+            const handle = document.createElement('div');
+            handle.className = 'draft-handle';
+            handle.dataset.handle = handleName;
+            if (handleName.includes('n')) handle.style.top = '0';
+            if (handleName.includes('s')) handle.style.top = '100%';
+            if (handleName.includes('w')) handle.style.left = '0';
+            if (handleName.includes('e')) handle.style.left = '100%';
+            draftRectEl.appendChild(handle);
+          });
+        }
+
+        layer.appendChild(draftRectEl);
+        attachDraftRectInteractions(frame, draftRectState.page);
+        viewport.style.overflow = 'hidden';
+        viewport.style.touchAction = 'none';
+      }
+
+      function setDraftRect(message) {
+        draftRectState = {
+          page: Number(message.page || 1),
+          pdfRect: message.rect || null,
+          editable: Boolean(message.editable)
+        };
+        renderDraftRect();
+      }
+
+      function setDraftRectEditable(enabled) {
+        if (!draftRectState) return;
+        draftRectState.editable = Boolean(enabled);
+        renderDraftRect();
+      }
+
+      function clearDraftRect() {
+        draftRectState = null;
+        removeDraftRectEl();
+        if (!drawModeEnabled) {
+          viewport.style.overflow = 'auto';
+          viewport.style.touchAction = 'pan-y pinch-zoom';
+        }
+      }
+
       function attachDrawHandlers(frame, pageNumber) {
         const layer = frame.querySelector('.draw-layer');
         if (!layer || layer.dataset.bound === '1') return;
@@ -1000,8 +1214,14 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           if (width < 8 || height < 8) return;
           const pdfRect = cssToPdfRect(pageNumber, left, top, width, height);
           if (!pdfRect) return;
+          drawModeEnabled = false;
+          for (const frame of wrap.querySelectorAll('.page-frame')) {
+            frame.classList.remove('draw-enabled');
+          }
+          viewport.style.overflow = 'hidden';
+          viewport.style.touchAction = 'none';
           post({
-            type: 'fieldDrawn',
+            type: 'fieldDrawDraft',
             page: pageNumber,
             rect: pdfRect
           });
@@ -1230,6 +1450,15 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           if (!message || !message.type) return;
           if (message.type === 'setDrawMode') {
             setDrawMode(Boolean(message.enabled));
+          }
+          if (message.type === 'setDraftRect') {
+            setDraftRect(message);
+          }
+          if (message.type === 'setDraftRectEditable') {
+            setDraftRectEditable(Boolean(message.enabled));
+          }
+          if (message.type === 'clearDraftRect') {
+            clearDraftRect();
           }
           if (message.type === 'setActive') {
             activeFieldId = String(message.fieldId || '');

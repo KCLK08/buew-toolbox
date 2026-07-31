@@ -55,7 +55,11 @@ export function useSetupAutosave(templateId: string) {
     };
   }, [flush]);
 
-  return { schedule, flush };
+  const isPending = useCallback(() => {
+    return pendingRef.current !== null || timerRef.current !== null;
+  }, []);
+
+  return { schedule, flush, isPending };
 }
 
 function cloneModel<T>(value: T): T {

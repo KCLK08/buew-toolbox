@@ -41,7 +41,17 @@ type Props = {
   variant?: 'default' | 'pinned' | 'mapping' | 'assign' | 'overlay';
   emphasizeActiveHighlight?: boolean;
   drawMode?: boolean;
+  draftRect?: { page: number; rect: { x: number; y: number; width: number; height: number } } | null;
+  draftRectEditable?: boolean;
   overlayFramesOnly?: boolean;
+  onFieldDrawDraft?: (payload: {
+    page: number;
+    rect: { x: number; y: number; width: number; height: number };
+  }) => void;
+  onFieldDraftUpdated?: (payload: {
+    page: number;
+    rect: { x: number; y: number; width: number; height: number };
+  }) => void;
   onFieldDrawn?: (payload: {
     page: number;
     rect: { x: number; y: number; width: number; height: number };
@@ -71,7 +81,11 @@ export function SetupPdfFieldPreview({
   variant = 'default',
   emphasizeActiveHighlight = false,
   drawMode = false,
+  draftRect = null,
+  draftRectEditable = false,
   overlayFramesOnly = false,
+  onFieldDrawDraft,
+  onFieldDraftUpdated,
   onFieldDrawn,
   onFieldSelect
 }: Props) {
@@ -277,6 +291,20 @@ export function SetupPdfFieldPreview({
     postPreviewCommand({ type: 'setDrawMode', enabled: drawMode });
   }, [drawMode, previewState.ready, useFallback, overlay, postPreviewCommand]);
 
+  useEffect(() => {
+    if (!previewState.ready || useFallback || !overlay) return;
+    if (draftRect) {
+      postPreviewCommand({
+        type: 'setDraftRect',
+        page: draftRect.page,
+        rect: draftRect.rect,
+        editable: draftRectEditable
+      });
+      return;
+    }
+    postPreviewCommand({ type: 'clearDraftRect' });
+  }, [draftRect, draftRectEditable, previewState.ready, useFallback, overlay, postPreviewCommand]);
+
   const onWebMessage = (event: WebViewMessageEvent) => {
     try {
       const payload = JSON.parse(event.nativeEvent.data) as {
@@ -291,6 +319,20 @@ export function SetupPdfFieldPreview({
       };
       if (payload.type === 'fieldSelected' && payload.fieldId) {
         onFieldSelect?.(String(payload.fieldId));
+        return;
+      }
+      if (payload.type === 'fieldDrawDraft' && payload.rect && payload.page) {
+        onFieldDrawDraft?.({
+          page: Number(payload.page),
+          rect: payload.rect
+        });
+        return;
+      }
+      if (payload.type === 'fieldDraftUpdated' && payload.rect && payload.page) {
+        onFieldDraftUpdated?.({
+          page: Number(payload.page),
+          rect: payload.rect
+        });
         return;
       }
       if (payload.type === 'fieldDrawn' && payload.rect && payload.page) {

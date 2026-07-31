@@ -44,6 +44,7 @@ type Props = {
   onChangeFieldName: (fieldId: string, name: string) => void;
   onChangeFieldType: (fieldId: string, type: SetupFieldType) => void;
   onDeleteField: (fieldId: string) => void;
+  bottomInset?: number;
 };
 
 export function SetupAssignFieldListPanel({
@@ -58,7 +59,8 @@ export function SetupAssignFieldListPanel({
   onAssignTable,
   onChangeFieldName,
   onChangeFieldType,
-  onDeleteField
+  onDeleteField,
+  bottomInset = 0
 }: Props) {
   const wizard = getWizardState(setupModel);
   const structureItems = getStructureItems(setupModel);
@@ -90,7 +92,7 @@ export function SetupAssignFieldListPanel({
     <View style={styles.root}>
       <ScrollView
         style={styles.listScroll}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: spacing.md + bottomInset }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -150,7 +152,7 @@ export function SetupAssignFieldListPanel({
       </ScrollView>
 
       {currentField ? (
-        <View style={styles.detail}>
+        <View style={[styles.detail, { paddingBottom: spacing.lg + bottomInset }]}>
           <Text style={styles.detailTitle}>Felddetails</Text>
 
           <Text style={styles.detailLabel}>Name</Text>
