@@ -14,6 +14,8 @@ import {
   shouldShowStructureIntro
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
 import { exitSetupWizardToOverview, navigateSetupWizardStep } from '../../../../src/native/bautagebuch/lib/setup-wizard-exit';
+import { consumeSetupStepNavigation } from '../../../../src/native/bautagebuch/lib/setup-wizard-nav-session';
+import { prepareSetupStepNavigation } from '../../../../src/native/bautagebuch/lib/setup-wizard-navigation';
 import { getTemplateBundle } from '../../../../src/native/bautagebuch/services/templateService';
 import { systemBottomInset } from '../../../../src/navigation/systemInsets';
 
@@ -35,35 +37,42 @@ export default function SetupStructureScreen() {
     try {
       const bundle = await getTemplateBundle(templateId);
       const wizard = getWizardState(bundle.setupModel);
+      const steppedInViaNav = consumeSetupStepNavigation('structure');
 
-      if (wizard.step === 'fields') {
-        setLoading(false);
-        router.replace(`/bautagebuch/setup/${templateId}/fields`);
-        return;
-      }
-      if (wizard.step === 'assign') {
-        setLoading(false);
-        router.replace(
-          shouldShowAssignIntro(bundle.setupModel)
-            ? (`/bautagebuch/setup/${templateId}/assign-intro` as Href)
-            : (`/bautagebuch/setup/${templateId}/assign` as Href)
-        );
-        return;
+      if (!steppedInViaNav) {
+        if (wizard.step === 'fields') {
+          setLoading(false);
+          router.replace(`/bautagebuch/setup/${templateId}/fields`);
+          return;
+        }
+        if (wizard.step === 'assign') {
+          setLoading(false);
+          router.replace(
+            shouldShowAssignIntro(bundle.setupModel)
+              ? (`/bautagebuch/setup/${templateId}/assign-intro` as Href)
+              : (`/bautagebuch/setup/${templateId}/assign` as Href)
+          );
+          return;
+        }
       }
 
       const initialized = ensureWizardInitialized(bundle.setupModel);
-      if (shouldShowStructureIntro(initialized)) {
+      if (!steppedInViaNav && shouldShowStructureIntro(initialized)) {
         setLoading(false);
         router.replace(`/bautagebuch/setup/${templateId}/intro` as Href);
         return;
       }
 
+      const nextModel = steppedInViaNav
+        ? prepareSetupStepNavigation(initialized, 'structure')
+        : initialized;
+
       setTemplateStatus(bundle.template.status);
       setPdfPath(bundle.template.pdfPath);
-      setSetupModel(initialized);
+      setSetupModel(nextModel);
 
-      if (initialized !== bundle.setupModel) {
-        schedule(initialized);
+      if (nextModel !== bundle.setupModel) {
+        schedule(nextModel);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Setup konnte nicht geladen werden.');

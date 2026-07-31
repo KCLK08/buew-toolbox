@@ -8,28 +8,50 @@ export function useSetupAutosave(templateId: string) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
   const pendingRef = useRef<Record<string, unknown> | null>(null);
+  const saveWaitersRef = useRef<Array<() => void>>([]);
+
+  const notifySaveWaiters = useCallback(() => {
+    const waiters = saveWaitersRef.current.splice(0);
+    for (const resolve of waiters) {
+      resolve();
+    }
+  }, []);
+
+  const waitForSaveIdle = useCallback(async () => {
+    if (!savingRef.current) return;
+    await new Promise<void>((resolve) => {
+      saveWaitersRef.current.push(resolve);
+    });
+  }, []);
 
   const flush = useCallback(async () => {
-    if (!templateId || !pendingRef.current) return;
-    if (savingRef.current) return;
-    const snapshot = pendingRef.current;
-    pendingRef.current = null;
-    savingRef.current = true;
-    try {
-      const status =
-        snapshot.status === 'ready'
-          ? 'ready'
-          : snapshot.status === 'archived'
-            ? 'archived'
-            : 'in_progress';
-      await saveSetupModel(templateId, snapshot, status);
-    } finally {
-      savingRef.current = false;
-      if (pendingRef.current) {
-        await flush();
+    if (!templateId) return;
+
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    await waitForSaveIdle();
+
+    while (pendingRef.current) {
+      const snapshot = pendingRef.current;
+      pendingRef.current = null;
+      savingRef.current = true;
+      try {
+        const status =
+          snapshot.status === 'ready'
+            ? 'ready'
+            : snapshot.status === 'archived'
+              ? 'archived'
+              : 'in_progress';
+        await saveSetupModel(templateId, snapshot, status);
+      } finally {
+        savingRef.current = false;
+        notifySaveWaiters();
       }
     }
-  }, [templateId]);
+  }, [templateId, notifySaveWaiters, waitForSaveIdle]);
 
   const schedule = useCallback(
     (model: Record<string, unknown>) => {
@@ -56,7 +78,7 @@ export function useSetupAutosave(templateId: string) {
   }, [flush]);
 
   const isPending = useCallback(() => {
-    return pendingRef.current !== null || timerRef.current !== null;
+    return pendingRef.current !== null || timerRef.current !== null || savingRef.current;
   }, []);
 
   return { schedule, flush, isPending };

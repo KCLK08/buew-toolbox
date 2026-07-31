@@ -17,6 +17,8 @@ import {
   sortMappingFields
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
 import { exitSetupWizardToOverview, navigateSetupWizardStep } from '../../../../src/native/bautagebuch/lib/setup-wizard-exit';
+import { consumeSetupStepNavigation } from '../../../../src/native/bautagebuch/lib/setup-wizard-nav-session';
+import { prepareSetupStepNavigation } from '../../../../src/native/bautagebuch/lib/setup-wizard-navigation';
 import { getTemplateBundle } from '../../../../src/native/bautagebuch/services/templateService';
 import { systemBottomInset } from '../../../../src/navigation/systemInsets';
 
@@ -39,34 +41,40 @@ export default function SetupAssignScreen() {
     try {
       const bundle = await getTemplateBundle(templateId);
       const fields = await getDetectedFields(templateId);
-      const sortedFields = sortMappingFields(fields);
       const wizard = getWizardState(bundle.setupModel);
+      const steppedInViaNav = consumeSetupStepNavigation('assign');
 
-      if (wizard.step === 'fields') {
-        setLoading(false);
-        router.replace(resolveFieldsSetupPath(String(templateId), bundle.setupModel));
-        return;
-      }
-      if (wizard.step === 'structure') {
-        setLoading(false);
-        router.replace(`/bautagebuch/setup/${templateId}/mapping`);
-        return;
+      if (!steppedInViaNav) {
+        if (wizard.step === 'fields') {
+          setLoading(false);
+          router.replace(resolveFieldsSetupPath(String(templateId), bundle.setupModel));
+          return;
+        }
+        if (wizard.step === 'structure') {
+          setLoading(false);
+          router.replace(`/bautagebuch/setup/${templateId}/mapping`);
+          return;
+        }
       }
 
       const initialized = ensureWizardInitialized(bundle.setupModel);
-      if (shouldShowAssignIntro(initialized)) {
+      if (!steppedInViaNav && shouldShowAssignIntro(initialized)) {
         setLoading(false);
         router.replace(`/bautagebuch/setup/${templateId}/assign-intro` as Href);
         return;
       }
 
+      const nextModel = steppedInViaNav
+        ? prepareSetupStepNavigation(initialized, 'assign')
+        : initialized;
+
       setTemplateStatus(bundle.template.status);
       setPdfPath(bundle.template.pdfPath);
       setDetectedFields(fields);
-      setSetupModel(initialized);
+      setSetupModel(nextModel);
 
-      if (initialized !== bundle.setupModel) {
-        schedule(initialized);
+      if (nextModel !== bundle.setupModel) {
+        schedule(nextModel);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Feldzuordnung konnte nicht geladen werden.');

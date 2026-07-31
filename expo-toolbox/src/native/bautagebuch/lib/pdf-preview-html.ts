@@ -1031,40 +1031,24 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         if (!draftRectEl || !draftRectState || !draftRectState.editable) return;
 
         const handles = draftRectEl.querySelectorAll('.draft-handle');
-        const onPointerDown = (event, mode, handleName) => {
-          event.preventDefault();
-          event.stopPropagation();
+        const touchOpts = { passive: false };
+
+        const beginInteraction = (clientX, clientY, mode, handleName) => {
           const cssRect = pdfToCssRect(pageNumber, draftRectState.pdfRect);
           if (!cssRect) return;
           draftInteraction = {
             mode,
             handle: handleName,
-            startX: event.clientX,
-            startY: event.clientY,
+            startX: clientX,
+            startY: clientY,
             origin: { ...cssRect }
           };
-          try {
-            (event.currentTarget || draftRectEl).setPointerCapture(event.pointerId);
-          } catch (_) {}
         };
 
-        draftRectEl.onpointerdown = (event) => {
-          if (!draftRectState.editable) return;
-          if (event.target && event.target.classList && event.target.classList.contains('draft-handle')) return;
-          onPointerDown(event, 'move');
-        };
-
-        handles.forEach((handle) => {
-          handle.onpointerdown = (event) => {
-            onPointerDown(event, 'resize', String(handle.dataset.handle || 'se'));
-          };
-        });
-
-        const onPointerMove = (event) => {
+        const updateInteraction = (clientX, clientY) => {
           if (!draftInteraction || !draftRectState) return;
-          event.preventDefault();
-          const dx = event.clientX - draftInteraction.startX;
-          const dy = event.clientY - draftInteraction.startY;
+          const dx = clientX - draftInteraction.startX;
+          const dy = clientY - draftInteraction.startY;
           const origin = draftInteraction.origin;
           let next = { ...origin };
 
@@ -1092,9 +1076,8 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           applyDraftCssRect(next);
         };
 
-        const onPointerUp = (event) => {
-          if (!draftInteraction || !draftRectState) return;
-          event.preventDefault();
+        const finishInteraction = () => {
+          if (!draftInteraction || !draftRectState || !draftRectEl) return;
           const cssLeft = parseFloat(draftRectEl.style.left || '0');
           const cssTop = parseFloat(draftRectEl.style.top || '0');
           const cssWidth = parseFloat(draftRectEl.style.width || '0');
@@ -1104,14 +1087,73 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           if (!pdfRect) return;
           draftRectState.pdfRect = pdfRect;
           emitDraftRectUpdate();
-          try {
-            draftRectEl.releasePointerCapture(event.pointerId);
-          } catch (_) {}
         };
 
-        draftRectEl.onpointermove = onPointerMove;
-        draftRectEl.onpointerup = onPointerUp;
-        draftRectEl.onpointercancel = onPointerUp;
+        const bindTouchTarget = (target, mode, handleName) => {
+          target.addEventListener('touchstart', (event) => {
+            if (!draftRectState.editable || event.touches.length !== 1) return;
+            event.preventDefault();
+            event.stopPropagation();
+            beginInteraction(event.touches[0].clientX, event.touches[0].clientY, mode, handleName);
+          }, touchOpts);
+
+          target.addEventListener('touchmove', (event) => {
+            if (!draftInteraction || event.touches.length !== 1) return;
+            event.preventDefault();
+            event.stopPropagation();
+            updateInteraction(event.touches[0].clientX, event.touches[0].clientY);
+          }, touchOpts);
+
+          target.addEventListener('touchend', (event) => {
+            if (!draftInteraction) return;
+            event.preventDefault();
+            finishInteraction();
+          }, touchOpts);
+
+          target.addEventListener('touchcancel', () => {
+            draftInteraction = null;
+          });
+        };
+
+        bindTouchTarget(draftRectEl, 'move');
+        handles.forEach((handle) => {
+          bindTouchTarget(handle, 'resize', String(handle.dataset.handle || 'se'));
+        });
+
+        draftRectEl.addEventListener('pointerdown', (event) => {
+          if (!draftRectState.editable || event.pointerType === 'touch') return;
+          if (event.target && event.target.classList && event.target.classList.contains('draft-handle')) return;
+          event.preventDefault();
+          event.stopPropagation();
+          beginInteraction(event.clientX, event.clientY, 'move');
+          try { draftRectEl.setPointerCapture(event.pointerId); } catch (_) {}
+        });
+
+        handles.forEach((handle) => {
+          handle.addEventListener('pointerdown', (event) => {
+            if (event.pointerType === 'touch') return;
+            event.preventDefault();
+            event.stopPropagation();
+            beginInteraction(event.clientX, event.clientY, 'resize', String(handle.dataset.handle || 'se'));
+            try { handle.setPointerCapture(event.pointerId); } catch (_) {}
+          });
+        });
+
+        draftRectEl.addEventListener('pointermove', (event) => {
+          if (!draftInteraction || event.pointerType === 'touch') return;
+          event.preventDefault();
+          updateInteraction(event.clientX, event.clientY);
+        });
+
+        const onPointerEnd = (event) => {
+          if (!draftInteraction || event.pointerType === 'touch') return;
+          event.preventDefault();
+          finishInteraction();
+          try { draftRectEl.releasePointerCapture(event.pointerId); } catch (_) {}
+        };
+
+        draftRectEl.addEventListener('pointerup', onPointerEnd);
+        draftRectEl.addEventListener('pointercancel', onPointerEnd);
       }
 
       function renderDraftRect() {
@@ -1145,6 +1187,7 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         attachDraftRectInteractions(frame, draftRectState.page);
         viewport.style.overflow = 'hidden';
         viewport.style.touchAction = 'none';
+        scrollToDraftRect();
       }
 
       function setDraftRect(message) {
@@ -1299,6 +1342,17 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         const fieldTop = active.offsetTop;
         const fieldHeight = active.offsetHeight || 24;
         const targetY = sheetTop + fieldTop - viewport.clientHeight * 0.32 + fieldHeight / 2;
+        viewport.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+      }
+
+      function scrollToDraftRect() {
+        if (!draftRectEl || !viewport) return;
+        const sheet = draftRectEl.closest('.page-sheet');
+        if (!sheet) return;
+        const sheetTop = sheet.offsetTop;
+        const rectTop = parseFloat(draftRectEl.style.top || '0');
+        const rectHeight = parseFloat(draftRectEl.style.height || '0');
+        const targetY = sheetTop + rectTop - viewport.clientHeight * 0.32 + rectHeight / 2;
         viewport.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
       }
 
