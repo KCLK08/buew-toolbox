@@ -303,9 +303,17 @@ export function SetupPdfFieldPreview({
       type: 'setDraftRect',
       page: draftRect.page,
       rect: draftRect.rect,
-      editable: false
+      editable: draftRectEditable
     });
-  }, [draftRect?.page, draftRect?.rect, previewState.ready, useFallback, overlay, postPreviewCommand]);
+  }, [
+    draftRect?.page,
+    draftRect?.rect,
+    draftRectEditable,
+    previewState.ready,
+    useFallback,
+    overlay,
+    postPreviewCommand
+  ]);
 
   useEffect(() => {
     if (!previewState.ready || useFallback || !overlay || !draftRect) return;
