@@ -8,6 +8,7 @@ import {
   getStructureItems,
   migrateStructureFromLegacy,
   moveStructureItem,
+  normalizeStructureTableColumns,
   updateStructureGroup,
   updateStructureTable,
   validateStructureStep
@@ -56,6 +57,39 @@ test('addStructureTable stores logical columns', () => {
     assert.equal(items[0].columns.length, 2);
     assert.equal(items[0].columns[0].name, 'Tätigkeit');
   }
+});
+
+test('addStructureTable preserves planned column slots with default names', () => {
+  let model: Record<string, unknown> = { wizard: { step: 'structure', structure: [], groups: [], tables: [] } };
+  model = addStructureTable(model, {
+    name: 'Arbeitskräfte',
+    columns: [{ name: 'Mitarbeiter' }, { name: '' }, { name: '' }, { name: 'Ende' }]
+  });
+  const table = getStructureItems(model)[0];
+  assert.equal(table.type, 'table');
+  if (table.type !== 'table') return;
+  assert.equal(table.columns.length, 4);
+  assert.deepEqual(
+    table.columns.map((column) => column.name),
+    ['Mitarbeiter', 'Spalte 2', 'Spalte 3', 'Ende']
+  );
+});
+
+test('normalizeStructureTableColumns fills unnamed slots', () => {
+  assert.deepEqual(
+    normalizeStructureTableColumns([{ name: 'Stunden' }, { name: '   ' }]).map((column) => column.name),
+    ['Stunden', 'Spalte 2']
+  );
+});
+
+test('addStructureTable allows name-only tables without columns', () => {
+  let model: Record<string, unknown> = { wizard: { step: 'structure', structure: [], groups: [], tables: [] } };
+  model = addStructureTable(model, { name: 'Arbeitskräfte', columns: [] });
+  const table = getStructureItems(model)[0];
+  assert.equal(table.type, 'table');
+  if (table.type !== 'table') return;
+  assert.equal(table.name, 'Arbeitskräfte');
+  assert.equal(table.columns.length, 0);
 });
 
 test('moveStructureItem reorders entries', () => {

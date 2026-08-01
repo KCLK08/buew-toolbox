@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryButton, TextField } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 import { hapticSelection } from '../../../../lib/haptics';
+import { normalizeStructureTableColumns } from '../../lib/setup-structure';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
 import { SetupModalKeyboardFrame } from './SetupModalKeyboardFrame';
 import { SetupScrollView } from './SetupScrollView';
@@ -107,14 +108,12 @@ export function SetupStructureTableModal({
   };
 
   const submit = () => {
-    const trimmedColumns = columns
-      .map((column) => ({ ...column, name: column.name.trim() }))
-      .filter((column) => column.name.length > 0);
     if (!name.trim()) {
       Alert.alert('Tabelle', 'Bitte einen Namen eingeben.');
       return;
     }
-    onSave({ name: name.trim(), columns: trimmedColumns });
+    const resolvedColumns = normalizeStructureTableColumns(columns);
+    onSave({ name: name.trim(), columns: resolvedColumns });
   };
 
   return (
@@ -142,8 +141,9 @@ export function SetupStructureTableModal({
             </View>
             <Text style={styles.heroTitle}>Tabellenbereich</Text>
             <Text style={styles.heroCopy}>
-              Definiere zuerst die Tabellenstruktur. PDF-Felder werden in Schritt 2 den Spalten
-              zugeordnet.
+              Lege zuerst den Tabellennamen fest. Optional kannst du die geplante Spaltenanzahl
+              angeben und die Spalten benennen. PDF-Felder ordnest du später in Schritt 2 den
+              Spalten zu.
             </Text>
           </View>
 
@@ -163,14 +163,16 @@ export function SetupStructureTableModal({
             placeholder="z. B. 4"
             editable={!readOnly}
             keyboardType="number-pad"
-            hint="Leer lassen, wenn die Spalten später einzeln hinzugefügt werden."
+            hint="Erzeugt leere Spaltenplätze zum Benennen. Leer lassen, wenn du die Spalten später ergänzt."
           />
 
           {columns.length > 0 ? (
             <View style={styles.columnsSection}>
               <View style={styles.columnsHeader}>
                 <Text style={styles.columnsTitle}>Spalten benennen</Text>
-                <Text style={styles.columnsMeta}>{columns.filter((c) => c.name.trim()).length} benannt</Text>
+                <Text style={styles.columnsMeta}>
+                  {columns.filter((column) => column.name.trim()).length} von {columns.length} benannt
+                </Text>
               </View>
               {columns.map((column, index) => (
                 <View key={column.id || `col_${index}`} style={styles.columnRow}>
@@ -182,7 +184,7 @@ export function SetupStructureTableModal({
                       label={`Spalte ${index + 1}`}
                       value={column.name}
                       onChangeText={(value) => updateColumn(index, value)}
-                      placeholder="Spaltenname"
+                      placeholder={index === 0 ? 'z. B. Mitarbeiter' : index === 1 ? 'z. B. Stunden' : 'Spaltenname'}
                       editable={!readOnly}
                     />
                   </View>
@@ -201,7 +203,7 @@ export function SetupStructureTableModal({
             </View>
           ) : null}
 
-          {!readOnly ? (
+          {!readOnly && columns.length === 0 ? (
             <Pressable accessibilityRole="button" style={styles.addColumnBtn} onPress={addColumn}>
               <MaterialCommunityIcons name="plus-circle-outline" size={22} color={colors.accent} />
               <Text style={styles.addColumnLabel}>Spalte hinzufügen</Text>

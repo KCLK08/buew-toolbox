@@ -256,18 +256,27 @@ export function addStructureGroup(
   return withStructureItems(setupModel, [...structure, item]);
 }
 
+export function normalizeStructureTableColumns(
+  columns: Array<{ id?: string; name: string }>
+): Array<{ id?: string; name: string }> {
+  return columns.map((column, index) => ({
+    ...column,
+    name: String(column.name || '').trim() || `Spalte ${index + 1}`
+  }));
+}
+
 export function addStructureTable(
   setupModel: Record<string, unknown>,
-  input: { name: string; columns: Array<{ name: string }> }
+  input: { name: string; columns: Array<{ id?: string; name: string }> }
 ): Record<string, unknown> {
   const structure = getStructureItems(setupModel);
-  const columns: SetupStructureTableColumn[] = (input.columns || [])
-    .map((column, index) => ({
-      id: createId('col'),
-      name: String(column.name || '').trim() || `Spalte ${index + 1}`,
+  const columns: SetupStructureTableColumn[] = normalizeStructureTableColumns(input.columns || []).map(
+    (column, index) => ({
+      id: column.id || createId('col'),
+      name: column.name,
       order: index
-    }))
-    .filter((column) => column.name.length > 0);
+    })
+  );
   const item: SetupStructureTable = {
     id: createId('table'),
     name: String(input.name || '').trim() || 'Neue Tabelle',
@@ -311,9 +320,9 @@ export function updateStructureTable(
     return {
       ...item,
       name: patch.name !== undefined ? String(patch.name).trim() || item.name : item.name,
-      columns: patch.columns.map((column, index) => ({
+      columns: normalizeStructureTableColumns(patch.columns).map((column, index) => ({
         id: column.id || createId('col'),
-        name: String(column.name || '').trim() || `Spalte ${index + 1}`,
+        name: column.name,
         order: index
       }))
     };

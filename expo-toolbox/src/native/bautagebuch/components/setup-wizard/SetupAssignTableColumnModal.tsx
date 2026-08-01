@@ -86,7 +86,7 @@ export function SetupAssignTableColumnModal({
             <Text style={styles.heroTitle}>Tabelle</Text>
             <Text style={styles.tableName}>{tableName}</Text>
             <Text style={styles.fieldHint}>
-              Feld „{suggestedFieldName}" einer Spalte zuordnen
+              Ordne das Feld einer vorhandenen Spalte zu.
             </Text>
           </View>
 
