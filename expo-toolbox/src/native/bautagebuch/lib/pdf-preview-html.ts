@@ -1055,14 +1055,14 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         }
         if (draftRectState.editable) {
           viewport.style.overflow = 'auto';
-          viewport.style.touchAction = 'none';
+          viewport.style.touchAction = 'pan-y pinch-zoom';
           return;
         }
         restoreViewportNavigation();
       }
 
       function restoreViewportNavigation() {
-        if (drawModeEnabled || draftRectState?.editable) return;
+        if (drawModeEnabled) return;
         viewport.style.overflow = 'auto';
         viewport.style.touchAction = 'pan-y pinch-zoom';
       }
