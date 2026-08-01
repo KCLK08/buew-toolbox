@@ -190,7 +190,7 @@ export function SetupAssignStep({
     if (item.columns.length === 0) {
       Alert.alert(
         'Keine Spalten',
-        'Lege zuerst in Schritt 1 Spalten für diese Tabelle an.'
+        'Lege zuerst in Schritt 1 Spalten für diese Tabelle an (Tabelle bearbeiten).'
       );
       return;
     }
