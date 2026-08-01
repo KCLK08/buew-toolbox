@@ -172,6 +172,22 @@ test('buildScrollableFieldPreviewHtml supports touch draft rect move and resize'
   assert.match(html, /event\.pointerType === 'touch'/);
 });
 
+test('buildScrollableFieldPreviewHtml keeps viewport scroll during editable draft rect', () => {
+  const html = buildScrollableFieldPreviewHtml({
+    base64: 'UEZERg==',
+    ...mockAssets
+  });
+
+  assert.match(
+    html,
+    /if \(draftRectState\.editable\) \{\s*viewport\.style\.overflow = 'auto';\s*viewport\.style\.touchAction = 'pan-y pinch-zoom';/
+  );
+  assert.match(
+    html,
+    /function restoreViewportNavigation\(\) \{\s*if \(drawModeEnabled\) return;/
+  );
+});
+
 test('buildScrollableFieldPreviewHtml anchors pinch zoom to finger center', () => {
   const html = buildScrollableFieldPreviewHtml({
     base64: 'UEZERg==',
