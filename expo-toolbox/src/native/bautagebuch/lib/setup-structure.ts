@@ -356,7 +356,12 @@ export function completeStructureStep(setupModel: Record<string, unknown>): Reco
   }
   const wizard = getWizardState(setupModel);
   const { groups, tables } = structureToGroupsTables(structure);
-  const preserveAssignments = wizard.setupCompleted === true || wizard.editMode === true;
+  const hasAssignProgress =
+    Object.keys(wizard.assignments).length > 0 ||
+    Object.keys(wizard.tableAssignments).length > 0 ||
+    wizard.deferredFieldIds.length > 0;
+  const preserveAssignments =
+    wizard.setupCompleted === true || wizard.editMode === true || hasAssignProgress;
   const shells = preserveAssignments
     ? mergeSectionShellsFromStructure(setupModel, structure)
     : buildSectionShellsFromStructure(structure);

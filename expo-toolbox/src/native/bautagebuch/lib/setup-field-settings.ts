@@ -181,6 +181,16 @@ export function resolveCurrentFieldSettingsIndex(
 ): number {
   if (targets.length === 0) return 0;
   const stored = Math.max(0, Number(wizard.currentFieldSettingsIndex || 0));
+  return Math.min(stored, targets.length - 1);
+}
+
+/** Walkthrough helper: jump to the next open settings target when the stored one is done. */
+export function resolveWalkthroughFieldSettingsIndex(
+  targets: FieldSettingsTarget[],
+  wizard: SetupWizardState
+): number {
+  if (targets.length === 0) return 0;
+  const stored = resolveCurrentFieldSettingsIndex(targets, wizard);
   const storedTarget = targets[stored];
   if (storedTarget && !isFieldSettingsTargetConfigured(storedTarget, wizard)) {
     return stored;
@@ -188,7 +198,7 @@ export function resolveCurrentFieldSettingsIndex(
   const nextOpen = targets.findIndex(
     (target) => !isFieldSettingsTargetConfigured(target, wizard)
   );
-  return nextOpen >= 0 ? nextOpen : Math.min(stored, targets.length - 1);
+  return nextOpen >= 0 ? nextOpen : stored;
 }
 
 export function getNextOpenFieldSettingsIndex(

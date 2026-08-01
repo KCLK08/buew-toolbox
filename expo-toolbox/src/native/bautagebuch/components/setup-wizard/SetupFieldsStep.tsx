@@ -56,7 +56,6 @@ export function SetupFieldsStep({
   onBack,
   onUpdateField
 }: Props) {
-  const indexSyncedRef = useRef(false);
   const [activeTab, setActiveTab] = useState<SetupFieldsViewTab>('settings');
   const [typePickerOpen, setTypePickerOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
@@ -84,17 +83,13 @@ export function SetupFieldsStep({
   const activeFieldPage = resolveFieldPreviewPage(currentField, mappingFields);
 
   useEffect(() => {
-    if (indexSyncedRef.current || targets.length === 0) return;
-    indexSyncedRef.current = true;
-    const resolved = resolveCurrentFieldSettingsIndex(targets, wizard);
-    if (resolved !== wizard.currentFieldSettingsIndex) {
-      onChange(
-        withWizardState(setupModel, {
-          currentFieldSettingsIndex: resolved
-        })
-      );
+    if (targets.length === 0) return;
+    const stored = Math.max(0, Number(wizard.currentFieldSettingsIndex || 0));
+    const clamped = Math.min(stored, targets.length - 1);
+    if (clamped !== stored) {
+      onChange(withWizardState(setupModel, { currentFieldSettingsIndex: clamped }));
     }
-  }, [targets, wizard, setupModel, onChange]);
+  }, [targets.length, wizard.currentFieldSettingsIndex, setupModel, onChange]);
 
   const switchTab = (tab: SetupFieldsViewTab) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -125,6 +120,7 @@ export function SetupFieldsStep({
   };
 
   const selectTargetAtIndex = (index: number) => {
+    if (index < 0 || index >= targets.length) return;
     onChange(withWizardState(setupModel, { currentFieldSettingsIndex: index }));
   };
 

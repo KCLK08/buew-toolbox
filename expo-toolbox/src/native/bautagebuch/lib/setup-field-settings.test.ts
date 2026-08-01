@@ -8,6 +8,7 @@ import {
   markFieldSettingsTargetConfigured,
   normalizeSetupFieldType,
   resolveCurrentFieldSettingsIndex,
+  resolveWalkthroughFieldSettingsIndex,
   resolveFieldDisplayOrder,
   resolveHybridFieldLabel,
   resolveHybridFieldSource
@@ -87,14 +88,26 @@ test('field settings progress tracks configured targets', () => {
   assert.equal(getFieldSettingsProgress(targets, getWizardState(marked)).configured, 1);
 });
 
-test('resolveCurrentFieldSettingsIndex prefers first open target', () => {
+test('resolveCurrentFieldSettingsIndex respects stored index', () => {
   const targets = listFieldSettingsTargets(setupModel);
   const wizard = getWizardState(
     withWizardState(setupModel, {
+      currentFieldSettingsIndex: 0,
       configuredFieldIds: [targets[0].key]
     })
   );
   assert.equal(resolveCurrentFieldSettingsIndex(targets, wizard), 0);
+});
+
+test('resolveWalkthroughFieldSettingsIndex prefers first open target', () => {
+  const targets = listFieldSettingsTargets(setupModel);
+  const wizard = getWizardState(
+    withWizardState(setupModel, {
+      currentFieldSettingsIndex: 0,
+      configuredFieldIds: [targets[0].key]
+    })
+  );
+  assert.equal(resolveWalkthroughFieldSettingsIndex(targets, wizard), 0);
 });
 
 test('resolveHybridFieldLabel prefers section label over mapping labelCandidate', () => {
