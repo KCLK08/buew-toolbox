@@ -8,6 +8,7 @@ import { isClockTimeLabel, normalizeClockTime } from '../lib/time-format.js';
 import { buildRunSections, inputKeyForField, requiredMissingCount, sectionProgressState } from '../lib/setup-model.js';
 import {
   buildRunSectionsWithPhotoDoc,
+  configuredTableRowCount,
   runSectionMissingCount,
   isPhotoDocRequiredMissing,
   sectionRunOptions,
@@ -68,7 +69,21 @@ function isMainPersonalTable(section: RunSection) {
   return label.includes('firmen') || label.includes('personal') || label.includes('besetzung');
 }
 
-function computeFocusKeys(section: RunSection, values: Record<string, unknown>): string[] {
+function tableRowLimitOptions(
+  section: RunSection,
+  setupModel: Record<string, unknown>
+): { maxRows?: number } {
+  if (section.kind !== 'table') return {};
+  const tableId = String(section.tableId || '');
+  const configured = configuredTableRowCount(setupModel, tableId);
+  return configured > 0 ? { maxRows: configured } : {};
+}
+
+function computeFocusKeys(
+  section: RunSection,
+  values: Record<string, unknown>,
+  setupModel: Record<string, unknown>
+): string[] {
   if (!section) return [];
 
   if (section.kind === 'single') {
@@ -86,7 +101,8 @@ function computeFocusKeys(section: RunSection, values: Record<string, unknown>):
   }
 
   if (section.kind === 'table') {
-    const visibleCount = visibleRowCountForSection(section, values);
+    const rowOptions = tableRowLimitOptions(section, setupModel);
+    const visibleCount = visibleRowCountForSection(section, values, rowOptions);
     const rows = section.rows.slice(0, Math.max(1, visibleCount));
     return rows.flatMap((row) =>
       row.cells
@@ -121,7 +137,10 @@ export function RunWizard({
   const section = sections[sectionIndex] || sections[0];
   const safeSectionIndex = sections.length > 0 ? Math.min(sectionIndex, sections.length - 1) : 0;
   const inputRefs = useRef(new Map<string, TextInput | null>());
-  const focusKeys = useMemo(() => computeFocusKeys(section, values), [section, values]);
+  const focusKeys = useMemo(
+    () => computeFocusKeys(section, values, setupModel),
+    [section, values, setupModel]
+  );
 
   const getFocusProps = (focusKey: string, multiline = false) => {
     const index = focusKeys.indexOf(focusKey);
@@ -319,7 +338,9 @@ export function RunWizard({
   const renderTableSection = () => {
     if (section.kind !== 'table') return null;
     const tableId = String(section.tableId || '');
-    const visibleCount = visibleRowCountForSection(section, values);
+    const rowOptions = tableRowLimitOptions(section, setupModel);
+    const visibleCount = visibleRowCountForSection(section, values, rowOptions);
+    const maxRows = Math.max(section.rows.length, rowOptions.maxRows || section.rows.length);
     const rows = section.rows.slice(0, Math.max(1, visibleCount));
     const personal = isMainPersonalTable(section);
 
@@ -363,9 +384,9 @@ export function RunWizard({
             })}
           </Card>
         ))}
-        {visibleCount < section.rows.length ? (
+        {visibleCount < maxRows ? (
           <PrimaryButton
-            label="Weitere Zeile hinzufügen"
+            label="+ Weitere Zeile hinzufügen"
             variant="secondary"
             onPress={() =>
               onChange({ ...values, [`__tableRows:${tableId}`]: visibleCount + 1 })
@@ -461,7 +482,12 @@ export function RunWizard({
   };
 
   const sectionNavItems = sections.map((entry) => {
-    const options = entry.kind === 'photo-doc' ? {} : sectionRunOptions(entry, values);
+    const options =
+      entry.kind === 'photo-doc'
+        ? {}
+        : entry.kind === 'table'
+          ? sectionRunOptions(entry, values, tableRowLimitOptions(entry, setupModel))
+          : sectionRunOptions(entry, values);
     const progress =
       entry.kind === 'photo-doc'
         ? isPhotoDocRequiredMissing(photoDoc?.enabled ?? null)
@@ -475,7 +501,7 @@ export function RunWizard({
         ? isPhotoDocRequiredMissing(photoDoc?.enabled ?? null)
           ? 1
           : 0
-        : runSectionMissingCount(entry, values);
+        : runSectionMissingCount(entry, values, options);
 
     return {
       sectionId: entry.sectionId,

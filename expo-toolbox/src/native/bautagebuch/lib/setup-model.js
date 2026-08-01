@@ -432,22 +432,21 @@ function buildTableRunSection(table) {
   const rows = (table.rows || [])
     .filter((row) => row.skipped !== true)
     .map((row) => {
-      const cellMap = new Map();
+      const cellByColumnId = new Map();
       for (const cell of row.cells || []) {
-        if (cell?.skipped === true) {
+        const columnId = String(cell?.columnId || '');
+        if (!activeColumnIds.has(columnId) || cellByColumnId.has(columnId)) {
           continue;
         }
-        const columnId = String(cell?.columnId || '');
-        if (activeColumnIds.has(columnId) && !cellMap.has(columnId)) {
-          cellMap.set(columnId, cell);
-        }
+        cellByColumnId.set(columnId, cell);
       }
       return {
         ...row,
-        cells: columns.map((column) => cellMap.get(String(column.columnId))).filter(Boolean)
+        cells: columns
+          .map((column) => cellByColumnId.get(String(column.columnId)))
+          .filter(Boolean)
       };
-    })
-    .filter((row) => row.cells.length > 0);
+    });
 
   if (columns.length === 0 || rows.length === 0) {
     return null;

@@ -717,11 +717,17 @@ export function assignFieldToTableCell(
   assignment: import('../types').SetupWizardTableAssignment
 ): Record<string, unknown> {
   const wizard = getWizardState(setupModel);
+  const requiredRows = Math.max(1, assignment.rowIndex + 1);
+  const tables = wizard.tables.map((table) =>
+    table.tableId === assignment.tableId
+      ? { ...table, rowCount: Math.max(table.rowCount, requiredRows) }
+      : table
+  );
   const tableAssignments = { ...wizard.tableAssignments, [fieldId]: assignment };
   const assignments = { ...wizard.assignments };
   delete assignments[fieldId];
   const deferredFieldIds = wizard.deferredFieldIds.filter((entry) => entry !== fieldId);
-  return withWizardState(setupModel, { tableAssignments, assignments, deferredFieldIds });
+  return withWizardState(setupModel, { tables, tableAssignments, assignments, deferredFieldIds });
 }
 
 export function addWizardGroup(

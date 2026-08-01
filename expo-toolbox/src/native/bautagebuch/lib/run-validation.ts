@@ -37,17 +37,38 @@ function detectedVisibleRowCountFromValues(section: RunSection, values: Record<s
   return lastFilled;
 }
 
-export function visibleRowCountForSection(section: RunSection, values: Record<string, unknown>): number {
+export function configuredTableRowCount(
+  setupModel: Record<string, unknown> | null | undefined,
+  tableId: string
+): number {
+  const tables = setupModel?.table_sections;
+  if (!Array.isArray(tables)) return 0;
+  const table = tables.find((entry) => String((entry as { tableId?: string })?.tableId || '') === String(tableId));
+  const rows = Array.isArray((table as { rows?: unknown[] })?.rows)
+    ? (table as { rows: unknown[] }).rows
+    : [];
+  return rows.length;
+}
+
+export function visibleRowCountForSection(
+  section: RunSection,
+  values: Record<string, unknown>,
+  options: { maxRows?: number } = {}
+): number {
   if (!section || section.kind !== 'table') return 0;
   const rows = Array.isArray(section.rows) ? section.rows : [];
   if (rows.length === 0) return 0;
 
-  const maxRows = rows.length;
+  const configuredMaxRows = Number(options.maxRows);
+  const maxRows = Math.max(
+    rows.length,
+    Number.isFinite(configuredMaxRows) ? Math.floor(configuredMaxRows) : 0
+  );
   const storedCount = Number(values[tableRowCountKey(String(section.tableId || ''))]);
   const detectedCount = detectedVisibleRowCountFromValues(section, values);
   const minimum = Math.max(1, detectedCount);
 
-  if (!Number.isFinite(storedCount)) return Math.min(maxRows, minimum);
+  if (!Number.isFinite(storedCount) || storedCount <= 0) return Math.min(maxRows, minimum);
   return Math.min(maxRows, Math.max(minimum, Math.floor(storedCount)));
 }
 
@@ -89,10 +110,14 @@ export function requiredAnyGroupsForSection(section: RunSection) {
   return groups;
 }
 
-export function sectionRunOptions(section: RunSection, values: Record<string, unknown> = {}) {
+export function sectionRunOptions(
+  section: RunSection,
+  values: Record<string, unknown> = {},
+  options: { maxRows?: number } = {}
+) {
   if (!section) return {};
   if (section.kind === 'table') {
-    return { visibleRowCount: visibleRowCountForSection(section, values) };
+    return { visibleRowCount: visibleRowCountForSection(section, values, options) };
   }
   if (section.kind === 'single') {
     return { requiredAnyGroups: requiredAnyGroupsForSection(section) };
@@ -102,13 +127,16 @@ export function sectionRunOptions(section: RunSection, values: Record<string, un
 
 export function runSectionMissingCount(
   section: RunSection,
-  values: Record<string, unknown>
+  values: Record<string, unknown>,
+  options: { maxRows?: number } = {}
 ): number {
   if (!section) return 0;
   if (section.kind === 'photo-doc' || section.sectionId === PHOTO_DOC_SECTION_ID) {
     return 0;
   }
-  return requiredMissingCount(section, values, sectionRunOptions(section, values));
+  const runOptions =
+    section.kind === 'table' ? sectionRunOptions(section, values, options) : sectionRunOptions(section, values);
+  return requiredMissingCount(section, values, runOptions);
 }
 
 export function isPhotoDocRequiredMissing(enabled: boolean | null | undefined): boolean {
@@ -137,7 +165,11 @@ export function computeTotalMissingRequired(
     if (section.kind === 'photo-doc' || section.sectionId === PHOTO_DOC_SECTION_ID) {
       return sum + (isPhotoDocRequiredMissing(photoDocEnabled) ? 1 : 0);
     }
-    return sum + runSectionMissingCount(section, values);
+    const rowLimit =
+      section.kind === 'table'
+        ? { maxRows: configuredTableRowCount(setupModel, String(section.tableId || '')) }
+        : {};
+    return sum + runSectionMissingCount(section, values, rowLimit);
   }, 0);
 }
 
