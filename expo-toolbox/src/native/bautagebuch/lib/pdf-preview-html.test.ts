@@ -156,6 +156,20 @@ test('buildScrollableFieldPreviewHtml supports touch draw mode with scroll lock'
   assert.match(html, /fieldDraftUpdated/);
 });
 
+test('buildScrollableFieldPreviewHtml supports touch draft rect move and resize', () => {
+  const html = buildScrollableFieldPreviewHtml({
+    base64: 'UEZERg==',
+    ...mockAssets
+  });
+
+  assert.match(html, /function attachDraftRectInteractions/);
+  assert.match(html, /bindTouchTarget\(draftRectEl, 'move'\)/);
+  assert.match(html, /bindTouchTarget\(handle, 'resize'/);
+  assert.match(html, /function scrollToDraftRect/);
+  assert.match(html, /scrollToDraftRect\(\)/);
+  assert.match(html, /event\.pointerType === 'touch'/);
+});
+
 test('buildScrollableFieldPreviewHtml anchors pinch zoom to finger center', () => {
   const html = buildScrollableFieldPreviewHtml({
     base64: 'UEZERg==',

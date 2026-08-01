@@ -20,6 +20,11 @@ import {
   sortMappingFields
 } from '../../../../src/native/bautagebuch/lib/setup-mapping';
 import { exitSetupWizardToOverview, navigateSetupWizardStep } from '../../../../src/native/bautagebuch/lib/setup-wizard-exit';
+import {
+  consumeSetupStepNavigation,
+  isSetupStepNavigationActive
+} from '../../../../src/native/bautagebuch/lib/setup-wizard-nav-session';
+import { prepareSetupStepNavigation } from '../../../../src/native/bautagebuch/lib/setup-wizard-navigation';
 import { validateSetupModel } from '../../../../src/native/bautagebuch/lib/setup-model.js';
 import { getTemplateBundle } from '../../../../src/native/bautagebuch/services/templateService';
 import { systemBottomInset } from '../../../../src/navigation/systemInsets';
@@ -52,11 +57,19 @@ export default function SetupFieldsScreen() {
       const fields = await getDetectedFields(templateId);
       setDetectedFields(fields);
       const mappingFields = sortMappingFields(fields);
+      const steppedInViaNav = consumeSetupStepNavigation('fields');
       let nextModel = bundle.setupModel;
       const wizard = getWizardState(nextModel);
-      if (wizard.editMode && wizard.step === 'fields') {
+
+      if (steppedInViaNav) {
+        nextModel = rebuildSectionsFromWizard(
+          prepareSetupStepNavigation(nextModel, 'fields'),
+          mappingFields
+        );
+      } else if (wizard.editMode && wizard.step === 'fields') {
         nextModel = rebuildSectionsFromWizard(nextModel, mappingFields);
       }
+
       setSetupModel(nextModel);
       if (nextModel !== bundle.setupModel) {
         schedule(nextModel);
@@ -85,6 +98,7 @@ export default function SetupFieldsScreen() {
 
   useEffect(() => {
     if (loading || !setupModel || !templateId) return;
+    if (isSetupStepNavigationActive()) return;
     const wizard = getWizardState(setupModel);
     const legacy =
       templateKind === 'builtin-etb' || (hasTableSections(setupModel) && wizard.step !== 'fields');

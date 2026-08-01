@@ -6,6 +6,7 @@ import {
   resolveSetupOverviewPath,
   resolveSetupStepPath
 } from '../lib/setup-wizard-navigation';
+import { markSetupStepNavigation } from '../lib/setup-wizard-nav-session';
 import type { SetupWizardStep } from '../types';
 
 type AutosaveApi = {
@@ -15,10 +16,6 @@ type AutosaveApi = {
 };
 
 export async function flushSetupAutosave(autosave: AutosaveApi): Promise<void> {
-  if (autosave.isPending()) {
-    await autosave.flush();
-    return;
-  }
   await autosave.flush();
 }
 
@@ -30,6 +27,7 @@ export async function navigateSetupWizardStep(options: {
   setSetupModel: (next: Record<string, unknown>) => void;
   router: Pick<Router, 'replace'>;
 }): Promise<void> {
+  markSetupStepNavigation(options.step);
   const next = prepareSetupStepNavigation(options.setupModel, options.step);
   options.setSetupModel(next);
   options.autosave.schedule(next);
@@ -50,7 +48,7 @@ export function confirmSetupWizardExit(options: {
     })();
   };
 
-  if (options.autosave.isPending()) {
+  if (!options.autosave.isPending()) {
     leave();
     return;
   }
