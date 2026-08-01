@@ -13,6 +13,7 @@ import {
   rebuildSectionsFromWizard,
   removeFieldFromWizard,
   resolveCurrentMappingIndex,
+  resolveWalkthroughMappingIndex,
   resolveFieldAssignmentSummary,
   resolveOverlayPlacement,
   resolveSetupEntryPath,
@@ -232,7 +233,21 @@ test('resolveOverlayPlacement keeps panel away from field edges', () => {
   assert.equal(resolveOverlayPlacement([20, 400, 80, 440]), 'right');
 });
 
-test('resolveCurrentMappingIndex prefers first unassigned field', () => {
+test('resolveCurrentMappingIndex respects stored index', () => {
+  const fields = sortMappingFields([field('a'), field('b'), field('c')]);
+  const model = withWizardState(
+    {},
+    {
+      currentFieldIndex: 2,
+      groups: [{ sectionId: 'g1', label: 'G1' }],
+      assignments: { a: 'g1' }
+    }
+  );
+  const wizard = getWizardState(model);
+  assert.equal(resolveCurrentMappingIndex(fields, wizard), 2);
+});
+
+test('resolveWalkthroughMappingIndex prefers first unassigned field', () => {
   const fields = sortMappingFields([field('a'), field('b'), field('c')]);
   const model = withWizardState(
     {},
@@ -243,7 +258,7 @@ test('resolveCurrentMappingIndex prefers first unassigned field', () => {
     }
   );
   const wizard = getWizardState(model);
-  assert.equal(resolveCurrentMappingIndex(fields, wizard), 1);
+  assert.equal(resolveWalkthroughMappingIndex(fields, wizard), 1);
 });
 
 test('checkMappingTransition reports deferred fields', () => {

@@ -83,6 +83,26 @@ test('completeStructureStep advances wizard to assign and builds shells', () => 
   assert.equal(Array.isArray(model.table_sections) ? model.table_sections.length : 0, 0);
 });
 
+test('completeStructureStep preserves assign progress when returning from step 2', () => {
+  let model: Record<string, unknown> = { wizard: { step: 'structure', structure: [], groups: [], tables: [] } };
+  model = addStructureGroup(model, { name: 'Wetter' });
+  const groupId = getStructureItems(model)[0].id;
+  model = completeStructureStep(model);
+  model = withWizardState(model, {
+    step: 'assign',
+    assignments: { f1: groupId, f2: groupId },
+    currentFieldIndex: 7,
+    fieldLabels: { f1: 'Datum' }
+  });
+  model = withWizardState(model, { step: 'structure' });
+  model = completeStructureStep(model);
+  const wizard = getWizardState(model);
+  assert.equal(wizard.step, 'assign');
+  assert.deepEqual(wizard.assignments, { f1: groupId, f2: groupId });
+  assert.equal(wizard.currentFieldIndex, 7);
+  assert.deepEqual(wizard.fieldLabels, { f1: 'Datum' });
+});
+
 test('mixed group/table order is preserved in section_order', () => {
   let model: Record<string, unknown> = { wizard: { step: 'structure', structure: [], groups: [], tables: [] } };
   model = addStructureGroup(model, { name: 'Allgemein' });

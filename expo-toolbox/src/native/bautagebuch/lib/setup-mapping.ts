@@ -934,6 +934,16 @@ export function resolveCurrentMappingIndex(
 ): number {
   if (fields.length === 0) return 0;
   const stored = Math.max(0, Number(wizard.currentFieldIndex || 0));
+  return Math.min(stored, fields.length - 1);
+}
+
+/** Walkthrough helper: jump to the next open field when the stored one is already handled. */
+export function resolveWalkthroughMappingIndex(
+  fields: MappingField[],
+  wizard: SetupWizardState
+): number {
+  if (fields.length === 0) return 0;
+  const stored = resolveCurrentMappingIndex(fields, wizard);
   const storedField = fields[stored];
   if (
     storedField &&
@@ -944,7 +954,7 @@ export function resolveCurrentMappingIndex(
     return stored;
   }
   const next = getNextUnassignedIndex(fields, wizard, 0);
-  return next >= 0 ? next : Math.min(stored, fields.length - 1);
+  return next >= 0 ? next : stored;
 }
 
 export function templateDisplayStatus(

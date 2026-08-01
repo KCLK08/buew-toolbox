@@ -17,6 +17,7 @@ import {
   removeFieldFromWizard,
   resolveCurrentMappingIndex,
   resolveFieldDisplayLabel,
+  withWizardState,
   type MappingField
 } from '../../lib/setup-mapping';
 import { createManualFieldInput } from '../../lib/template-field';
@@ -82,7 +83,6 @@ export function SetupAssignStep({
   onDeleteField,
   onCreateManualField
 }: Props) {
-  const indexSyncedRef = useRef(false);
   const [activeTab, setActiveTab] = useState<SetupAssignViewTab>('pdf');
   const [showFieldOverview, setShowFieldOverview] = useState(false);
   const [drawMode, setDrawMode] = useState(false);
@@ -112,19 +112,13 @@ export function SetupAssignStep({
   const currentLabel = currentField ? resolveLabel(currentField) : null;
 
   useEffect(() => {
-    if (indexSyncedRef.current || mappingFields.length === 0) return;
-    indexSyncedRef.current = true;
-    const resolved = resolveCurrentMappingIndex(mappingFields, wizard);
-    if (resolved !== wizard.currentFieldIndex) {
-      onChange({
-        ...setupModel,
-        wizard: {
-          ...wizard,
-          currentFieldIndex: resolved
-        }
-      });
+    if (mappingFields.length === 0) return;
+    const stored = Math.max(0, Number(wizard.currentFieldIndex || 0));
+    const clamped = Math.min(stored, mappingFields.length - 1);
+    if (clamped !== stored) {
+      onChange(withWizardState(setupModel, { currentFieldIndex: clamped }));
     }
-  }, [mappingFields, wizard, setupModel, onChange]);
+  }, [mappingFields.length, wizard.currentFieldIndex, setupModel, onChange]);
 
   const switchTab = (tab: SetupAssignViewTab) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -238,13 +232,8 @@ export function SetupAssignStep({
   };
 
   const selectFieldAtIndex = (index: number) => {
-    onChange({
-      ...setupModel,
-      wizard: {
-        ...wizard,
-        currentFieldIndex: index
-      }
-    });
+    if (index < 0 || index >= mappingFields.length) return;
+    onChange(withWizardState(setupModel, { currentFieldIndex: index }));
   };
 
   const handleFieldNameChange = (fieldId: string, name: string) => {
