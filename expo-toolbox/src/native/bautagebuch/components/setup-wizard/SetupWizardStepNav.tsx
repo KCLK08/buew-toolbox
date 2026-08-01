@@ -23,9 +23,10 @@ const STEPS: StepDef[] = [
 type Props = {
   activeStep: SetupWizardStep;
   onSelectStep: (step: SetupWizardStep) => void;
+  disabled?: boolean;
 };
 
-export function SetupWizardStepNav({ activeStep, onSelectStep }: Props) {
+export function SetupWizardStepNav({ activeStep, onSelectStep, disabled = false }: Props) {
   const insets = useSafeAreaInsets();
   const topInset = systemTopInset(insets);
 
@@ -41,7 +42,7 @@ export function SetupWizardStepNav({ activeStep, onSelectStep }: Props) {
               accessibilityState={{ selected: active }}
               style={[styles.item, active ? styles.itemActive : null]}
               onPress={() => {
-                if (active) return;
+                if (active || disabled) return;
                 void hapticSelection();
                 onSelectStep(entry.step);
               }}

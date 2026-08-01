@@ -110,7 +110,8 @@ export default function SetupStructureScreen() {
     });
   };
 
-  const showWizardNav = Boolean(setupModel && !loading);
+  const showWizardNav = Boolean(templateId);
+  const stepNavReady = Boolean(setupModel && !loading);
 
   const handleStepNav = async (step: 'structure' | 'assign' | 'fields') => {
     if (!setupModel || !templateId) return;
@@ -132,7 +133,11 @@ export default function SetupStructureScreen() {
       edges={['left', 'right']}
     >
       {showWizardNav ? (
-        <SetupWizardStepNav activeStep="structure" onSelectStep={(step) => void handleStepNav(step)} />
+        <SetupWizardStepNav
+          activeStep="structure"
+          disabled={!stepNavReady}
+          onSelectStep={(step) => void handleStepNav(step)}
+        />
       ) : null}
       {loading ? (
         <View style={styles.center}>
