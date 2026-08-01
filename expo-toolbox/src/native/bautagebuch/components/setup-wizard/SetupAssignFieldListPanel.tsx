@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { PrimaryButton, TextField } from '../../../../components/mobile';
@@ -135,7 +135,7 @@ export function SetupAssignFieldListPanel({
           />
 
           <Text style={styles.detailLabel}>Feldtyp</Text>
-          <SetupScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeRow} nestedScrollEnabled>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeRow} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {SETUP_FIELD_TYPE_OPTIONS.filter((option) => option.value !== 'table').map((option) => {
               const normalized =
                 currentField.type === 'dropdown' || currentField.type === 'radio'
@@ -155,7 +155,7 @@ export function SetupAssignFieldListPanel({
                 </Pressable>
               );
             })}
-          </SetupScrollView>
+          </ScrollView>
 
           <Text style={styles.detailLabel}>Quelle</Text>
           <Text
