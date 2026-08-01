@@ -89,7 +89,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,
-    padding: spacing.sm,
+    padding: spacing.md,
     overflow: 'hidden',
     shadowColor: '#1A1916',
     shadowOpacity: 0.1,
@@ -98,8 +98,8 @@ const styles = StyleSheet.create({
     elevation: 3
   },
   logo: {
-    width: 56,
-    height: 56
+    width: 48,
+    height: 48
   },
   title: {
     ...typography.display,
