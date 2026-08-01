@@ -12,6 +12,7 @@ type Props = {
   onConfirm: () => void;
   onCancel: () => void;
   bottomInset?: number;
+  confirmLabel?: string;
 };
 
 export function SetupDrawConfirmPanel({
@@ -19,7 +20,8 @@ export function SetupDrawConfirmPanel({
   onEnableEdit,
   onConfirm,
   onCancel,
-  bottomInset = 0
+  bottomInset = 0,
+  confirmLabel = 'OK'
 }: Props) {
   return (
     <View style={[styles.root, { paddingBottom: bottomInset + spacing.xxs }]}>
@@ -34,7 +36,7 @@ export function SetupDrawConfirmPanel({
             variant="ghost"
             onPress={onEnableEdit}
           />
-          <PrimaryButton compact label="OK" onPress={onConfirm} />
+          <PrimaryButton compact label={confirmLabel} onPress={onConfirm} />
         </View>
       </View>
     </View>

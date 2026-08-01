@@ -1,10 +1,10 @@
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { PrimaryButton, TextField } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
-import { hapticSelection } from '../../../../lib/haptics';
 import { SETUP_FIELD_TYPE_OPTIONS } from '../../lib/setup-field-settings';
+import { isManualMappingField } from '../../lib/setup-manual-field';
 import {
   getWizardState,
   resolveFieldAssignmentSummary,
@@ -16,6 +16,7 @@ import { getStructureItems } from '../../lib/setup-structure';
 import { fieldSourceLabel, fieldSourceTone } from '../../lib/template-field';
 import type { SetupFieldType, SetupStructureItem } from '../../types';
 import { SetupFieldStepNavigator } from './SetupFieldStepNavigator';
+import { SetupManualFieldActionMenu } from './SetupManualFieldActionMenu';
 import { SetupScrollView } from './SetupScrollView';
 
 function mappingTypeLabel(type: string): string {
@@ -40,7 +41,8 @@ type Props = {
   onAssignTable: (item: SetupStructureItem) => void;
   onChangeFieldName: (fieldId: string, name: string) => void;
   onChangeFieldType: (fieldId: string, type: SetupFieldType) => void;
-  onDeleteField: (fieldId: string) => void;
+  onEditFieldPosition: (fieldId: string) => void;
+  onConfirmDeleteField: (fieldId: string) => void;
   bottomInset?: number;
 };
 
@@ -58,7 +60,8 @@ export function SetupAssignFieldListPanel({
   onAssignTable,
   onChangeFieldName,
   onChangeFieldType,
-  onDeleteField,
+  onEditFieldPosition,
+  onConfirmDeleteField,
   bottomInset = 0
 }: Props) {
   const wizard = getWizardState(setupModel);
@@ -72,22 +75,7 @@ export function SetupAssignFieldListPanel({
     : null;
   const fieldNumber = currentField?.displayOrder ?? currentFieldIndex + 1;
   const displayName = currentField ? resolveLabel(currentField) : null;
-
-  const confirmDelete = () => {
-    if (!currentField || readOnly) return;
-    Alert.alert(
-      'Feld entfernen',
-      'Möchten Sie dieses Feld wirklich entfernen? Das Feld wird aus dieser Vorlage entfernt.',
-      [
-        { text: 'Abbrechen', style: 'cancel' },
-        {
-          text: 'Entfernen',
-          style: 'destructive',
-          onPress: () => onDeleteField(currentField.fieldId)
-        }
-      ]
-    );
-  };
+  const isManual = isManualMappingField(currentField);
 
   const goToField = (index: number) => {
     if (index < 0 || index >= mappingFields.length) return;
@@ -122,6 +110,14 @@ export function SetupAssignFieldListPanel({
           />
 
           {displayName ? <Text style={styles.fieldName}>{displayName}</Text> : null}
+
+          {isManual && !readOnly ? (
+            <SetupManualFieldActionMenu
+              onEdit={() => undefined}
+              onEditPosition={() => currentField && onEditFieldPosition(currentField.fieldId)}
+              onDelete={() => currentField && onConfirmDeleteField(currentField.fieldId)}
+            />
+          ) : null}
 
           {unassignedCount > 0 ? (
             <Text style={styles.unassignedSummary}>
@@ -230,8 +226,12 @@ export function SetupAssignFieldListPanel({
 
           <View style={styles.detailActions}>
             <PrimaryButton label="In PDF anzeigen" variant="ghost" compact onPress={onShowInPdf} />
-            {!readOnly ? (
-              <Pressable accessibilityRole="button" style={styles.deleteBtn} onPress={confirmDelete}>
+            {!readOnly && !isManual ? (
+              <Pressable
+                accessibilityRole="button"
+                style={styles.deleteBtn}
+                onPress={() => currentField && onConfirmDeleteField(currentField.fieldId)}
+              >
                 <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.danger} />
                 <Text style={styles.deleteLabel}>Feld entfernen</Text>
               </Pressable>
