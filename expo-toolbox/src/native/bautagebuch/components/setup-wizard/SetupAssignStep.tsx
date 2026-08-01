@@ -87,7 +87,6 @@ export function SetupAssignStep({
   const [showFieldOverview, setShowFieldOverview] = useState(false);
   const [drawMode, setDrawMode] = useState(false);
   const [draftDraw, setDraftDraw] = useState<{ page: number; rect: FieldRect } | null>(null);
-  const [draftRectEditable, setDraftRectEditable] = useState(false);
   const [pendingDraw, setPendingDraw] = useState<{ page: number; rect: FieldRect } | null>(null);
   const [tableAssignTarget, setTableAssignTarget] = useState<SetupStructureItem | null>(null);
   const [positionEditFieldId, setPositionEditFieldId] = useState<string | null>(null);
@@ -129,14 +128,12 @@ export function SetupAssignStep({
     setDrawMode(false);
     if (!positionEditFieldId) {
       setDraftDraw(null);
-      setDraftRectEditable(false);
     }
   };
 
   const cancelPositionEdit = () => {
     setPositionEditFieldId(null);
     setDraftDraw(null);
-    setDraftRectEditable(false);
   };
 
   const cancelDraftDraw = () => {
@@ -145,7 +142,6 @@ export function SetupAssignStep({
       return;
     }
     setDraftDraw(null);
-    setDraftRectEditable(false);
     setDrawMode(false);
   };
 
@@ -165,7 +161,6 @@ export function SetupAssignStep({
     }
     setPendingDraw(draftDraw);
     setDraftDraw(null);
-    setDraftRectEditable(false);
   };
 
   const advanceAfterAssign = (next: Record<string, unknown>) => {
@@ -280,7 +275,6 @@ export function SetupAssignStep({
     }
     setPositionEditFieldId(fieldId);
     setDraftDraw(draft);
-    setDraftRectEditable(false);
     setDrawMode(false);
     setPendingDraw(null);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -360,13 +354,12 @@ export function SetupAssignStep({
               variant="assign"
               drawMode={drawMode && !draftDraw}
               draftRect={draftDraw}
-              draftRectEditable={draftRectEditable}
+              draftRectEditable={Boolean(draftDraw)}
               draftConfirmReservePx={draftDraw ? SETUP_DRAFT_CONFIRM_RESERVE_PX : 0}
               onFieldSelect={selectFieldById}
               onFieldDrawDraft={(payload) => {
                 setDrawMode(false);
                 setDraftDraw({ page: payload.page, rect: payload.rect });
-                setDraftRectEditable(false);
               }}
               onFieldDraftUpdated={(payload) => {
                 setDraftDraw({ page: payload.page, rect: payload.rect });
@@ -375,10 +368,8 @@ export function SetupAssignStep({
             {draftDraw ? (
               <View style={styles.draftConfirmOverlay} pointerEvents="box-none">
                 <SetupDrawConfirmPanel
-                  rectEditEnabled={draftRectEditable}
                   bottomInset={spacing.xxs}
                   confirmLabel={positionEditFieldId ? 'Position speichern' : 'OK'}
-                  onEnableEdit={() => setDraftRectEditable(true)}
                   onConfirm={confirmDraftDraw}
                   onCancel={cancelDraftDraw}
                 />

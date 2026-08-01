@@ -7,8 +7,6 @@ import { colors, spacing, typography } from '../../../../constants/theme';
 export const SETUP_DRAFT_CONFIRM_RESERVE_PX = 58;
 
 type Props = {
-  rectEditEnabled: boolean;
-  onEnableEdit: () => void;
   onConfirm: () => void;
   onCancel: () => void;
   bottomInset?: number;
@@ -16,8 +14,6 @@ type Props = {
 };
 
 export function SetupDrawConfirmPanel({
-  rectEditEnabled,
-  onEnableEdit,
   onConfirm,
   onCancel,
   bottomInset = 0,
@@ -30,12 +26,6 @@ export function SetupDrawConfirmPanel({
           <Text style={styles.cancelLabel}>Abbrechen</Text>
         </Pressable>
         <View style={styles.actions}>
-          <PrimaryButton
-            compact
-            label={rectEditEnabled ? 'Verschieben…' : 'Verschieben'}
-            variant="ghost"
-            onPress={onEnableEdit}
-          />
           <PrimaryButton compact label={confirmLabel} onPress={onConfirm} />
         </View>
       </View>
