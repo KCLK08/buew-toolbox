@@ -158,7 +158,8 @@ export default function SetupFieldsScreen() {
     });
   };
 
-  const showWizardNav = Boolean(setupModel && !loading && !useLegacyEditor);
+  const showWizardNav = Boolean(templateId && !useLegacyEditor);
+  const stepNavReady = Boolean(setupModel && !loading && !useLegacyEditor);
 
   const handleStepNav = async (step: 'structure' | 'assign' | 'fields') => {
     if (!setupModel || !templateId) return;
@@ -178,7 +179,11 @@ export default function SetupFieldsScreen() {
       edges={['left', 'right']}
     >
       {showWizardNav ? (
-        <SetupWizardStepNav activeStep="fields" onSelectStep={(step) => void handleStepNav(step)} />
+        <SetupWizardStepNav
+          activeStep="fields"
+          disabled={!stepNavReady}
+          onSelectStep={(step) => void handleStepNav(step)}
+        />
       ) : null}
 
       {loading ? (

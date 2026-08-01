@@ -86,7 +86,7 @@ export function SetupAssignStep({
     }, 450)
   );
 
-  useEffect(() => () => persistFieldNameRef.current.cancel(), [onUpdateField]);
+  useEffect(() => () => persistFieldNameRef.current.flush(), [onUpdateField]);
 
   const wizard = useMemo(() => getWizardState(setupModel), [setupModel]);
   const currentIndex = resolveCurrentMappingIndex(mappingFields, wizard);

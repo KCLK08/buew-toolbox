@@ -111,7 +111,8 @@ export default function SetupAssignScreen() {
     });
   };
 
-  const showWizardNav = Boolean(setupModel && !loading);
+  const showWizardNav = Boolean(templateId);
+  const stepNavReady = Boolean(setupModel && !loading);
 
   const handleStepNav = async (step: 'structure' | 'assign' | 'fields') => {
     if (!setupModel || !templateId) return;
@@ -169,7 +170,11 @@ export default function SetupAssignScreen() {
       edges={['left', 'right']}
     >
       {showWizardNav ? (
-        <SetupWizardStepNav activeStep="assign" onSelectStep={(step) => void handleStepNav(step)} />
+        <SetupWizardStepNav
+          activeStep="assign"
+          disabled={!stepNavReady}
+          onSelectStep={(step) => void handleStepNav(step)}
+        />
       ) : null}
       {loading ? (
         <View style={styles.center}>

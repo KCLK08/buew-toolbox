@@ -70,7 +70,7 @@ export function SetupFieldsStep({
     }, 450)
   );
 
-  useEffect(() => () => persistLabelRef.current.cancel(), [onUpdateField]);
+  useEffect(() => () => persistLabelRef.current.flush(), [onUpdateField]);
 
   const targets = useMemo(() => listFieldSettingsTargets(setupModel), [setupModel]);
   const mappingFields = useMemo(() => sortMappingFields(detectedFields), [detectedFields]);
