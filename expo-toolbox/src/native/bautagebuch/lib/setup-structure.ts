@@ -80,7 +80,10 @@ export function getStructureItems(setupModel: Record<string, unknown>): SetupStr
   return [];
 }
 
-function structureToGroupsTables(structure: SetupStructureItem[]): {
+function structureToGroupsTables(
+  structure: SetupStructureItem[],
+  existingTables: SetupWizardTable[] = []
+): {
   groups: SetupWizardGroup[];
   tables: SetupWizardTable[];
 } {
@@ -95,10 +98,11 @@ function structureToGroupsTables(structure: SetupStructureItem[]): {
       });
       continue;
     }
+    const existing = existingTables.find((table) => table.tableId === item.id);
     tables.push({
       tableId: item.id,
       label: item.name,
-      rowCount: 1,
+      rowCount: Math.max(1, Number(existing?.rowCount || 1)),
       columns: item.columns.map((column) => ({
         columnId: column.id,
         label: column.name,
@@ -233,7 +237,8 @@ export function withStructureItems(
   structure: SetupStructureItem[]
 ): Record<string, unknown> {
   const normalized = renumberStructure(structure);
-  const { groups, tables } = structureToGroupsTables(normalized);
+  const current = getWizardState(setupModel);
+  const { groups, tables } = structureToGroupsTables(normalized, current.tables);
   return withWizardState(setupModel, {
     structure: normalized,
     groups,
@@ -364,7 +369,7 @@ export function completeStructureStep(setupModel: Record<string, unknown>): Reco
     throw new Error(issue);
   }
   const wizard = getWizardState(setupModel);
-  const { groups, tables } = structureToGroupsTables(structure);
+  const { groups, tables } = structureToGroupsTables(structure, wizard.tables);
   const hasAssignProgress =
     Object.keys(wizard.assignments).length > 0 ||
     Object.keys(wizard.tableAssignments).length > 0 ||

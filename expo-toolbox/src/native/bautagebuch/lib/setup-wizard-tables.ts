@@ -1,5 +1,23 @@
-import type { SetupWizardTable, SetupWizardTableColumn, SetupWizardState } from '../types';
+import type {
+  SetupWizardTable,
+  SetupWizardTableAssignment,
+  SetupWizardTableColumn,
+  SetupWizardState
+} from '../types';
 import type { MappingField } from './setup-mapping';
+
+export function resolveWizardTableRowCount(
+  table: SetupWizardTable,
+  tableAssignments: Record<string, SetupWizardTableAssignment>
+): number {
+  const configured = Math.max(1, Number(table.rowCount || 1));
+  let fromAssignments = 0;
+  for (const assignment of Object.values(tableAssignments)) {
+    if (assignment.tableId !== table.tableId) continue;
+    fromAssignments = Math.max(fromAssignments, assignment.rowIndex + 1);
+  }
+  return Math.max(configured, fromAssignments);
+}
 
 function tableCellEntry(
   table: SetupWizardTable,
@@ -64,7 +82,8 @@ export function buildTableSectionsFromWizard(
         multiline: column.multiline === true
       }));
 
-      const rows = Array.from({ length: table.rowCount }, (_, rowIndex) => {
+      const rowCount = resolveWizardTableRowCount(table, wizard.tableAssignments);
+      const rows = Array.from({ length: rowCount }, (_, rowIndex) => {
         const rowId = `row_${rowIndex + 1}`;
         const cells = table.columns.map((column) => {
           const assignedFieldId = Object.entries(wizard.tableAssignments).find(
