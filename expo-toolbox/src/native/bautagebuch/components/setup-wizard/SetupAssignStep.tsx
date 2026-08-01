@@ -29,7 +29,7 @@ import { SetupAssignHeader, type SetupAssignViewTab } from './SetupAssignHeader'
 import { SetupAssignProgressBar } from './SetupAssignProgressBar';
 import { SetupAssignSourceBanner } from './SetupAssignSourceBanner';
 import { SetupManualFieldModal } from './SetupManualFieldModal';
-import { SetupDrawConfirmPanel } from './SetupDrawConfirmPanel';
+import { SetupDrawConfirmPanel, SETUP_DRAFT_CONFIRM_RESERVE_PX } from './SetupDrawConfirmPanel';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -270,39 +270,44 @@ export function SetupAssignStep({
               </Pressable>
             </View>
           ) : null}
-          <SetupPdfFieldPreview
-            pdfPath={pdfPath}
-            detectedFields={detectedFields}
-            mappingFields={mappingFields}
-            resolveFieldLabel={resolveLabel}
-            activeFieldId={currentField?.fieldId || null}
-            activeFieldLabel={currentLabel}
-            activeFieldPage={currentField?.page || 1}
-            assignedFieldIds={assignedFieldIds}
-            overlayFramesOnly
-            variant="assign"
-            drawMode={drawMode && !draftDraw}
-            draftRect={draftDraw}
-            draftRectEditable={draftRectEditable}
-            onFieldSelect={selectFieldById}
-            onFieldDrawDraft={(payload) => {
-              setDrawMode(false);
-              setDraftDraw({ page: payload.page, rect: payload.rect });
-              setDraftRectEditable(false);
-            }}
-            onFieldDraftUpdated={(payload) => {
-              setDraftDraw({ page: payload.page, rect: payload.rect });
-            }}
-          />
-          {draftDraw ? (
-            <SetupDrawConfirmPanel
-              rectEditEnabled={draftRectEditable}
-              bottomInset={spacing.sm}
-              onEnableEdit={() => setDraftRectEditable(true)}
-              onConfirm={confirmDraftDraw}
-              onCancel={cancelDraftDraw}
+          <View style={styles.pdfStage}>
+            <SetupPdfFieldPreview
+              pdfPath={pdfPath}
+              detectedFields={detectedFields}
+              mappingFields={mappingFields}
+              resolveFieldLabel={resolveLabel}
+              activeFieldId={currentField?.fieldId || null}
+              activeFieldLabel={currentLabel}
+              activeFieldPage={currentField?.page || 1}
+              assignedFieldIds={assignedFieldIds}
+              overlayFramesOnly
+              variant="assign"
+              drawMode={drawMode && !draftDraw}
+              draftRect={draftDraw}
+              draftRectEditable={draftRectEditable}
+              draftConfirmReservePx={draftDraw ? SETUP_DRAFT_CONFIRM_RESERVE_PX : 0}
+              onFieldSelect={selectFieldById}
+              onFieldDrawDraft={(payload) => {
+                setDrawMode(false);
+                setDraftDraw({ page: payload.page, rect: payload.rect });
+                setDraftRectEditable(false);
+              }}
+              onFieldDraftUpdated={(payload) => {
+                setDraftDraw({ page: payload.page, rect: payload.rect });
+              }}
             />
-          ) : null}
+            {draftDraw ? (
+              <View style={styles.draftConfirmOverlay} pointerEvents="box-none">
+                <SetupDrawConfirmPanel
+                  rectEditEnabled={draftRectEditable}
+                  bottomInset={spacing.xxs}
+                  onEnableEdit={() => setDraftRectEditable(true)}
+                  onConfirm={confirmDraftDraw}
+                  onCancel={cancelDraftDraw}
+                />
+              </View>
+            ) : null}
+          </View>
         </View>
         <View style={[styles.tabPane, activeTab !== 'fields' ? styles.tabPaneHidden : null]}>
           <SetupAssignFieldListPanel
@@ -407,6 +412,17 @@ const styles = StyleSheet.create({
   tabPaneHidden: {
     opacity: 0,
     pointerEvents: 'none'
+  },
+  pdfStage: {
+    flex: 1,
+    minHeight: 0,
+    position: 'relative'
+  },
+  draftConfirmOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0
   },
   footer: {
     borderTopWidth: 1,

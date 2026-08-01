@@ -43,6 +43,7 @@ type Props = {
   drawMode?: boolean;
   draftRect?: { page: number; rect: { x: number; y: number; width: number; height: number } } | null;
   draftRectEditable?: boolean;
+  draftConfirmReservePx?: number;
   overlayFramesOnly?: boolean;
   onFieldDrawDraft?: (payload: {
     page: number;
@@ -83,6 +84,7 @@ export function SetupPdfFieldPreview({
   drawMode = false,
   draftRect = null,
   draftRectEditable = false,
+  draftConfirmReservePx = 0,
   overlayFramesOnly = false,
   onFieldDrawDraft,
   onFieldDraftUpdated,
@@ -293,17 +295,42 @@ export function SetupPdfFieldPreview({
 
   useEffect(() => {
     if (!previewState.ready || useFallback || !overlay) return;
-    if (draftRect) {
-      postPreviewCommand({
-        type: 'setDraftRect',
-        page: draftRect.page,
-        rect: draftRect.rect,
-        editable: draftRectEditable
-      });
+    if (!draftRect) {
+      postPreviewCommand({ type: 'clearDraftRect' });
       return;
     }
-    postPreviewCommand({ type: 'clearDraftRect' });
-  }, [draftRect, draftRectEditable, previewState.ready, useFallback, overlay, postPreviewCommand]);
+    postPreviewCommand({
+      type: 'setDraftRect',
+      page: draftRect.page,
+      rect: draftRect.rect,
+      editable: false
+    });
+  }, [draftRect?.page, draftRect?.rect, previewState.ready, useFallback, overlay, postPreviewCommand]);
+
+  useEffect(() => {
+    if (!previewState.ready || useFallback || !overlay || !draftRect) return;
+    postPreviewCommand({
+      type: 'setDraftRectEditable',
+      enabled: draftRectEditable,
+      bottomReserve: draftConfirmReservePx
+    });
+  }, [
+    draftRect,
+    draftRectEditable,
+    draftConfirmReservePx,
+    previewState.ready,
+    useFallback,
+    overlay,
+    postPreviewCommand
+  ]);
+
+  useEffect(() => {
+    if (!previewState.ready || useFallback || !overlay || !draftRect) return;
+    postPreviewCommand({
+      type: 'scrollToDraftRect',
+      bottomReserve: draftConfirmReservePx
+    });
+  }, [draftRect, draftConfirmReservePx, previewState.ready, useFallback, overlay, postPreviewCommand]);
 
   const onWebMessage = (event: WebViewMessageEvent) => {
     try {

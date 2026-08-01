@@ -3,6 +3,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 
+/** Approximate overlay height for PDF scroll reserve (compact panel). */
+export const SETUP_DRAFT_CONFIRM_RESERVE_PX = 58;
+
 type Props = {
   rectEditEnabled: boolean;
   onEnableEdit: () => void;
@@ -19,21 +22,19 @@ export function SetupDrawConfirmPanel({
   bottomInset = 0
 }: Props) {
   return (
-    <View style={[styles.root, { paddingBottom: bottomInset + spacing.sm }]}>
-      <View style={styles.card}>
-        <Text style={styles.title}>Feldposition prüfen</Text>
-        <Text style={styles.copy}>Ist die Markierung korrekt?</Text>
+    <View style={[styles.root, { paddingBottom: bottomInset + spacing.xxs }]}>
+      <View style={styles.row}>
+        <Pressable accessibilityRole="button" style={styles.cancelBtn} onPress={onCancel}>
+          <Text style={styles.cancelLabel}>Abbrechen</Text>
+        </Pressable>
         <View style={styles.actions}>
-          <Pressable accessibilityRole="button" style={styles.cancelBtn} onPress={onCancel}>
-            <Text style={styles.cancelLabel}>Abbrechen</Text>
-          </Pressable>
           <PrimaryButton
             compact
             label={rectEditEnabled ? 'Verschieben…' : 'Verschieben'}
             variant="ghost"
             onPress={onEnableEdit}
           />
-          <PrimaryButton compact label="Bestätigen" onPress={onConfirm} />
+          <PrimaryButton compact label="OK" onPress={onConfirm} />
         </View>
       </View>
     </View>
@@ -44,38 +45,32 @@ const styles = StyleSheet.create({
   root: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    backgroundColor: colors.panel,
-    paddingHorizontal: spacing.pageX,
-    paddingTop: spacing.sm
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xxs
   },
-  card: {
-    gap: spacing.xs
-  },
-  title: {
-    ...typography.subtitle,
-    color: colors.ink
-  },
-  copy: {
-    ...typography.body,
-    color: colors.muted
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xxs,
+    minHeight: 40
   },
   actions: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginTop: spacing.xxs
+    gap: spacing.xxs
   },
   cancelBtn: {
     minHeight: 36,
     justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
-    marginRight: 'auto'
+    paddingHorizontal: spacing.xxs
   },
   cancelLabel: {
     ...typography.caption,
     color: colors.muted,
-    fontFamily: 'SpaceGrotesk_600SemiBold'
+    fontFamily: 'SpaceGrotesk_600SemiBold',
+    fontSize: 12
   }
 });
