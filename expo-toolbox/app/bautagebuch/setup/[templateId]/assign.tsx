@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../../../src/constants/theme';
+import { KeyboardScrollProvider } from '../../../../src/contexts/KeyboardScrollContext';
 import { SetupAssignStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupAssignStep';
 import { SetupWizardStepNav } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupWizardStepNav';
 import { addTemplateField, deleteTemplateField, getDetectedFields, updateTemplateField } from '../../../../src/native/bautagebuch/db/database';
@@ -165,10 +166,11 @@ export default function SetupAssignScreen() {
   const readOnly = templateStatus === 'archived';
 
   return (
-    <SafeAreaView
-      style={[styles.root, { paddingBottom: systemBottomInset(insets) }]}
-      edges={['left', 'right']}
-    >
+    <KeyboardScrollProvider footerInset={systemBottomInset(insets)}>
+      <SafeAreaView
+        style={[styles.root, { paddingBottom: systemBottomInset(insets) }]}
+        edges={['left', 'right']}
+      >
       {showWizardNav ? (
         <SetupWizardStepNav
           activeStep="assign"
@@ -202,7 +204,8 @@ export default function SetupAssignScreen() {
           onCreateManualField={handleCreateManualField}
         />
       ) : null}
-    </SafeAreaView>
+      </SafeAreaView>
+    </KeyboardScrollProvider>
   );
 }
 

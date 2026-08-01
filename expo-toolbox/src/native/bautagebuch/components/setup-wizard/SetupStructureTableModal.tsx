@@ -22,6 +22,14 @@ type Props = {
   onSave: (input: { name: string; columns: ColumnDraft[] }) => void;
 };
 
+function normalizeColumnCount(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Math.min(20, Math.floor(parsed));
+}
+
 export function SetupStructureTableModal({
   visible,
   initialName = '',
@@ -32,6 +40,7 @@ export function SetupStructureTableModal({
 }: Props) {
   const insets = useSafeAreaInsets();
   const [name, setName] = useState(initialName);
+  const [columnCountInput, setColumnCountInput] = useState('');
   const [columns, setColumns] = useState<ColumnDraft[]>(initialColumns);
   const wasVisibleRef = useRef(false);
   const isEditing = Boolean(initialName);
@@ -39,14 +48,43 @@ export function SetupStructureTableModal({
   useEffect(() => {
     if (visible && !wasVisibleRef.current) {
       setName(initialName);
-      setColumns(initialColumns.length > 0 ? initialColumns.map((column) => ({ ...column })) : [{ name: '' }]);
+      const nextColumns = initialColumns.map((column) => ({ ...column }));
+      setColumns(nextColumns);
+      setColumnCountInput(nextColumns.length > 0 ? String(nextColumns.length) : '');
     }
     wasVisibleRef.current = visible;
   }, [visible, initialName, initialColumns]);
 
+  const applyColumnCount = (count: number | null) => {
+    if (count === null) return;
+    setColumns((current) => {
+      if (count === current.length) return current;
+      if (count < current.length) {
+        return current.slice(0, count);
+      }
+      const next = [...current];
+      while (next.length < count) {
+        next.push({ name: '' });
+      }
+      return next;
+    });
+  };
+
+  const handleColumnCountChange = (value: string) => {
+    setColumnCountInput(value);
+    const count = normalizeColumnCount(value);
+    if (count !== null) {
+      applyColumnCount(count);
+    }
+  };
+
   const addColumn = () => {
     void hapticSelection();
-    setColumns((current) => [...current, { name: '' }]);
+    setColumns((current) => {
+      const next = [...current, { name: '' }];
+      setColumnCountInput(String(next.length));
+      return next;
+    });
   };
 
   const updateColumn = (index: number, value: string) => {
@@ -59,7 +97,11 @@ export function SetupStructureTableModal({
 
   const removeColumn = (index: number) => {
     void hapticSelection();
-    setColumns((current) => current.filter((_, columnIndex) => columnIndex !== index));
+    setColumns((current) => {
+      const next = current.filter((_, columnIndex) => columnIndex !== index);
+      setColumnCountInput(next.length > 0 ? String(next.length) : '');
+      return next;
+    });
   };
 
   const submit = () => {
@@ -68,10 +110,6 @@ export function SetupStructureTableModal({
       .filter((column) => column.name.length > 0);
     if (!name.trim()) {
       Alert.alert('Tabelle', 'Bitte einen Namen eingeben.');
-      return;
-    }
-    if (trimmedColumns.length === 0) {
-      Alert.alert('Tabelle', 'Lege mindestens eine Spalte an.');
       return;
     }
     onSave({ name: name.trim(), columns: trimmedColumns });
@@ -102,57 +140,71 @@ export function SetupStructureTableModal({
             </View>
             <Text style={styles.heroTitle}>Tabellenbereich</Text>
             <Text style={styles.heroCopy}>
-              Spalten sind logische Strukturen — die PDF-Zuordnung folgt in Schritt 2.
+              Definiere zuerst die Tabellenstruktur. PDF-Felder werden in Schritt 2 den Spalten
+              zugeordnet.
             </Text>
           </View>
 
           <TextField
-            label="Name"
+            label="Tabellenname"
             value={name}
             onChangeText={setName}
-            placeholder="z. B. Arbeitsleistungen"
+            placeholder="z. B. Arbeitskräfte"
             editable={!readOnly}
             autoCapitalize="sentences"
           />
 
-          <View style={styles.columnsSection}>
-            <View style={styles.columnsHeader}>
-              <Text style={styles.columnsTitle}>Spalten</Text>
-              <Text style={styles.columnsMeta}>{columns.filter((c) => c.name.trim()).length} definiert</Text>
-            </View>
-            {columns.map((column, index) => (
-              <View key={column.id || `col_${index}`} style={styles.columnRow}>
-                <View style={styles.columnIndex}>
-                  <Text style={styles.columnIndexText}>{index + 1}</Text>
-                </View>
-                <View style={styles.columnField}>
-                  <TextField
-                    label={`Spalte ${index + 1}`}
-                    value={column.name}
-                    onChangeText={(value) => updateColumn(index, value)}
-                    placeholder="Spaltenname"
-                    editable={!readOnly}
-                  />
-                </View>
-                {!readOnly && columns.length > 1 ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Spalte entfernen"
-                    style={styles.removeBtn}
-                    onPress={() => removeColumn(index)}
-                  >
-                    <MaterialCommunityIcons name="minus-circle-outline" size={24} color={colors.muted} />
-                  </Pressable>
-                ) : null}
+          <TextField
+            label="Anzahl der Spalten (optional)"
+            value={columnCountInput}
+            onChangeText={handleColumnCountChange}
+            placeholder="z. B. 4"
+            editable={!readOnly}
+            keyboardType="number-pad"
+            hint="Leer lassen, wenn die Spalten später einzeln hinzugefügt werden."
+          />
+
+          {columns.length > 0 ? (
+            <View style={styles.columnsSection}>
+              <View style={styles.columnsHeader}>
+                <Text style={styles.columnsTitle}>Spalten benennen</Text>
+                <Text style={styles.columnsMeta}>{columns.filter((c) => c.name.trim()).length} benannt</Text>
               </View>
-            ))}
-            {!readOnly ? (
-              <Pressable accessibilityRole="button" style={styles.addColumnBtn} onPress={addColumn}>
-                <MaterialCommunityIcons name="plus-circle-outline" size={22} color={colors.accent} />
-                <Text style={styles.addColumnLabel}>Spalte hinzufügen</Text>
-              </Pressable>
-            ) : null}
-          </View>
+              {columns.map((column, index) => (
+                <View key={column.id || `col_${index}`} style={styles.columnRow}>
+                  <View style={styles.columnIndex}>
+                    <Text style={styles.columnIndexText}>{index + 1}</Text>
+                  </View>
+                  <View style={styles.columnField}>
+                    <TextField
+                      label={`Spalte ${index + 1}`}
+                      value={column.name}
+                      onChangeText={(value) => updateColumn(index, value)}
+                      placeholder="Spaltenname"
+                      editable={!readOnly}
+                    />
+                  </View>
+                  {!readOnly ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Spalte entfernen"
+                      style={styles.removeBtn}
+                      onPress={() => removeColumn(index)}
+                    >
+                      <MaterialCommunityIcons name="minus-circle-outline" size={24} color={colors.muted} />
+                    </Pressable>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          {!readOnly ? (
+            <Pressable accessibilityRole="button" style={styles.addColumnBtn} onPress={addColumn}>
+              <MaterialCommunityIcons name="plus-circle-outline" size={22} color={colors.accent} />
+              <Text style={styles.addColumnLabel}>Spalte hinzufügen</Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
 
         {!readOnly ? (

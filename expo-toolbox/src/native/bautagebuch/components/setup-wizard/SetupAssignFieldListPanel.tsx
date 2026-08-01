@@ -1,20 +1,22 @@
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import { PrimaryButton } from '../../../../components/mobile';
+import { PrimaryButton, TextField } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 import { hapticSelection } from '../../../../lib/haptics';
 import { SETUP_FIELD_TYPE_OPTIONS } from '../../lib/setup-field-settings';
 import {
   getWizardState,
-  isFieldAssigned,
   resolveFieldAssignmentSummary,
   resolveFieldDisplayLabel,
+  resolveFieldEditLabel,
   type MappingField
 } from '../../lib/setup-mapping';
 import { getStructureItems } from '../../lib/setup-structure';
-import { fieldHasGeometry, fieldSourceLabel, fieldSourceTone } from '../../lib/template-field';
+import { fieldSourceLabel, fieldSourceTone } from '../../lib/template-field';
 import type { SetupFieldType, SetupStructureItem } from '../../types';
+import { SetupFieldStepNavigator } from './SetupFieldStepNavigator';
+import { SetupScrollView } from './SetupScrollView';
 
 function mappingTypeLabel(type: string): string {
   const normalized =
@@ -24,17 +26,12 @@ function mappingTypeLabel(type: string): string {
   );
 }
 
-function sourceDotColor(source: MappingField['source']): string {
-  const tone = fieldSourceTone(source);
-  if (tone === 'warning') return colors.warning;
-  if (tone === 'neutral') return colors.muted;
-  return colors.success;
-}
-
 type Props = {
   mappingFields: MappingField[];
   setupModel: Record<string, unknown>;
   currentField: MappingField | null;
+  currentFieldIndex: number;
+  unassignedCount: number;
   draftLabels?: Record<string, string>;
   readOnly?: boolean;
   onSelectField: (index: number) => void;
@@ -51,6 +48,8 @@ export function SetupAssignFieldListPanel({
   mappingFields,
   setupModel,
   currentField,
+  currentFieldIndex,
+  unassignedCount,
   draftLabels = {},
   readOnly = false,
   onSelectField,
@@ -71,6 +70,8 @@ export function SetupAssignFieldListPanel({
   const assignment = currentField
     ? resolveFieldAssignmentSummary(setupModel, currentField.fieldId)
     : null;
+  const fieldNumber = currentField?.displayOrder ?? currentFieldIndex + 1;
+  const displayName = currentField ? resolveLabel(currentField) : null;
 
   const confirmDelete = () => {
     if (!currentField || readOnly) return;
@@ -88,20 +89,18 @@ export function SetupAssignFieldListPanel({
     );
   };
 
+  const goToField = (index: number) => {
+    if (index < 0 || index >= mappingFields.length) return;
+    onSelectField(index);
+  };
+
   return (
-    <ScrollView
+    <SetupScrollView
       style={styles.scroll}
       contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.lg + bottomInset }]}
-      keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
       nestedScrollEnabled
     >
-      <Text style={styles.heading}>Felder</Text>
-      <Text style={styles.subheading}>
-        {mappingFields.length} Feld{mappingFields.length === 1 ? '' : 'er'} · Prüfen, bearbeiten und
-        zuordnen
-      </Text>
-
       {mappingFields.length === 0 ? (
         <View style={styles.empty}>
           <Text style={styles.emptyTitle}>Noch keine Felder</Text>
@@ -111,60 +110,36 @@ export function SetupAssignFieldListPanel({
         </View>
       ) : null}
 
-      {mappingFields.map((field) => {
-        const label = resolveLabel(field);
-        const assigned = isFieldAssigned(field.fieldId, wizard);
-        const fieldAssignment = resolveFieldAssignmentSummary(setupModel, field.fieldId);
-        const isCurrent = field.fieldId === currentField?.fieldId;
-        const hasGeometry = fieldHasGeometry(field);
-        return (
-          <Pressable
-            key={field.fieldId}
-            accessibilityRole="button"
-            style={[styles.card, isCurrent ? styles.cardCurrent : null]}
-            onPress={() => {
-              void hapticSelection();
-              const index = mappingFields.findIndex((entry) => entry.fieldId === field.fieldId);
-              if (index >= 0) onSelectField(index);
-            }}
-          >
-            <View style={styles.cardHeader}>
-              <View style={[styles.sourceDot, { backgroundColor: sourceDotColor(field.source) }]} />
-              <View style={styles.cardCopy}>
-                <Text style={styles.cardTitle}>{label}</Text>
-                <Text style={styles.cardMeta}>
-                  {mappingTypeLabel(field.type)} · {fieldSourceLabel(field.source)}
-                </Text>
-                <Text style={styles.cardMeta}>
-                  {assigned
-                    ? fieldAssignment.kind === 'table'
-                      ? `Tabelle: ${fieldAssignment.label}`
-                      : `Gruppe: ${fieldAssignment.label}`
-                    : 'Keine Gruppe zugewiesen'}
-                  {hasGeometry ? ` · Seite ${field.page}` : ''}
-                </Text>
-              </View>
-              <Text style={styles.cardIndex}>{field.displayOrder}</Text>
-            </View>
-          </Pressable>
-        );
-      })}
-
       {currentField ? (
         <View style={styles.detail}>
-          <Text style={styles.detailTitle}>Felddetails</Text>
+          <SetupFieldStepNavigator
+            fieldNumber={fieldNumber}
+            total={mappingFields.length}
+            canGoPrevious={currentFieldIndex > 0}
+            canGoNext={currentFieldIndex < mappingFields.length - 1}
+            onPrevious={() => goToField(currentFieldIndex - 1)}
+            onNext={() => goToField(currentFieldIndex + 1)}
+          />
 
-          <Text style={styles.detailLabel}>Name</Text>
-          <TextInput
-            value={resolveLabel(currentField)}
+          {displayName ? <Text style={styles.fieldName}>{displayName}</Text> : null}
+
+          {unassignedCount > 0 ? (
+            <Text style={styles.unassignedSummary}>
+              Noch nicht zugeordnet:{' '}
+              {unassignedCount} Feld{unassignedCount === 1 ? '' : 'er'}
+            </Text>
+          ) : null}
+
+          <TextField
+            label="Name"
+            value={resolveFieldEditLabel(currentField, wizard, draftLabels)}
             onChangeText={(value) => onChangeFieldName(currentField.fieldId, value)}
-            style={styles.input}
             editable={!readOnly}
             placeholder="Feldname"
           />
 
           <Text style={styles.detailLabel}>Feldtyp</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeRow} nestedScrollEnabled>
+          <SetupScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeRow} nestedScrollEnabled>
             {SETUP_FIELD_TYPE_OPTIONS.filter((option) => option.value !== 'table').map((option) => {
               const normalized =
                 currentField.type === 'dropdown' || currentField.type === 'radio'
@@ -184,7 +159,7 @@ export function SetupAssignFieldListPanel({
                 </Pressable>
               );
             })}
-          </ScrollView>
+          </SetupScrollView>
 
           <Text style={styles.detailLabel}>Quelle</Text>
           <Text
@@ -197,7 +172,7 @@ export function SetupAssignFieldListPanel({
                   : null
             ]}
           >
-            {fieldSourceLabel(currentField.source)}
+            {fieldSourceLabel(currentField.source)} · {mappingTypeLabel(currentField.type)}
           </Text>
 
           <Text style={styles.detailLabel}>Zuordnung</Text>
@@ -239,6 +214,13 @@ export function SetupAssignFieldListPanel({
                     >
                       <MaterialCommunityIcons name="circle-outline" size={18} color={colors.accent} />
                       <Text style={styles.assignRowLabel}>{item.name}</Text>
+                      {item.columns.length > 0 ? (
+                        <Text style={styles.assignRowMeta}>
+                          {item.columns.length} Spalte{item.columns.length === 1 ? '' : 'n'}
+                        </Text>
+                      ) : (
+                        <Text style={styles.assignRowMeta}>Keine Spalten</Text>
+                      )}
                     </Pressable>
                   ))}
                 </View>
@@ -257,7 +239,7 @@ export function SetupAssignFieldListPanel({
           </View>
         </View>
       ) : null}
-    </ScrollView>
+    </SetupScrollView>
   );
 }
 
@@ -269,17 +251,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: spacing.pageX,
     paddingBottom: spacing.lg,
-    gap: spacing.xs,
     flexGrow: 1
-  },
-  heading: {
-    ...typography.title,
-    color: colors.ink
-  },
-  subheading: {
-    ...typography.caption,
-    color: colors.muted,
-    marginBottom: spacing.xs
   },
   empty: {
     padding: spacing.md,
@@ -298,55 +270,18 @@ const styles = StyleSheet.create({
     color: colors.muted,
     lineHeight: 18
   },
-  card: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.panel,
-    padding: spacing.sm
-  },
-  cardCurrent: {
-    borderColor: colors.warning,
-    backgroundColor: 'rgba(196, 140, 40, 0.06)'
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm
-  },
-  sourceDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-    marginTop: 6
-  },
-  cardCopy: {
-    flex: 1,
-    gap: 2
-  },
-  cardTitle: {
-    ...typography.bodyStrong,
-    color: colors.ink
-  },
-  cardMeta: {
-    ...typography.caption,
-    color: colors.muted
-  },
-  cardIndex: {
-    ...typography.caption,
-    color: colors.muted
-  },
   detail: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.panel,
-    marginTop: spacing.sm,
-    paddingTop: spacing.md,
     gap: spacing.xs
   },
-  detailTitle: {
-    ...typography.subtitle,
-    color: colors.ink
+  fieldName: {
+    ...typography.title,
+    color: colors.ink,
+    marginBottom: spacing.xxs
+  },
+  unassignedSummary: {
+    ...typography.body,
+    color: colors.muted,
+    marginBottom: spacing.xs
   },
   detailLabel: {
     ...typography.label,
@@ -362,16 +297,6 @@ const styles = StyleSheet.create({
   },
   sourceManual: {
     color: colors.warning
-  },
-  input: {
-    ...typography.body,
-    color: colors.ink,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingHorizontal: spacing.md,
-    minHeight: spacing.touchMin,
-    backgroundColor: colors.panelElevated
   },
   typeRow: {
     flexGrow: 0
@@ -428,6 +353,10 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.ink,
     flex: 1
+  },
+  assignRowMeta: {
+    ...typography.caption,
+    color: colors.muted
   },
   detailActions: {
     flexDirection: 'row',

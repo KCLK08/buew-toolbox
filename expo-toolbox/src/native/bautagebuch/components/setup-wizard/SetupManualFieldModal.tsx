@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { PrimaryButton } from '../../../../components/mobile';
+import { PrimaryButton, TextField } from '../../../../components/mobile';
 import { colors, spacing, typography } from '../../../../constants/theme';
 import { SETUP_FIELD_TYPE_OPTIONS } from '../../lib/setup-field-settings';
 import { getStructureItems } from '../../lib/setup-structure';
+import { systemBottomInset } from '../../../../navigation/systemInsets';
 import type { FieldRect, SetupFieldType, SetupStructureItem } from '../../types';
 
 type Props = {
@@ -53,9 +54,7 @@ export function SetupManualFieldModal({
   const handleConfirm = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const target = targetId
-      ? structure.find((item) => item.id === targetId)
-      : null;
+    const target = targetId ? structure.find((item) => item.id === targetId) : null;
     onConfirm({
       name: trimmed,
       type,
@@ -68,20 +67,33 @@ export function SetupManualFieldModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]}>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={[styles.root, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <Pressable accessibilityRole="button" style={styles.headerBtn} onPress={onClose}>
+            <Text style={styles.cancel}>Abbrechen</Text>
+          </Pressable>
           <Text style={styles.title}>Neues Feld erstellen</Text>
+          <View style={styles.headerBtn} />
+        </View>
+
+        <ScrollView
+          style={styles.body}
+          contentContainerStyle={[
+            styles.bodyContent,
+            { paddingBottom: systemBottomInset(insets) + spacing.xl }
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
           <Text style={styles.subtitle}>
             Seite {page} · Bereich {Math.round(rect.width)}×{Math.round(rect.height)} pt
           </Text>
 
-          <Text style={styles.label}>Feldname</Text>
-          <TextInput
+          <TextField
+            label="Feldname"
             value={name}
             onChangeText={setName}
             placeholder="z. B. Unterschrift Bauüberwachung"
-            style={styles.input}
             editable={!readOnly}
           />
 
@@ -104,36 +116,41 @@ export function SetupManualFieldModal({
             })}
           </ScrollView>
 
-          <Text style={styles.label}>Gruppe oder Tabelle (optional)</Text>
-          <View style={styles.targetList}>
-            {structure.map((item) => {
-              const active = targetId === item.id;
-              return (
-                <Pressable
-                  key={item.id}
-                  style={[styles.targetRow, active ? styles.targetRowActive : null]}
-                  onPress={() => selectTarget(item)}
-                  disabled={readOnly}
-                >
-                  <MaterialCommunityIcons
-                    name={item.type === 'group' ? 'folder-outline' : 'table'}
-                    size={18}
-                    color={active ? colors.accent : colors.muted}
-                  />
-                  <Text style={active ? styles.targetLabelActive : styles.targetLabel}>{item.name}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          {structure.length > 0 ? (
+            <>
+              <Text style={styles.label}>Gruppe oder Tabelle (optional)</Text>
+              <View style={styles.targetList}>
+                {structure.map((item) => {
+                  const active = targetId === item.id;
+                  return (
+                    <Pressable
+                      key={item.id}
+                      style={[styles.targetRow, active ? styles.targetRowActive : null]}
+                      onPress={() => selectTarget(item)}
+                      disabled={readOnly}
+                    >
+                      <MaterialCommunityIcons
+                        name={item.type === 'group' ? 'folder-outline' : 'table'}
+                        size={18}
+                        color={active ? colors.accent : colors.muted}
+                      />
+                      <Text style={active ? styles.targetLabelActive : styles.targetLabel}>
+                        {item.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+        </ScrollView>
 
-          <View style={styles.actions}>
-            <PrimaryButton label="Abbrechen" variant="ghost" onPress={onClose} />
-            <PrimaryButton
-              label="Feld speichern"
-              disabled={readOnly || !name.trim()}
-              onPress={handleConfirm}
-            />
-          </View>
+        <View style={[styles.footer, { paddingBottom: systemBottomInset(insets) + spacing.sm }]}>
+          <PrimaryButton
+            label="Feld speichern"
+            disabled={readOnly || !name.trim()}
+            onPress={handleConfirm}
+          />
         </View>
       </View>
     </Modal>
@@ -141,23 +158,37 @@ export function SetupManualFieldModal({
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  root: {
     flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(26, 25, 22, 0.35)'
+    backgroundColor: colors.bg
   },
-  sheet: {
-    backgroundColor: colors.panel,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.pageX,
-    paddingTop: spacing.md,
-    gap: spacing.sm,
-    maxHeight: '88%'
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.panel
+  },
+  headerBtn: {
+    minWidth: 88
+  },
+  cancel: {
+    ...typography.bodyStrong,
+    color: colors.accent
   },
   title: {
     ...typography.subtitle,
     color: colors.ink
+  },
+  body: {
+    flex: 1
+  },
+  bodyContent: {
+    padding: spacing.pageX,
+    gap: spacing.sm
   },
   subtitle: {
     ...typography.caption,
@@ -167,16 +198,6 @@ const styles = StyleSheet.create({
     ...typography.label,
     color: colors.muted,
     marginTop: spacing.xxs
-  },
-  input: {
-    ...typography.body,
-    color: colors.ink,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingHorizontal: spacing.md,
-    minHeight: spacing.touchMin,
-    backgroundColor: colors.panelElevated
   },
   typeRow: {
     flexGrow: 0
@@ -204,8 +225,7 @@ const styles = StyleSheet.create({
     fontFamily: 'SpaceGrotesk_600SemiBold'
   },
   targetList: {
-    gap: spacing.xxs,
-    maxHeight: 160
+    gap: spacing.xxs
   },
   targetRow: {
     flexDirection: 'row',
@@ -229,10 +249,11 @@ const styles = StyleSheet.create({
     ...typography.bodyStrong,
     color: colors.accent2
   },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.sm
+  footer: {
+    paddingHorizontal: spacing.pageX,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.panel
   }
 });

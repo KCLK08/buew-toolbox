@@ -163,8 +163,10 @@ test('buildScrollableFieldPreviewHtml supports touch draft rect move and resize'
   });
 
   assert.match(html, /function attachDraftRectInteractions/);
-  assert.match(html, /bindTouchTarget\(draftRectEl, 'move'\)/);
+  assert.match(html, /bindTouchTarget\(dragSurface, 'move'\)/);
   assert.match(html, /bindTouchTarget\(handle, 'resize'/);
+  assert.match(html, /restoreViewportNavigation/);
+  assert.match(html, /draft-drag-surface/);
   assert.match(html, /function scrollToDraftRect/);
   assert.match(html, /scrollToDraftRect\(\)/);
   assert.match(html, /event\.pointerType === 'touch'/);

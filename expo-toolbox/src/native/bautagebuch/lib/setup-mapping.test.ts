@@ -24,6 +24,7 @@ import {
   checkMappingTransition,
   getMappingCompletionSummary,
   resolveFieldDisplayLabel,
+  resolveFieldEditLabel,
   sortMappingFields,
   buildFieldPreviewHighlights,
   withWizardState
@@ -478,11 +479,16 @@ test('sortMappingFields assigns stable displayOrder independent of geometry', ()
 });
 
 test('resolveFieldDisplayLabel prefers labelCandidate over wizard fieldLabels', () => {
-  const fields = sortMappingFields([
-    { ...field('a'), labelCandidate: 'Datum' }
-  ]);
+  const fields = sortMappingFields([{ ...field('a'), labelCandidate: 'Datum' }]);
   const wizard = getWizardState({ wizard: { fieldLabels: { a: 'Alt' } } });
   assert.equal(resolveFieldDisplayLabel(fields[0]!, wizard), 'Datum');
+});
+
+test('resolveFieldEditLabel preserves empty draft while editing', () => {
+  const fields = sortMappingFields([{ ...field('a'), labelCandidate: 'Datum' }]);
+  const wizard = getWizardState({});
+  assert.equal(resolveFieldEditLabel(fields[0]!, wizard, { a: '' }), '');
+  assert.equal(resolveFieldDisplayLabel(fields[0]!, wizard, { a: '' }), 'Datum');
 });
 
 test('buildFieldPreviewHighlights uses displayOrder for overlay index', () => {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
+import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { PrimaryButton } from '../../../../components/mobile';
@@ -26,8 +26,8 @@ import { SetupPdfFieldPreview } from '../SetupPdfFieldPreview';
 import { SetupAssignFieldListPanel } from './SetupAssignFieldListPanel';
 import { SetupAssignFieldOverview } from './SetupAssignFieldOverview';
 import { SetupAssignHeader, type SetupAssignViewTab } from './SetupAssignHeader';
-import { SetupAssignProgressBar } from './SetupAssignProgressBar';
 import { SetupAssignSourceBanner } from './SetupAssignSourceBanner';
+import { SetupAssignTableColumnModal } from './SetupAssignTableColumnModal';
 import { SetupManualFieldModal } from './SetupManualFieldModal';
 import { SetupDrawConfirmPanel, SETUP_DRAFT_CONFIRM_RESERVE_PX } from './SetupDrawConfirmPanel';
 
@@ -79,6 +79,7 @@ export function SetupAssignStep({
   const [draftDraw, setDraftDraw] = useState<{ page: number; rect: FieldRect } | null>(null);
   const [draftRectEditable, setDraftRectEditable] = useState(false);
   const [pendingDraw, setPendingDraw] = useState<{ page: number; rect: FieldRect } | null>(null);
+  const [tableAssignTarget, setTableAssignTarget] = useState<SetupStructureItem | null>(null);
   const [draftLabels, setDraftLabels] = useState<Record<string, string>>({});
   const persistFieldNameRef = useRef(
     debounce((fieldId: string, name: string) => {
@@ -166,13 +167,29 @@ export function SetupAssignStep({
 
   const assignToTable = (item: SetupStructureItem) => {
     if (!currentField || readOnly || item.type !== 'table') return;
+    if (item.columns.length === 0) {
+      Alert.alert(
+        'Keine Spalten',
+        'Lege zuerst in Schritt 1 Spalten für diese Tabelle an.'
+      );
+      return;
+    }
+    setTableAssignTarget(item);
+  };
+
+  const confirmTableAssignment = (input: {
+    columnId?: string;
+    newColumnName?: string;
+    fieldLabel: string;
+  }) => {
+    if (!currentField || !tableAssignTarget || tableAssignTarget.type !== 'table') return;
     const trimmed = resolveLabel(currentField);
-    const firstColumn = item.columns[0]?.id;
-    const next = assignFieldToTableColumn(setupModel, currentField.fieldId, item.id, {
-      columnId: firstColumn,
-      newColumnName: firstColumn ? undefined : trimmed,
-      fieldLabel: trimmed
+    const next = assignFieldToTableColumn(setupModel, currentField.fieldId, tableAssignTarget.id, {
+      columnId: input.columnId,
+      newColumnName: input.newColumnName,
+      fieldLabel: trimmed || input.fieldLabel
     });
+    setTableAssignTarget(null);
     void hapticSuccess();
     void (async () => {
       if (trimmed) {
@@ -234,14 +251,6 @@ export function SetupAssignStep({
       />
 
       <SetupAssignSourceBanner fields={detectedFields} />
-
-      {activeTab === 'fields' ? (
-        <SetupAssignProgressBar
-          progress={progress}
-          fieldNumber={fieldNumber}
-          fieldLabel={currentLabel}
-        />
-      ) : null}
 
       <View style={styles.body}>
         <View style={[styles.tabPane, activeTab !== 'pdf' ? styles.tabPaneHidden : null]}>
@@ -314,6 +323,8 @@ export function SetupAssignStep({
             mappingFields={mappingFields}
             setupModel={setupModel}
             currentField={currentField}
+            currentFieldIndex={currentIndex}
+            unassignedCount={progress.open}
             draftLabels={draftLabels}
             readOnly={readOnly}
             onSelectField={selectFieldAtIndex}
@@ -392,6 +403,17 @@ export function SetupAssignStep({
             switchTab('fields');
           })();
         }}
+      />
+
+      <SetupAssignTableColumnModal
+        visible={Boolean(tableAssignTarget)}
+        tableName={tableAssignTarget?.type === 'table' ? tableAssignTarget.name : ''}
+        columns={tableAssignTarget?.type === 'table' ? tableAssignTarget.columns : []}
+        suggestedFieldName={currentLabel || ''}
+        readOnly={readOnly}
+        allowCreateColumn={false}
+        onClose={() => setTableAssignTarget(null)}
+        onConfirm={confirmTableAssignment}
       />
     </View>
   );

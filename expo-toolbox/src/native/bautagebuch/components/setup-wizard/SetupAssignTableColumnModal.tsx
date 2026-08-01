@@ -15,6 +15,7 @@ type Props = {
   columns: SetupStructureTableColumn[];
   suggestedFieldName: string;
   readOnly?: boolean;
+  allowCreateColumn?: boolean;
   onClose: () => void;
   onConfirm: (input: { columnId?: string; newColumnName?: string; fieldLabel: string }) => void;
 };
@@ -25,6 +26,7 @@ export function SetupAssignTableColumnModal({
   columns,
   suggestedFieldName,
   readOnly = false,
+  allowCreateColumn = true,
   onClose,
   onConfirm
 }: Props) {
@@ -35,11 +37,11 @@ export function SetupAssignTableColumnModal({
 
   useEffect(() => {
     if (visible && !wasVisibleRef.current) {
-      setMode(columns.length > 0 ? 'pick' : 'new');
+      setMode(allowCreateColumn && columns.length === 0 ? 'new' : 'pick');
       setSelectedColumnId(columns[0]?.id || null);
     }
     wasVisibleRef.current = visible;
-  }, [visible, columns]);
+  }, [visible, columns, allowCreateColumn]);
 
   const submit = () => {
     if (mode === 'new') {
@@ -86,6 +88,7 @@ export function SetupAssignTableColumnModal({
             </Text>
           </View>
 
+          {allowCreateColumn ? (
           <Pressable
             accessibilityRole="button"
             style={[styles.option, mode === 'new' ? styles.optionActive : null, shadows.card]}
@@ -106,6 +109,7 @@ export function SetupAssignTableColumnModal({
               <Text style={styles.optionHint}>Spalte „{suggestedFieldName}" anlegen</Text>
             </View>
           </Pressable>
+          ) : null}
 
           {columns.length > 0 ? (
             <View style={styles.columnList}>

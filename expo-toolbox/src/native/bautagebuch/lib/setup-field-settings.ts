@@ -315,6 +315,28 @@ export function resolveHybridFieldLabel(
   return String(field?.fieldName || field?.fieldId || 'Feld').trim();
 }
 
+/** Label for controlled name inputs — preserves empty drafts while editing. */
+export function resolveHybridFieldEditLabel(
+  setupModel: Record<string, unknown>,
+  target: FieldSettingsTarget,
+  field: SetupFieldConfig | null,
+  mappingFields: MappingField[] = [],
+  draftLabels: Record<string, string> = {}
+): string {
+  if (target.kind === 'table-meta') {
+    return resolveTargetGroupLabel(setupModel, target);
+  }
+  const draft = field?.fieldId ? draftLabels[field.fieldId] : undefined;
+  if (draft !== undefined) return draft;
+  const sectionLabel = String(field?.label || '').trim();
+  if (sectionLabel) return sectionLabel;
+  const mapping = mappingFields.find((entry) => entry.fieldId === field?.fieldId);
+  if (mapping) {
+    return String(mapping.labelCandidate || mapping.fieldName || '').trim();
+  }
+  return String(field?.fieldName || field?.fieldId || '').trim();
+}
+
 export function resolveTargetDisplayName(
   setupModel: Record<string, unknown>,
   target: FieldSettingsTarget,
