@@ -9,6 +9,8 @@ import { SETUP_FIELD_TYPE_OPTIONS } from '../../lib/setup-field-settings';
 import { getStructureItems } from '../../lib/setup-structure';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
 import type { FieldRect, SetupFieldType, SetupStructureItem } from '../../types';
+import { SetupModalKeyboardFrame } from './SetupModalKeyboardFrame';
+import { SetupScrollView } from './SetupScrollView';
 
 type Props = {
   visible: boolean;
@@ -68,7 +70,8 @@ export function SetupManualFieldModal({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.root, { paddingTop: insets.top }]}>
+      <SetupModalKeyboardFrame>
+        <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <Pressable accessibilityRole="button" style={styles.headerBtn} onPress={onClose}>
             <Text style={styles.cancel}>Abbrechen</Text>
@@ -77,13 +80,12 @@ export function SetupManualFieldModal({
           <View style={styles.headerBtn} />
         </View>
 
-        <ScrollView
+        <SetupScrollView
           style={styles.body}
           contentContainerStyle={[
             styles.bodyContent,
             { paddingBottom: systemBottomInset(insets) + spacing.xl }
           ]}
-          keyboardShouldPersistTaps="handled"
         >
           <Text style={styles.subtitle}>
             Seite {page} · Bereich {Math.round(rect.width)}×{Math.round(rect.height)} pt
@@ -143,7 +145,7 @@ export function SetupManualFieldModal({
               </View>
             </>
           ) : null}
-        </ScrollView>
+        </SetupScrollView>
 
         <View style={[styles.footer, { paddingBottom: systemBottomInset(insets) + spacing.sm }]}>
           <PrimaryButton
@@ -152,7 +154,8 @@ export function SetupManualFieldModal({
             onPress={handleConfirm}
           />
         </View>
-      </View>
+        </View>
+      </SetupModalKeyboardFrame>
     </Modal>
   );
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -130,6 +130,10 @@ export default function SetupStructureScreen() {
 
   return (
     <KeyboardScrollProvider footerInset={systemBottomInset(insets)}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
       <SafeAreaView
         style={[styles.root, { paddingBottom: systemBottomInset(insets) }]}
         edges={['left', 'right']}
@@ -167,11 +171,15 @@ export default function SetupStructureScreen() {
         />
       ) : null}
       </SafeAreaView>
+      </KeyboardAvoidingView>
     </KeyboardScrollProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1
+  },
   root: {
     flex: 1,
     backgroundColor: colors.bg

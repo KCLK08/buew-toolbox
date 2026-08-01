@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,6 +8,8 @@ import { colors, shadows, spacing, typography } from '../../../../constants/them
 import { hapticSelection } from '../../../../lib/haptics';
 import { systemBottomInset } from '../../../../navigation/systemInsets';
 import type { SetupStructureTableColumn } from '../../types';
+import { SetupModalKeyboardFrame } from './SetupModalKeyboardFrame';
+import { SetupScrollView } from './SetupScrollView';
 
 type Props = {
   visible: boolean;
@@ -60,7 +62,8 @@ export function SetupAssignTableColumnModal({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.root, { paddingTop: insets.top }]}>
+      <SetupModalKeyboardFrame>
+        <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <Pressable accessibilityRole="button" style={styles.headerBtn} onPress={onClose}>
             <Text style={styles.cancel}>Abbrechen</Text>
@@ -69,13 +72,12 @@ export function SetupAssignTableColumnModal({
           <View style={styles.headerBtn} />
         </View>
 
-        <ScrollView
+        <SetupScrollView
           style={styles.body}
           contentContainerStyle={[
             styles.bodyContent,
             { paddingBottom: systemBottomInset(insets) + spacing.xl }
           ]}
-          keyboardShouldPersistTaps="handled"
         >
           <View style={styles.hero}>
             <View style={styles.heroIconWrap}>
@@ -140,7 +142,7 @@ export function SetupAssignTableColumnModal({
               })}
             </View>
           ) : null}
-        </ScrollView>
+        </SetupScrollView>
 
         {!readOnly ? (
           <View style={[styles.footer, { paddingBottom: systemBottomInset(insets) + spacing.sm }]}>
@@ -151,7 +153,8 @@ export function SetupAssignTableColumnModal({
             />
           </View>
         ) : null}
-      </View>
+        </View>
+      </SetupModalKeyboardFrame>
     </Modal>
   );
 }

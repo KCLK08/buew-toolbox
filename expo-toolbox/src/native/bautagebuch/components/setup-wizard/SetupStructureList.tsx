@@ -1,9 +1,10 @@
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { colors, shadows, spacing, typography } from '../../../../constants/theme';
 import { hapticLight, hapticSelection } from '../../../../lib/haptics';
 import type { SetupStructureItem } from '../../types';
+import { SetupScrollView } from './SetupScrollView';
 
 type Props = {
   items: SetupStructureItem[];
@@ -86,10 +87,9 @@ export function SetupStructureList({
   };
 
   return (
-    <ScrollView
+    <SetupScrollView
       style={styles.scroll}
       contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + bottomInset }]}
-      keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.intro}>
@@ -280,7 +280,7 @@ export function SetupStructureList({
           })}
         </View>
       )}
-    </ScrollView>
+    </SetupScrollView>
   );
 }
 
