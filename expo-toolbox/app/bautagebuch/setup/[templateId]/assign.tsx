@@ -144,11 +144,20 @@ export default function SetupAssignScreen() {
   );
 
   const handleUpdateField = useCallback(
-    async (fieldId: string, patch: { labelCandidate?: string; type?: string }) => {
+    async (
+      fieldId: string,
+      patch: {
+        labelCandidate?: string;
+        type?: string;
+        geometry?: { page: number; rect: { x: number; y: number; width: number; height: number } } | null;
+        page?: number;
+      }
+    ) => {
       if (!templateId) return;
-      await updateTemplateField(templateId, fieldId, patch);
+      const updated = await updateTemplateField(templateId, fieldId, patch);
+      if (!updated) return;
       setDetectedFields((current) =>
-        current.map((field) => (field.fieldId === fieldId ? { ...field, ...patch } : field))
+        current.map((field) => (field.fieldId === fieldId ? updated : field))
       );
     },
     [templateId]
