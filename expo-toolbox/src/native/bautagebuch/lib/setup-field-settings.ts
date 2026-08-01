@@ -196,7 +196,8 @@ export function resolveWalkthroughFieldSettingsIndex(
     return stored;
   }
   const nextOpen = targets.findIndex(
-    (target) => !isFieldSettingsTargetConfigured(target, wizard)
+    (target, index) =>
+      index > stored && !isFieldSettingsTargetConfigured(target, wizard)
   );
   return nextOpen >= 0 ? nextOpen : stored;
 }
@@ -453,16 +454,23 @@ export function listCheckboxGroupOptions(
   return options;
 }
 
+export function resolveNextSequentialIndex(currentIndex: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.min(Math.max(0, currentIndex) + 1, total - 1);
+}
+
 export function advanceFieldSettingsWalkthrough(
   setupModel: Record<string, unknown>,
   targets: FieldSettingsTarget[],
   currentTarget: FieldSettingsTarget
 ): Record<string, unknown> {
-  let next = markFieldSettingsTargetConfigured(setupModel, currentTarget);
-  const wizard = getWizardState(next);
-  const nextIndex = getNextOpenFieldSettingsIndex(targets, wizard, 0);
+  const currentIndex = targets.findIndex((target) => target.key === currentTarget.key);
+  const next = markFieldSettingsTargetConfigured(setupModel, currentTarget);
   return withWizardState(next, {
-    currentFieldSettingsIndex: nextIndex >= 0 ? nextIndex : wizard.currentFieldSettingsIndex
+    currentFieldSettingsIndex:
+      currentIndex >= 0
+        ? resolveNextSequentialIndex(currentIndex, targets.length)
+        : resolveCurrentFieldSettingsIndex(targets, getWizardState(next))
   });
 }
 
