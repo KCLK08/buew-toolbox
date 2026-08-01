@@ -89,70 +89,69 @@ export function SetupAssignFieldListPanel({
   };
 
   return (
-    <View style={styles.root}>
-      <ScrollView
-        style={styles.listScroll}
-        contentContainerStyle={[styles.listContent, { paddingBottom: spacing.md + bottomInset }]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.heading}>Felder</Text>
-        <Text style={styles.subheading}>
-          {mappingFields.length} Feld{mappingFields.length === 1 ? '' : 'er'} · Prüfen, bearbeiten und
-          zuordnen
-        </Text>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.lg + bottomInset }]}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+      nestedScrollEnabled
+    >
+      <Text style={styles.heading}>Felder</Text>
+      <Text style={styles.subheading}>
+        {mappingFields.length} Feld{mappingFields.length === 1 ? '' : 'er'} · Prüfen, bearbeiten und
+        zuordnen
+      </Text>
 
-        {mappingFields.length === 0 ? (
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>Noch keine Felder</Text>
-            <Text style={styles.emptyCopy}>
-              Wechseln Sie zur PDF-Ansicht und markieren Sie Bereiche mit „+ Feld markieren“.
-            </Text>
-          </View>
-        ) : null}
+      {mappingFields.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>Noch keine Felder</Text>
+          <Text style={styles.emptyCopy}>
+            Wechseln Sie zur PDF-Ansicht und markieren Sie Bereiche mit „+ Feld markieren“.
+          </Text>
+        </View>
+      ) : null}
 
-        {mappingFields.map((field) => {
-          const label = resolveLabel(field);
-          const assigned = isFieldAssigned(field.fieldId, wizard);
-          const fieldAssignment = resolveFieldAssignmentSummary(setupModel, field.fieldId);
-          const isCurrent = field.fieldId === currentField?.fieldId;
-          const hasGeometry = fieldHasGeometry(field);
-          return (
-            <Pressable
-              key={field.fieldId}
-              accessibilityRole="button"
-              style={[styles.card, isCurrent ? styles.cardCurrent : null]}
-              onPress={() => {
-                void hapticSelection();
-                const index = mappingFields.findIndex((entry) => entry.fieldId === field.fieldId);
-                if (index >= 0) onSelectField(index);
-              }}
-            >
-              <View style={styles.cardHeader}>
-                <View style={[styles.sourceDot, { backgroundColor: sourceDotColor(field.source) }]} />
-                <View style={styles.cardCopy}>
-                  <Text style={styles.cardTitle}>{label}</Text>
-                  <Text style={styles.cardMeta}>
-                    {mappingTypeLabel(field.type)} · {fieldSourceLabel(field.source)}
-                  </Text>
-                  <Text style={styles.cardMeta}>
-                    {assigned
-                      ? fieldAssignment.kind === 'table'
-                        ? `Tabelle: ${fieldAssignment.label}`
-                        : `Gruppe: ${fieldAssignment.label}`
-                      : 'Keine Gruppe zugewiesen'}
-                    {hasGeometry ? ` · Seite ${field.page}` : ''}
-                  </Text>
-                </View>
-                <Text style={styles.cardIndex}>{field.displayOrder}</Text>
+      {mappingFields.map((field) => {
+        const label = resolveLabel(field);
+        const assigned = isFieldAssigned(field.fieldId, wizard);
+        const fieldAssignment = resolveFieldAssignmentSummary(setupModel, field.fieldId);
+        const isCurrent = field.fieldId === currentField?.fieldId;
+        const hasGeometry = fieldHasGeometry(field);
+        return (
+          <Pressable
+            key={field.fieldId}
+            accessibilityRole="button"
+            style={[styles.card, isCurrent ? styles.cardCurrent : null]}
+            onPress={() => {
+              void hapticSelection();
+              const index = mappingFields.findIndex((entry) => entry.fieldId === field.fieldId);
+              if (index >= 0) onSelectField(index);
+            }}
+          >
+            <View style={styles.cardHeader}>
+              <View style={[styles.sourceDot, { backgroundColor: sourceDotColor(field.source) }]} />
+              <View style={styles.cardCopy}>
+                <Text style={styles.cardTitle}>{label}</Text>
+                <Text style={styles.cardMeta}>
+                  {mappingTypeLabel(field.type)} · {fieldSourceLabel(field.source)}
+                </Text>
+                <Text style={styles.cardMeta}>
+                  {assigned
+                    ? fieldAssignment.kind === 'table'
+                      ? `Tabelle: ${fieldAssignment.label}`
+                      : `Gruppe: ${fieldAssignment.label}`
+                    : 'Keine Gruppe zugewiesen'}
+                  {hasGeometry ? ` · Seite ${field.page}` : ''}
+                </Text>
               </View>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+              <Text style={styles.cardIndex}>{field.displayOrder}</Text>
+            </View>
+          </Pressable>
+        );
+      })}
 
       {currentField ? (
-        <View style={[styles.detail, { paddingBottom: spacing.lg + bottomInset }]}>
+        <View style={styles.detail}>
           <Text style={styles.detailTitle}>Felddetails</Text>
 
           <Text style={styles.detailLabel}>Name</Text>
@@ -165,7 +164,7 @@ export function SetupAssignFieldListPanel({
           />
 
           <Text style={styles.detailLabel}>Feldtyp</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeRow} nestedScrollEnabled>
             {SETUP_FIELD_TYPE_OPTIONS.filter((option) => option.value !== 'table').map((option) => {
               const normalized =
                 currentField.type === 'dropdown' || currentField.type === 'radio'
@@ -258,22 +257,20 @@ export function SetupAssignFieldListPanel({
           </View>
         </View>
       ) : null}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
+  scroll: {
     flex: 1,
     minHeight: 0
   },
-  listScroll: {
-    flex: 1
-  },
-  listContent: {
+  scrollContent: {
     padding: spacing.pageX,
-    paddingBottom: spacing.md,
-    gap: spacing.xs
+    paddingBottom: spacing.lg,
+    gap: spacing.xs,
+    flexGrow: 1
   },
   heading: {
     ...typography.title,
@@ -343,8 +340,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.panel,
-    padding: spacing.pageX,
-    paddingBottom: spacing.lg,
+    marginTop: spacing.sm,
+    paddingTop: spacing.md,
     gap: spacing.xs
   },
   detailTitle: {
