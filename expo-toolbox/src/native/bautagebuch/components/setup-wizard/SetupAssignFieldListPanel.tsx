@@ -39,6 +39,7 @@ type Props = {
   onShowInPdf: () => void;
   onAssignGroup: (item: SetupStructureItem) => void;
   onAssignTable: (item: SetupStructureItem) => void;
+  onClearAssignment?: (fieldId: string) => void;
   onChangeFieldName: (fieldId: string, name: string) => void;
   onChangeFieldType: (fieldId: string, type: SetupFieldType) => void;
   onEditFieldPosition: (fieldId: string) => void;
@@ -58,6 +59,7 @@ export function SetupAssignFieldListPanel({
   onShowInPdf,
   onAssignGroup,
   onAssignTable,
+  onClearAssignment,
   onChangeFieldName,
   onChangeFieldType,
   onEditFieldPosition,
@@ -73,6 +75,8 @@ export function SetupAssignFieldListPanel({
   const assignment = currentField
     ? resolveFieldAssignmentSummary(setupModel, currentField.fieldId)
     : null;
+  const isAssigned =
+    assignment?.kind === 'group' || assignment?.kind === 'table';
   const fieldNumber = currentField?.displayOrder ?? currentFieldIndex + 1;
   const displayName = currentField ? resolveLabel(currentField) : null;
   const isManual = isManualMappingField(currentField);
@@ -180,11 +184,22 @@ export function SetupAssignFieldListPanel({
             </Text>
           )}
 
-          {!readOnly && assignment?.kind === 'none' ? (
+          {!readOnly ? (
             <View style={styles.assignSection}>
+              {isAssigned && onClearAssignment ? (
+                <Pressable
+                  accessibilityRole="button"
+                  style={styles.clearAssignBtn}
+                  onPress={() => currentField && onClearAssignment(currentField.fieldId)}
+                >
+                  <Text style={styles.clearAssignLabel}>Zuordnung entfernen</Text>
+                </Pressable>
+              ) : null}
               {groups.length > 0 ? (
                 <View style={styles.assignBlock}>
-                  <Text style={styles.assignHeading}>Gruppe</Text>
+                  <Text style={styles.assignHeading}>
+                    {isAssigned ? 'Gruppe ändern' : 'Gruppe'}
+                  </Text>
                   {groups.map((item) => (
                     <Pressable
                       key={item.id}
@@ -200,7 +215,9 @@ export function SetupAssignFieldListPanel({
               ) : null}
               {tables.length > 0 ? (
                 <View style={styles.assignBlock}>
-                  <Text style={styles.assignHeading}>Tabellen</Text>
+                  <Text style={styles.assignHeading}>
+                    {isAssigned ? 'Tabelle ändern' : 'Tabellen'}
+                  </Text>
                   {tables.map((item) => (
                     <Pressable
                       key={item.id}
@@ -226,16 +243,6 @@ export function SetupAssignFieldListPanel({
 
           <View style={styles.detailActions}>
             <PrimaryButton label="In PDF anzeigen" variant="ghost" compact onPress={onShowInPdf} />
-            {!readOnly && !isManual ? (
-              <Pressable
-                accessibilityRole="button"
-                style={styles.deleteBtn}
-                onPress={() => currentField && onConfirmDeleteField(currentField.fieldId)}
-              >
-                <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.danger} />
-                <Text style={styles.deleteLabel}>Feld entfernen</Text>
-              </Pressable>
-            ) : null}
           </View>
         </View>
       ) : null}
@@ -331,6 +338,16 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.xxs
   },
+  clearAssignBtn: {
+    alignSelf: 'flex-start',
+    minHeight: 32,
+    justifyContent: 'center'
+  },
+  clearAssignLabel: {
+    ...typography.caption,
+    color: colors.muted,
+    fontFamily: 'SpaceGrotesk_600SemiBold'
+  },
   assignBlock: {
     gap: spacing.xxs
   },
@@ -361,20 +378,8 @@ const styles = StyleSheet.create({
   detailActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     marginTop: spacing.sm,
     gap: spacing.sm
-  },
-  deleteBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xxs,
-    minHeight: 36,
-    paddingHorizontal: spacing.xs
-  },
-  deleteLabel: {
-    ...typography.caption,
-    color: colors.danger,
-    fontFamily: 'SpaceGrotesk_600SemiBold'
   }
 });
