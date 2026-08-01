@@ -345,11 +345,6 @@ export function validateStructureStep(structure: SetupStructureItem[]): string |
   if (structure.length === 0) {
     return 'Lege mindestens eine Gruppe oder Tabelle an.';
   }
-  for (const item of structure) {
-    if (item.type === 'table' && item.columns.length === 0) {
-      return `Tabelle „${item.name}“ benötigt mindestens eine Spalte.`;
-    }
-  }
   return null;
 }
 

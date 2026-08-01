@@ -776,11 +776,18 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         border-radius: 4px;
         z-index: 6;
         box-shadow: 0 0 0 3px rgba(196, 75, 50, 0.22);
+        pointer-events: none;
       }
       .draft-rect.editable {
         pointer-events: auto;
         touch-action: none;
         cursor: move;
+      }
+      .draft-drag-surface {
+        position: absolute;
+        inset: 0;
+        cursor: move;
+        touch-action: none;
       }
       .draft-handle {
         position: absolute;
@@ -793,6 +800,17 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         box-shadow: 0 1px 4px rgba(0,0,0,0.18);
         pointer-events: auto;
         touch-action: none;
+        z-index: 2;
+      }
+      .draft-handle.side-n,
+      .draft-handle.side-s {
+        margin-left: -8px;
+        left: 50%;
+      }
+      .draft-handle.side-e,
+      .draft-handle.side-w {
+        margin-top: -8px;
+        top: 50%;
       }
       .highlight {
         position: absolute;
@@ -962,10 +980,12 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
         for (const frame of wrap.querySelectorAll('.page-frame')) {
           frame.classList.toggle('draw-enabled', drawModeEnabled);
         }
-        viewport.style.overflow = drawModeEnabled ? 'hidden' : 'auto';
-        viewport.style.touchAction = drawModeEnabled ? 'none' : 'pan-y pinch-zoom';
         if (drawModeEnabled) {
+          viewport.style.overflow = 'hidden';
+          viewport.style.touchAction = 'none';
           pinchStartDistance = 0;
+        } else {
+          restoreViewportNavigation();
         }
         if (!drawModeEnabled && drawPreviewEl) {
           drawPreviewEl.remove();
@@ -1029,31 +1049,50 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
       }
 
       function applyDraftViewportMode() {
-        if (!draftRectState) return;
+        if (!draftRectState) {
+          restoreViewportNavigation();
+          return;
+        }
+        if (draftRectState.editable) {
+          viewport.style.overflow = 'auto';
+          viewport.style.touchAction = 'none';
+          return;
+        }
+        restoreViewportNavigation();
+      }
+
+      function restoreViewportNavigation() {
+        if (drawModeEnabled || draftRectState?.editable) return;
         viewport.style.overflow = 'auto';
-        viewport.style.touchAction = draftRectState.editable ? 'none' : 'pan-y pinch-zoom';
+        viewport.style.touchAction = 'pan-y pinch-zoom';
       }
 
       function mountDraftHandles(frame, pageNumber) {
         if (!draftRectEl || !draftRectState?.editable) return;
-        draftRectEl.querySelectorAll('.draft-handle').forEach((handle) => handle.remove());
-        ['nw', 'ne', 'sw', 'se'].forEach((handleName) => {
+        draftRectEl.querySelectorAll('.draft-handle, .draft-drag-surface').forEach((node) => node.remove());
+        const dragSurface = document.createElement('div');
+        dragSurface.className = 'draft-drag-surface';
+        draftRectEl.appendChild(dragSurface);
+        ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach((handleName) => {
           const handle = document.createElement('div');
           handle.className = 'draft-handle';
+          if (handleName.length === 1) handle.classList.add('side-' + handleName);
           handle.dataset.handle = handleName;
           if (handleName.includes('n')) handle.style.top = '0';
           if (handleName.includes('s')) handle.style.top = '100%';
           if (handleName.includes('w')) handle.style.left = '0';
           if (handleName.includes('e')) handle.style.left = '100%';
+          if (handleName === 'n' || handleName === 's') handle.style.left = '50%';
+          if (handleName === 'e' || handleName === 'w') handle.style.top = '50%';
           draftRectEl.appendChild(handle);
         });
         if (draftRectEl.dataset.interactions !== '1') {
           draftRectEl.dataset.interactions = '1';
-          attachDraftRectInteractions(frame, pageNumber);
+          attachDraftRectInteractions(frame, pageNumber, dragSurface);
         }
       }
 
-      function attachDraftRectInteractions(frame, pageNumber) {
+      function attachDraftRectInteractions(frame, pageNumber, dragSurface) {
         if (!draftRectEl || !draftRectState || !draftRectState.editable) return;
 
         const handles = draftRectEl.querySelectorAll('.draft-handle');
@@ -1141,18 +1180,17 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           });
         };
 
-        bindTouchTarget(draftRectEl, 'move');
+        bindTouchTarget(dragSurface, 'move');
         handles.forEach((handle) => {
           bindTouchTarget(handle, 'resize', String(handle.dataset.handle || 'se'));
         });
 
-        draftRectEl.addEventListener('pointerdown', (event) => {
+        dragSurface.addEventListener('pointerdown', (event) => {
           if (!draftRectState.editable || event.pointerType === 'touch') return;
-          if (event.target && event.target.classList && event.target.classList.contains('draft-handle')) return;
           event.preventDefault();
           event.stopPropagation();
           beginInteraction(event.clientX, event.clientY, 'move');
-          try { draftRectEl.setPointerCapture(event.pointerId); } catch (_) {}
+          try { dragSurface.setPointerCapture(event.pointerId); } catch (_) {}
         });
 
         handles.forEach((handle) => {
@@ -1165,7 +1203,7 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           });
         });
 
-        draftRectEl.addEventListener('pointermove', (event) => {
+        dragSurface.addEventListener('pointermove', (event) => {
           if (!draftInteraction || event.pointerType === 'touch') return;
           event.preventDefault();
           updateInteraction(event.clientX, event.clientY);
@@ -1175,11 +1213,11 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           if (!draftInteraction || event.pointerType === 'touch') return;
           event.preventDefault();
           finishInteraction();
-          try { draftRectEl.releasePointerCapture(event.pointerId); } catch (_) {}
+          try { dragSurface.releasePointerCapture(event.pointerId); } catch (_) {}
         };
 
-        draftRectEl.addEventListener('pointerup', onPointerEnd);
-        draftRectEl.addEventListener('pointercancel', onPointerEnd);
+        dragSurface.addEventListener('pointerup', onPointerEnd);
+        dragSurface.addEventListener('pointercancel', onPointerEnd);
       }
 
       function renderDraftRect() {
@@ -1262,10 +1300,7 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
       function clearDraftRect() {
         draftRectState = null;
         removeDraftRectEl();
-        if (!drawModeEnabled) {
-          viewport.style.overflow = 'auto';
-          viewport.style.touchAction = 'pan-y pinch-zoom';
-        }
+        restoreViewportNavigation();
       }
 
       function attachDrawHandlers(frame, pageNumber) {
@@ -1315,13 +1350,12 @@ export function buildScrollableFieldPreviewHtml(options: BuildPreviewHtmlOptions
           for (const frame of wrap.querySelectorAll('.page-frame')) {
             frame.classList.remove('draw-enabled');
           }
-          viewport.style.overflow = 'hidden';
-          viewport.style.touchAction = 'none';
           post({
             type: 'fieldDrawDraft',
             page: pageNumber,
             rect: pdfRect
           });
+          requestAnimationFrame(() => restoreViewportNavigation());
         };
 
         const beginDraw = (clientX, clientY) => {

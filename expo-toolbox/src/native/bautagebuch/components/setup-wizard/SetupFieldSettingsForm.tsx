@@ -10,6 +10,7 @@ import {
   listCheckboxGroupOptions,
   listTableColumnsForMeta,
   normalizeSetupFieldType,
+  resolveHybridFieldEditLabel,
   resolveTableMeta,
   setupFieldTypeLabel,
   updateFieldSettingsTarget,
@@ -24,12 +25,15 @@ import type {
   SetupFieldDateMode,
   SetupFieldType
 } from '../../types';
+import type { MappingField } from '../../lib/setup-mapping';
 
 type Props = {
   setupModel: Record<string, unknown>;
   target: FieldSettingsTarget;
   field: SetupFieldConfig | null;
   detectedFields: DetectedField[];
+  mappingFields?: MappingField[];
+  draftLabels?: Record<string, string>;
   readOnly?: boolean;
   onChange: (next: Record<string, unknown>) => void;
   onFieldLabelChange?: (fieldId: string, label: string) => void;
@@ -65,6 +69,8 @@ export function SetupFieldSettingsForm({
   target,
   field,
   detectedFields,
+  mappingFields = [],
+  draftLabels = {},
   readOnly = false,
   onChange,
   onFieldLabelChange
@@ -123,7 +129,7 @@ export function SetupFieldSettingsForm({
       ) : (
         <TextField
           label="Name des Feldes"
-          value={field.label || ''}
+          value={resolveHybridFieldEditLabel(setupModel, target, field, mappingFields, draftLabels)}
           editable={!readOnly}
           onChangeText={(label) => {
             if (onFieldLabelChange && field.fieldId) {

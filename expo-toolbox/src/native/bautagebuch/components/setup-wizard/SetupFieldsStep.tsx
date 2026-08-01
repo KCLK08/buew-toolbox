@@ -8,12 +8,10 @@ import { hapticSuccess } from '../../../../lib/haptics';
 import {
   advanceFieldSettingsWalkthrough,
   applyFieldTypeChange,
-  getFieldSettingsProgress,
   isFieldSettingsWalkthroughComplete,
   listFieldSettingsTargets,
   normalizeSetupFieldType,
   resolveCurrentFieldSettingsIndex,
-  resolveDetectedFieldTypeLabel,
   resolveFieldDisplayOrder,
   resolveFieldFromTarget,
   resolveFieldPreviewPage,
@@ -26,7 +24,6 @@ import { SetupPdfFieldPreview } from '../SetupPdfFieldPreview';
 import { SetupFieldTypePickerSheet } from './SetupFieldTypePickerSheet';
 import { SetupFieldsHeader, type SetupFieldsViewTab } from './SetupFieldsHeader';
 import { SetupFieldsOverview } from './SetupFieldsOverview';
-import { SetupFieldsProgressBar } from './SetupFieldsProgressBar';
 import { SetupFieldsSettingsPanel } from './SetupFieldsSettingsPanel';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -78,17 +75,9 @@ export function SetupFieldsStep({
   const currentIndex = resolveCurrentFieldSettingsIndex(targets, wizard);
   const currentTarget = targets[currentIndex] || null;
   const currentField = currentTarget ? resolveFieldFromTarget(setupModel, currentTarget) : null;
-  const progress = useMemo(() => getFieldSettingsProgress(targets, wizard), [targets, wizard]);
   const walkthroughDone = isFieldSettingsWalkthroughComplete(targets, wizard);
   const fieldDisplayOrder = resolveFieldDisplayOrder(mappingFields, currentField?.fieldId);
   const fieldNumber = fieldDisplayOrder ?? (currentTarget ? currentIndex + 1 : 0);
-  const displayName = currentTarget
-    ? resolveTargetDisplayName(setupModel, currentTarget, currentField, mappingFields, draftLabels)
-    : null;
-  const detectedTypeLabel =
-    currentTarget && currentTarget.kind !== 'table-meta'
-      ? resolveDetectedFieldTypeLabel(currentField, detectedFields)
-      : null;
   const activeFieldType = currentField
     ? normalizeSetupFieldType(currentField, detectedFields)
     : 'text';
@@ -159,13 +148,6 @@ export function SetupFieldsStep({
         onOpenOverview={() => setOverviewOpen(true)}
       />
 
-      <SetupFieldsProgressBar
-        progress={progress}
-        fieldNumber={fieldNumber}
-        fieldLabel={displayName}
-        detectedTypeLabel={detectedTypeLabel}
-      />
-
       <View style={styles.body}>
         {activeTab === 'pdf' ? (
           <View style={styles.tabPane}>
@@ -175,7 +157,17 @@ export function SetupFieldsStep({
               mappingFields={mappingFields}
               overlayFramesOnly
               activeFieldId={currentField?.fieldId || null}
-              activeFieldLabel={displayName}
+              activeFieldLabel={
+                currentTarget
+                  ? resolveTargetDisplayName(
+                      setupModel,
+                      currentTarget,
+                      currentField,
+                      mappingFields,
+                      draftLabels
+                    )
+                  : null
+              }
               activeFieldPage={activeFieldPage}
               variant="assign"
               onFieldSelect={selectFieldById}
@@ -186,6 +178,9 @@ export function SetupFieldsStep({
           <SetupFieldsSettingsPanel
             setupModel={setupModel}
             target={currentTarget}
+            currentTargetIndex={currentIndex}
+            totalTargets={targets.length}
+            fieldNumber={fieldNumber}
             detectedFields={detectedFields}
             mappingFields={mappingFields}
             draftLabels={draftLabels}
@@ -194,6 +189,7 @@ export function SetupFieldsStep({
             onFieldLabelChange={handleFieldLabelChange}
             onOpenTypePicker={() => setTypePickerOpen(true)}
             onSaveAndNext={handleSaveAndNext}
+            onSelectTarget={selectTargetAtIndex}
             showSaveButton={Boolean(currentTarget) && !walkthroughDone}
             bottomInset={spacing.sm}
           />

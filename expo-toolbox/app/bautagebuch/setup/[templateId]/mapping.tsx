@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography } from '../../../../src/constants/theme';
+import { KeyboardScrollProvider } from '../../../../src/contexts/KeyboardScrollContext';
 import { SetupStructureStep } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupStructureStep';
 import { SetupWizardStepNav } from '../../../../src/native/bautagebuch/components/setup-wizard/SetupWizardStepNav';
 import { useSetupAutosave } from '../../../../src/native/bautagebuch/hooks/useSetupAutosave';
@@ -128,10 +129,11 @@ export default function SetupStructureScreen() {
   const readOnly = templateStatus === 'archived';
 
   return (
-    <SafeAreaView
-      style={[styles.root, { paddingBottom: systemBottomInset(insets) }]}
-      edges={['left', 'right']}
-    >
+    <KeyboardScrollProvider footerInset={systemBottomInset(insets)}>
+      <SafeAreaView
+        style={[styles.root, { paddingBottom: systemBottomInset(insets) }]}
+        edges={['left', 'right']}
+      >
       {showWizardNav ? (
         <SetupWizardStepNav
           activeStep="structure"
@@ -164,7 +166,8 @@ export default function SetupStructureScreen() {
           }}
         />
       ) : null}
-    </SafeAreaView>
+      </SafeAreaView>
+    </KeyboardScrollProvider>
   );
 }
 

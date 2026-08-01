@@ -171,6 +171,21 @@ export function resolveFieldDisplayLabel(
   return 'Feld';
 }
 
+/** Label for controlled name inputs — preserves empty drafts while editing. */
+export function resolveFieldEditLabel(
+  field: MappingField,
+  wizard?: SetupWizardState,
+  draftLabels?: Record<string, string>
+): string {
+  const draft = draftLabels?.[field.fieldId];
+  if (draft !== undefined) return draft;
+  const fromField = String(field.labelCandidate || field.fieldName || '').trim();
+  if (fromField) return fromField;
+  const custom = wizard?.fieldLabels?.[field.fieldId];
+  if (custom && custom.trim()) return custom.trim();
+  return '';
+}
+
 export function buildFieldPreviewHighlights(
   mappingFields: MappingField[],
   resolveLabel: (field: MappingField) => string

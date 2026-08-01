@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { PrimaryButton } from '../../../../components/mobile';
@@ -16,11 +16,16 @@ import { type MappingField } from '../../lib/setup-mapping';
 import { fieldSourceLabel, fieldSourceTone } from '../../lib/template-field';
 import type { DetectedField, FieldSettingsTarget } from '../../types';
 import { SetupFieldSettingsForm } from './SetupFieldSettingsForm';
+import { SetupFieldStepNavigator } from './SetupFieldStepNavigator';
+import { SetupScrollView } from './SetupScrollView';
 import type { SetupFieldType } from '../../types';
 
 type Props = {
   setupModel: Record<string, unknown>;
   target: FieldSettingsTarget | null;
+  currentTargetIndex: number;
+  totalTargets: number;
+  fieldNumber: number;
   detectedFields: DetectedField[];
   mappingFields?: MappingField[];
   draftLabels?: Record<string, string>;
@@ -29,6 +34,7 @@ type Props = {
   onFieldLabelChange?: (fieldId: string, label: string) => void;
   onOpenTypePicker: () => void;
   onSaveAndNext: () => void;
+  onSelectTarget: (index: number) => void;
   showSaveButton?: boolean;
   bottomInset?: number;
 };
@@ -36,6 +42,9 @@ type Props = {
 export function SetupFieldsSettingsPanel({
   setupModel,
   target,
+  currentTargetIndex,
+  totalTargets,
+  fieldNumber,
   detectedFields,
   mappingFields = [],
   draftLabels = {},
@@ -44,6 +53,7 @@ export function SetupFieldsSettingsPanel({
   onFieldLabelChange,
   onOpenTypePicker,
   onSaveAndNext,
+  onSelectTarget,
   showSaveButton = true,
   bottomInset = 0
 }: Props) {
@@ -74,20 +84,23 @@ export function SetupFieldsSettingsPanel({
     target.kind === 'table-meta' ? 'table' : normalizeSetupFieldType(field, detectedFields);
 
   return (
-    <ScrollView
+    <SetupScrollView
       style={styles.scroll}
       contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + bottomInset }]}
-      keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
+      <SetupFieldStepNavigator
+        fieldNumber={fieldNumber}
+        total={totalTargets}
+        canGoPrevious={currentTargetIndex > 0}
+        canGoNext={currentTargetIndex < totalTargets - 1}
+        onPrevious={() => onSelectTarget(currentTargetIndex - 1)}
+        onNext={() => onSelectTarget(currentTargetIndex + 1)}
+      />
+
+      {displayName ? <Text style={styles.fieldName}>{displayName}</Text> : null}
+
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Feldinformationen</Text>
-        {target.kind !== 'table-meta' ? (
-          <View style={styles.infoCard}>
-            <Text style={styles.infoLabel}>Name</Text>
-            <Text style={styles.infoValue}>{displayName}</Text>
-          </View>
-        ) : null}
         {sourceLabel ? (
           <View style={styles.infoCard}>
             <Text style={styles.infoLabel}>Quelle</Text>
@@ -141,6 +154,8 @@ export function SetupFieldsSettingsPanel({
           target={target}
           field={field}
           detectedFields={detectedFields}
+          mappingFields={mappingFields}
+          draftLabels={draftLabels}
           readOnly={readOnly}
           onChange={onChange}
           onFieldLabelChange={onFieldLabelChange}
@@ -150,7 +165,7 @@ export function SetupFieldsSettingsPanel({
       {showSaveButton && !readOnly ? (
         <PrimaryButton label="Speichern & weiter" onPress={onSaveAndNext} />
       ) : null}
-    </ScrollView>
+    </SetupScrollView>
   );
 }
 
@@ -162,6 +177,10 @@ const styles = StyleSheet.create({
     padding: spacing.pageX,
     paddingBottom: spacing.xl,
     gap: spacing.lg
+  },
+  fieldName: {
+    ...typography.title,
+    color: colors.ink
   },
   section: {
     gap: spacing.sm
