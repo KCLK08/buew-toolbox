@@ -9,11 +9,11 @@ import {
   assignFieldToGroup,
   assignFieldToTableCell,
   addWizardGroup,
+  advanceMappingWalkthrough,
   checkMappingTransition,
   deferField,
   getMappingCompletionSummary,
   getMappingProgress,
-  getNextUnassignedIndex,
   getWizardState,
   isMappingComplete,
   resolveCurrentMappingIndex,
@@ -118,14 +118,7 @@ export function SetupMappingStep({
       return;
     }
 
-    const nextIndex = getNextUnassignedIndex(mappingFields, nextWizard, 0);
-    onChange({
-      ...next,
-      wizard: {
-        ...nextWizard,
-        currentFieldIndex: nextIndex >= 0 ? nextIndex : nextWizard.currentFieldIndex
-      }
-    });
+    onChange(advanceMappingWalkthrough(next, mappingFields, currentIndex));
   };
 
   const assignGroup = (sectionId: string) => {

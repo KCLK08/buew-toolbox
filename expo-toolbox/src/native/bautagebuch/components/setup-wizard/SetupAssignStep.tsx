@@ -9,9 +9,9 @@ import { hapticSuccess } from '../../../../lib/haptics';
 import {
   assignFieldToGroup,
   assignFieldToTableColumn,
+  advanceMappingWalkthrough,
   getAssignedFieldIds,
   getMappingProgress,
-  getNextUnassignedIndex,
   getWizardState,
   isMappingComplete,
   removeFieldFromWizard,
@@ -169,14 +169,7 @@ export function SetupAssignStep({
       onChange(next);
       return;
     }
-    const nextIndex = getNextUnassignedIndex(mappingFields, nextWizard, 0);
-    onChange({
-      ...next,
-      wizard: {
-        ...nextWizard,
-        currentFieldIndex: nextIndex >= 0 ? nextIndex : nextWizard.currentFieldIndex
-      }
-    });
+    onChange(advanceMappingWalkthrough(next, mappingFields, currentIndex));
   };
 
   const assignToGroup = (item: SetupStructureItem) => {

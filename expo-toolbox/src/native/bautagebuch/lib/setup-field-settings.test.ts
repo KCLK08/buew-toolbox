@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   applyFieldTypeChange,
+  advanceFieldSettingsWalkthrough,
   buildFieldLabelResolver,
   getFieldSettingsProgress,
   listFieldSettingsTargets,
@@ -99,7 +100,15 @@ test('resolveCurrentFieldSettingsIndex respects stored index', () => {
   assert.equal(resolveCurrentFieldSettingsIndex(targets, wizard), 0);
 });
 
-test('resolveWalkthroughFieldSettingsIndex prefers first open target', () => {
+test('advanceFieldSettingsWalkthrough advances sequentially through all targets', () => {
+  const targets = listFieldSettingsTargets(setupModel);
+  const next = advanceFieldSettingsWalkthrough(setupModel, targets, targets[0]);
+  const wizard = getWizardState(next);
+  assert.equal(wizard.currentFieldSettingsIndex, 0);
+  assert.equal(wizard.configuredFieldIds?.length, 1);
+});
+
+test('resolveWalkthroughFieldSettingsIndex keeps stored index for configured target', () => {
   const targets = listFieldSettingsTargets(setupModel);
   const wizard = getWizardState(
     withWizardState(setupModel, {

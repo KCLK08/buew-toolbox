@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import {
+  advanceMappingWalkthrough,
   assignFieldToGroup,
   assignFieldToTableCell,
   assignFieldToTableColumn,
@@ -247,7 +248,21 @@ test('resolveCurrentMappingIndex respects stored index', () => {
   assert.equal(resolveCurrentMappingIndex(fields, wizard), 2);
 });
 
-test('resolveWalkthroughMappingIndex prefers first unassigned field', () => {
+test('advanceMappingWalkthrough advances sequentially through all fields', () => {
+  const fields = sortMappingFields([field('a'), field('b'), field('c')]);
+  const model = withWizardState(
+    {},
+    {
+      currentFieldIndex: 1,
+      groups: [{ sectionId: 'g1', label: 'G1' }],
+      assignments: { a: 'g1', b: 'g1' }
+    }
+  );
+  const next = advanceMappingWalkthrough(model, fields, 1);
+  assert.equal(getWizardState(next).currentFieldIndex, 2);
+});
+
+test('resolveWalkthroughMappingIndex prefers next unassigned field after current', () => {
   const fields = sortMappingFields([field('a'), field('b'), field('c')]);
   const model = withWizardState(
     {},
@@ -257,8 +272,7 @@ test('resolveWalkthroughMappingIndex prefers first unassigned field', () => {
       assignments: { a: 'g1' }
     }
   );
-  const wizard = getWizardState(model);
-  assert.equal(resolveWalkthroughMappingIndex(fields, wizard), 1);
+  assert.equal(resolveWalkthroughMappingIndex(fields, getWizardState(model)), 1);
 });
 
 test('checkMappingTransition reports deferred fields', () => {

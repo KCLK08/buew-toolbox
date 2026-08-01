@@ -553,6 +553,22 @@ export function getNextUnassignedIndex(
   return -1;
 }
 
+export function resolveNextSequentialIndex(currentIndex: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.min(Math.max(0, currentIndex) + 1, total - 1);
+}
+
+export function advanceMappingWalkthrough(
+  setupModel: Record<string, unknown>,
+  fields: MappingField[],
+  currentIndex: number
+): Record<string, unknown> {
+  const wizard = getWizardState(setupModel);
+  return withWizardState(setupModel, {
+    currentFieldIndex: resolveNextSequentialIndex(currentIndex, fields.length)
+  });
+}
+
 export function isMappingComplete(fields: MappingField[], wizard: SetupWizardState): boolean {
   if (fields.length === 0) return false;
   return fields.every(
@@ -953,7 +969,7 @@ export function resolveWalkthroughMappingIndex(
   ) {
     return stored;
   }
-  const next = getNextUnassignedIndex(fields, wizard, 0);
+  const next = getNextUnassignedIndex(fields, wizard, stored + 1);
   return next >= 0 ? next : stored;
 }
 
