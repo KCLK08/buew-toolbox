@@ -5,6 +5,7 @@ import {
   assignFieldToGroup,
   assignFieldToTableCell,
   assignFieldToTableColumn,
+  clearFieldAssignment,
   deferField,
   ensureWizardInitialized,
   getMappingProgress,
@@ -572,6 +573,30 @@ test('assignFieldToTableColumn creates column and assigns field', () => {
   const rebuilt = rebuildSectionsFromWizard(model, fields);
   const tables = rebuilt.table_sections as Array<{ rows: Array<{ cells: Array<{ label: string }> }> }>;
   assert.equal(tables[0]?.rows[0]?.cells[0]?.label, 'Tätigkeit');
+});
+
+test('clearFieldAssignment removes wizard and section references without deleting field label', () => {
+  let model = withWizardState(
+    {
+      single_sections: [
+        {
+          sectionId: 'g1',
+          label: 'Allgemein',
+          fields: [{ fieldId: 'f1', label: 'Baustelle', type: 'text' }]
+        }
+      ]
+    },
+    {
+      assignments: { f1: 'g1' },
+      fieldLabels: { f1: 'Baustelle' }
+    }
+  );
+  model = clearFieldAssignment(model, 'f1');
+  const wizard = getWizardState(model);
+  assert.equal(wizard.assignments.f1, undefined);
+  assert.equal(wizard.fieldLabels?.f1, 'Baustelle');
+  const sections = model.single_sections as Array<{ fields: Array<{ fieldId: string }> }>;
+  assert.equal(sections[0]?.fields.length, 0);
 });
 
 console.log(`\n${passed} tests passed`);

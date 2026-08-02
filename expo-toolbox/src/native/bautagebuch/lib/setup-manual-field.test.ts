@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  canDeleteMappingField,
+  canEditMappingFieldGeometry,
   geometryDraftFromField,
+  isAcroformMappingField,
   isManualMappingField,
   mappingFieldGeometry
 } from './setup-manual-field';
@@ -28,6 +31,15 @@ const manualField: MappingField = {
 test('isManualMappingField detects manual source', () => {
   assert.equal(isManualMappingField(manualField), true);
   assert.equal(isManualMappingField({ ...manualField, source: 'acroform' }), false);
+});
+
+test('permission helpers restrict delete and geometry to manual fields', () => {
+  const acroform = { ...manualField, source: 'acroform' as const };
+  assert.equal(isAcroformMappingField(acroform), true);
+  assert.equal(canDeleteMappingField(acroform), false);
+  assert.equal(canEditMappingFieldGeometry(acroform), false);
+  assert.equal(canDeleteMappingField(manualField), true);
+  assert.equal(canEditMappingFieldGeometry(manualField), true);
 });
 
 test('geometryDraftFromField prefers stored geometry', () => {

@@ -483,6 +483,29 @@ function removeFieldFromConfiguredTargets(configuredFieldIds: string[], fieldId:
   return configuredFieldIds.filter((key) => !String(key).endsWith(suffix));
 }
 
+export function clearFieldAssignment(
+  setupModel: Record<string, unknown>,
+  fieldId: string
+): Record<string, unknown> {
+  const wizard = getWizardState(setupModel);
+  const assignments = { ...wizard.assignments };
+  delete assignments[fieldId];
+  const tableAssignments = { ...wizard.tableAssignments };
+  delete tableAssignments[fieldId];
+  const deferredFieldIds = wizard.deferredFieldIds.filter((entry) => entry !== fieldId);
+  const withWizard = withWizardState(setupModel, {
+    assignments,
+    tableAssignments,
+    deferredFieldIds
+  });
+  return {
+    ...withWizard,
+    single_sections: removeFieldFromSingleSections(withWizard, fieldId),
+    table_sections: removeFieldFromTableSections(withWizard, fieldId),
+    updatedAt: nowIso()
+  };
+}
+
 export function removeFieldFromWizard(
   setupModel: Record<string, unknown>,
   fieldId: string,

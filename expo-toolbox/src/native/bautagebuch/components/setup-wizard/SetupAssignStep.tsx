@@ -10,9 +10,11 @@ import {
   assignFieldToGroup,
   assignFieldToTableColumn,
   advanceMappingWalkthrough,
+  clearFieldAssignment,
   getAssignedFieldIds,
   getMappingProgress,
   getWizardState,
+  isFieldAssigned,
   isMappingComplete,
   removeFieldFromWizard,
   resolveCurrentMappingIndex,
@@ -24,17 +26,18 @@ import { createManualFieldInput } from '../../lib/template-field';
 import { getStructureItems } from '../../lib/setup-structure';
 import {
   geometryDraftFromField,
+  canEditMappingFieldGeometry,
   isManualMappingField
 } from '../../lib/setup-manual-field';
 import type { DetectedField, FieldRect, SetupFieldType, SetupStructureItem } from '../../types';
 import { SetupPdfFieldPreview } from '../SetupPdfFieldPreview';
+import { SetupAssignFieldDetailModal } from './SetupAssignFieldDetailModal';
 import { SetupAssignFieldListPanel } from './SetupAssignFieldListPanel';
 import { SetupAssignFieldOverview } from './SetupAssignFieldOverview';
 import { SetupAssignHeader, type SetupAssignViewTab } from './SetupAssignHeader';
 import { SetupAssignSourceBanner } from './SetupAssignSourceBanner';
 import { SetupAssignTableColumnModal } from './SetupAssignTableColumnModal';
 import { SetupManualFieldModal } from './SetupManualFieldModal';
-import { SetupManualFieldActionMenu } from './SetupManualFieldActionMenu';
 import { SetupDrawConfirmPanel, SETUP_DRAFT_CONFIRM_RESERVE_PX } from './SetupDrawConfirmPanel';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -89,6 +92,8 @@ export function SetupAssignStep({
   const [draftDraw, setDraftDraw] = useState<{ page: number; rect: FieldRect } | null>(null);
   const [pendingDraw, setPendingDraw] = useState<{ page: number; rect: FieldRect } | null>(null);
   const [tableAssignTarget, setTableAssignTarget] = useState<SetupStructureItem | null>(null);
+  const [tableAssignAdvance, setTableAssignAdvance] = useState(true);
+  const [pdfFieldDetailId, setPdfFieldDetailId] = useState<string | null>(null);
   const [positionEditFieldId, setPositionEditFieldId] = useState<string | null>(null);
   const [draftLabels, setDraftLabels] = useState<Record<string, string>>({});
   const persistFieldNameRef = useRef(
@@ -172,7 +177,7 @@ export function SetupAssignStep({
     onChange(advanceMappingWalkthrough(next, mappingFields, currentIndex));
   };
 
-  const assignToGroup = (item: SetupStructureItem) => {
+  const assignToGroup = (item: SetupStructureItem, options?: { advance?: boolean }) => {
     if (!currentField || readOnly || item.type !== 'group') return;
     const trimmed = resolveLabel(currentField);
     const next = assignFieldToGroup(setupModel, currentField.fieldId, item.id, trimmed);
@@ -181,11 +186,15 @@ export function SetupAssignStep({
       if (trimmed) {
         await onUpdateField?.(currentField.fieldId, { labelCandidate: trimmed });
       }
+      if (options?.advance === false) {
+        onChange(next);
+        return;
+      }
       advanceAfterAssign(next);
     })();
   };
 
-  const assignToTable = (item: SetupStructureItem) => {
+  const assignToTable = (item: SetupStructureItem, options?: { advance?: boolean }) => {
     if (!currentField || readOnly || item.type !== 'table') return;
     if (item.columns.length === 0) {
       Alert.alert(
@@ -194,6 +203,7 @@ export function SetupAssignStep({
       );
       return;
     }
+    setTableAssignAdvance(options?.advance !== false);
     setTableAssignTarget(item);
   };
 
@@ -214,6 +224,10 @@ export function SetupAssignStep({
     void (async () => {
       if (trimmed) {
         await onUpdateField?.(currentField.fieldId, { labelCandidate: trimmed });
+      }
+      if (!tableAssignAdvance) {
+        onChange(next);
+        return;
       }
       advanceAfterAssign(next);
     })();
@@ -240,6 +254,7 @@ export function SetupAssignStep({
     void (async () => {
       await onDeleteField?.(fieldId);
       const next = removeFieldFromWizard(setupModel, fieldId, mappingFields.length - 1);
+      setPdfFieldDetailId(null);
       onChange(next);
       onFieldsChanged?.();
       void hapticSuccess();
@@ -248,15 +263,31 @@ export function SetupAssignStep({
 
   const handleConfirmDeleteField = (fieldId: string) => {
     if (readOnly) return;
-    Alert.alert('Feld löschen', 'Möchten Sie dieses Feld wirklich löschen?', [
-      { text: 'Abbrechen', style: 'cancel' },
-      { text: 'Löschen', style: 'destructive', onPress: () => handleDeleteField(fieldId) }
-    ]);
+    const field = mappingFields.find((entry) => entry.fieldId === fieldId);
+    if (!isManualMappingField(field)) return;
+    Alert.alert(
+      'Feld löschen',
+      'Dieses manuell erstellte Feld wirklich löschen?',
+      [
+        { text: 'Abbrechen', style: 'cancel' },
+        { text: 'Löschen', style: 'destructive', onPress: () => handleDeleteField(fieldId) }
+      ]
+    );
+  };
+
+  const handleClearAssignment = (fieldId: string) => {
+    if (readOnly) return;
+    onChange(clearFieldAssignment(setupModel, fieldId));
+    void hapticSuccess();
   };
 
   const startPositionEdit = (fieldId: string) => {
     if (readOnly) return;
     const field = mappingFields.find((entry) => entry.fieldId === fieldId);
+    if (!canEditMappingFieldGeometry(field)) {
+      Alert.alert('Position', 'Nur manuell erstellte Felder können verschoben werden.');
+      return;
+    }
     const draft = field ? geometryDraftFromField(field) : null;
     if (!draft) {
       Alert.alert('Position', 'Für dieses Feld ist keine Position gespeichert.');
@@ -283,14 +314,19 @@ export function SetupAssignStep({
     }
   };
 
-  const isManualCurrent = isManualMappingField(currentField);
-  const showPdfManualActions =
-    activeTab === 'pdf' &&
-    isManualCurrent &&
-    !readOnly &&
-    !drawMode &&
-    !draftDraw &&
-    !positionEditFieldId;
+  const openPdfFieldDetail = (fieldId: string) => {
+    const index = mappingFields.findIndex((field) => field.fieldId === fieldId);
+    if (index < 0) return;
+    cancelPositionEdit();
+    selectFieldAtIndex(index);
+    setPdfFieldDetailId(fieldId);
+  };
+
+  const pdfDetailField =
+    mappingFields.find((field) => field.fieldId === pdfFieldDetailId) || null;
+
+  const shouldAdvanceAfterAssign =
+    currentField && !isFieldAssigned(currentField.fieldId, wizard);
 
   return (
     <View style={styles.root}>
@@ -349,7 +385,7 @@ export function SetupAssignStep({
               draftRect={draftDraw}
               draftRectEditable={Boolean(draftDraw)}
               draftConfirmReservePx={draftDraw ? SETUP_DRAFT_CONFIRM_RESERVE_PX : 0}
-              onFieldSelect={selectFieldById}
+              onFieldSelect={openPdfFieldDetail}
               onFieldDrawDraft={(payload) => {
                 setDrawMode(false);
                 setDraftDraw({ page: payload.page, rect: payload.rect });
@@ -368,18 +404,6 @@ export function SetupAssignStep({
                 />
               </View>
             ) : null}
-            {showPdfManualActions && currentField ? (
-              <View style={styles.pdfActionOverlay} pointerEvents="box-none">
-                <View style={styles.pdfActionPanel}>
-                  <SetupManualFieldActionMenu
-                    compact
-                    onEdit={() => switchTab('fields')}
-                    onEditPosition={() => startPositionEdit(currentField.fieldId)}
-                    onDelete={() => handleConfirmDeleteField(currentField.fieldId)}
-                  />
-                </View>
-              </View>
-            ) : null}
           </View>
         </View>
         <View style={[styles.tabPane, activeTab !== 'fields' ? styles.tabPaneHidden : null]}>
@@ -393,8 +417,13 @@ export function SetupAssignStep({
             readOnly={readOnly}
             onSelectField={selectFieldAtIndex}
             onShowInPdf={() => switchTab('pdf')}
-            onAssignGroup={assignToGroup}
-            onAssignTable={assignToTable}
+            onAssignGroup={(item) =>
+              assignToGroup(item, { advance: shouldAdvanceAfterAssign })
+            }
+            onAssignTable={(item) =>
+              assignToTable(item, { advance: shouldAdvanceAfterAssign })
+            }
+            onClearAssignment={handleClearAssignment}
             onChangeFieldName={handleFieldNameChange}
             onChangeFieldType={handleFieldTypeChange}
             onEditFieldPosition={startPositionEdit}
@@ -420,6 +449,22 @@ export function SetupAssignStep({
           selectFieldAtIndex(index);
           switchTab('pdf');
         }}
+      />
+
+      <SetupAssignFieldDetailModal
+        visible={Boolean(pdfFieldDetailId && pdfDetailField)}
+        field={pdfDetailField}
+        setupModel={setupModel}
+        draftLabels={draftLabels}
+        readOnly={readOnly}
+        onClose={() => setPdfFieldDetailId(null)}
+        onChangeFieldName={handleFieldNameChange}
+        onChangeFieldType={handleFieldTypeChange}
+        onAssignGroup={(item) => assignToGroup(item, { advance: false })}
+        onAssignTable={(item) => assignToTable(item, { advance: false })}
+        onClearAssignment={handleClearAssignment}
+        onEditPosition={startPositionEdit}
+        onDelete={handleConfirmDeleteField}
       />
 
       <SetupManualFieldModal
@@ -510,22 +555,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0
-  },
-  pdfActionOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: spacing.xs,
-    alignItems: 'center'
-  },
-  pdfActionPanel: {
-    maxWidth: '100%',
-    paddingHorizontal: spacing.pageX,
-    paddingVertical: spacing.xxs,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: 'rgba(255, 255, 255, 0.96)'
   },
   footer: {
     borderTopWidth: 1,

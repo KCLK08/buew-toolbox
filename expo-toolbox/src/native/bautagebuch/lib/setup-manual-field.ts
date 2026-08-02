@@ -33,3 +33,16 @@ export function geometryDraftFromField(field: MappingField): { page: number; rec
 export function isManualMappingField(field: MappingField | null | undefined): boolean {
   return field?.source === 'manual';
 }
+
+export function isAcroformMappingField(field: MappingField | null | undefined): boolean {
+  if (!field) return false;
+  return field.source !== 'manual';
+}
+
+export function canDeleteMappingField(field: MappingField | null | undefined): boolean {
+  return isManualMappingField(field);
+}
+
+export function canEditMappingFieldGeometry(field: MappingField | null | undefined): boolean {
+  return isManualMappingField(field);
+}
