@@ -58,6 +58,18 @@ test('normalizeSetupFieldType maps dropdown detection to select', () => {
   assert.equal(normalizeSetupFieldType(field), 'select');
 });
 
+test('applyFieldTypeChange seeds weather metric for weather fields', () => {
+  const field: SetupFieldConfig = { fieldId: 'f1', label: 'Temperatur' };
+  const patch = applyFieldTypeChange(field, 'weather', []);
+  assert.equal(patch.type, 'weather');
+  assert.equal(patch.weatherMetric, 'temperature');
+});
+
+test('normalizeSetupFieldType recognizes weather type', () => {
+  const field: SetupFieldConfig = { fieldId: 'f1', type: 'weather' };
+  assert.equal(normalizeSetupFieldType(field), 'weather');
+});
+
 test('applyFieldTypeChange seeds select options from detection', () => {
   const field: SetupFieldConfig = { fieldId: 'f1', label: 'Wetter' };
   const patch = applyFieldTypeChange(field, 'select', [

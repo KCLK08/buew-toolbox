@@ -6,6 +6,7 @@ import { Card, PrimaryButton, TextField } from '../../../components/mobile';
 import { colors, spacing, typography } from '../../../constants/theme';
 import { isClockTimeLabel, normalizeClockTime } from '../lib/time-format.js';
 import { buildRunSections, inputKeyForField, requiredMissingCount, sectionProgressState } from '../lib/setup-model.js';
+import { sectionHasWeatherFields } from '../lib/weather-run';
 import {
   buildRunSectionsWithPhotoDoc,
   configuredTableRowCount,
@@ -24,8 +25,8 @@ type Props = {
   sectionIndex: number;
   onChange: (nextValues: Record<string, unknown>) => void;
   onSectionChange: (index: number) => void;
-  onWeatherSync?: () => Promise<void>;
-  weatherBusy?: boolean;
+  onWeatherSync?: (sectionId: string) => Promise<void>;
+  weatherBusySectionId?: string | null;
   photoDoc?: { enabled: boolean | null; entries: Array<{ id: string; localPath?: string }> };
   onPhotoDocChange?: (enabled: boolean) => void;
   onAddPhoto?: () => void;
@@ -124,7 +125,7 @@ export function RunWizard({
   onChange,
   onSectionChange,
   onWeatherSync,
-  weatherBusy,
+  weatherBusySectionId,
   photoDoc,
   onPhotoDocChange,
   onAddPhoto,
@@ -241,6 +242,20 @@ export function RunWizard({
     );
   };
 
+  const renderWeatherSyncButton = () => {
+    if (!section || section.kind !== 'single' || !onWeatherSync) return null;
+    if (!sectionHasWeatherFields(section.fields)) return null;
+    const busy = weatherBusySectionId === section.sectionId;
+    return (
+      <PrimaryButton
+        label={busy ? 'Wetterdaten werden geladen…' : 'Wetterdaten übernehmen'}
+        variant="secondary"
+        disabled={busy}
+        onPress={() => void onWeatherSync(section.sectionId)}
+      />
+    );
+  };
+
   const renderHeaderSection = () => {
     if (section.kind !== 'single') return null;
     const gewerkFieldIds = GEWERK_FIELDS.map((name) => findFieldIdByName(section, name)).filter(Boolean);
@@ -252,6 +267,7 @@ export function RunWizard({
 
     return (
       <View style={styles.sectionBody}>
+        {renderWeatherSyncButton()}
         {otherFields.map(renderSingleField)}
         {gewerkFieldIds.length > 0 ? (
           <View style={[styles.groupPanel, gewerkMissing ? styles.missingField : null]}>
@@ -313,23 +329,6 @@ export function RunWizard({
                 })}
             </View>
           </View>
-        ) : null}
-      </View>
-    );
-  };
-
-  const renderWeatherSection = () => {
-    if (section.kind !== 'single') return null;
-    return (
-      <View style={styles.sectionBody}>
-        {section.fields.map(renderSingleField)}
-        {onWeatherSync ? (
-          <PrimaryButton
-            label={weatherBusy ? 'Wetter wird geladen…' : 'Wetter aktualisieren'}
-            variant="secondary"
-            disabled={weatherBusy}
-            onPress={() => void onWeatherSync()}
-          />
         ) : null}
       </View>
     );
@@ -473,10 +472,14 @@ export function RunWizard({
     if (!section) return null;
     if (section.kind === 'photo-doc' || section.sectionId === 'photo-doc') return renderPhotoDocSection();
     if (section.sectionId === 'single:header') return renderHeaderSection();
-    if (section.sectionId === 'single:weather') return renderWeatherSection();
     if (section.kind === 'table') return renderTableSection();
     if (section.kind === 'single') {
-      return <View style={styles.sectionBody}>{section.fields.map(renderSingleField)}</View>;
+      return (
+        <View style={styles.sectionBody}>
+          {renderWeatherSyncButton()}
+          {section.fields.map(renderSingleField)}
+        </View>
+      );
     }
     return null;
   };

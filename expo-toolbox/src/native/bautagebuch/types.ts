@@ -143,7 +143,19 @@ export type SetupFieldType =
   | 'select'
   | 'static_text'
   | 'signature'
-  | 'table';
+  | 'table'
+  | 'weather';
+
+export type SetupWeatherMetric =
+  | 'temperature'
+  | 'temperature_min'
+  | 'temperature_max'
+  | 'condition'
+  | 'cloud_cover'
+  | 'precipitation'
+  | 'humidity'
+  | 'wind_direction'
+  | 'wind_speed';
 
 export type SetupFieldDateMode = 'date' | 'time' | 'datetime';
 
@@ -219,6 +231,7 @@ export type SetupFieldConfig = {
   signatureMode?: SetupSignatureMode;
   signatureImageUri?: string;
   staticText?: string;
+  weatherMetric?: SetupWeatherMetric;
 };
 
 export type DetectedField = {

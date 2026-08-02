@@ -5,6 +5,7 @@ import type {
   SetupFieldType,
   SetupWizardState
 } from '../types';
+import { DEFAULT_WEATHER_METRIC } from './weather-metrics';
 import { getWizardState, type MappingField, withWizardState } from './setup-mapping';
 import { getFieldPage } from './template-field';
 import { syncSectionOrder } from './setup-model.js';
@@ -24,7 +25,8 @@ export const SETUP_FIELD_TYPE_OPTIONS: Array<{ value: SetupFieldType; label: str
   { value: 'select', label: 'Auswahlfeld' },
   { value: 'static_text', label: 'Statischer Text' },
   { value: 'signature', label: 'Unterschrift' },
-  { value: 'table', label: 'Tabellenfeld' }
+  { value: 'table', label: 'Tabellenfeld' },
+  { value: 'weather', label: 'Wetter' }
 ];
 
 const DETECTED_TYPE_LABELS: Record<string, string> = {
@@ -37,7 +39,8 @@ const DETECTED_TYPE_LABELS: Record<string, string> = {
   select: 'Auswahlfeld',
   static_text: 'Statischer Text',
   signature: 'Unterschrift',
-  table: 'Tabellenfeld'
+  table: 'Tabellenfeld',
+  weather: 'Wetter'
 };
 
 function targetKey(target: FieldSettingsTarget): string {
@@ -492,6 +495,9 @@ export function applyFieldTypeChange(
   }
   if (nextType === 'static_text' && !field.staticText) {
     patch.staticText = field.label || field.fieldName || '';
+  }
+  if (nextType === 'weather' && !field.weatherMetric) {
+    patch.weatherMetric = DEFAULT_WEATHER_METRIC;
   }
   return patch;
 }
