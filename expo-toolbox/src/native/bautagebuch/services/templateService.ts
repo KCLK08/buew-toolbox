@@ -398,6 +398,12 @@ export function canActivateTemplate(template: BautagebuchTemplate): boolean {
   return template.status === 'ready';
 }
 
+export function canArchiveTemplate(template: BautagebuchTemplate, activeTemplateId: string): boolean {
+  if (template.status === 'archived') return false;
+  if (template.templateId === activeTemplateId) return false;
+  return !isBuiltinTemplate(template);
+}
+
 export function canDeleteTemplate(template: BautagebuchTemplate, activeTemplateId: string): boolean {
   if (template.templateId === activeTemplateId) return false;
   return !isBuiltinTemplate(template);

@@ -9,6 +9,7 @@ import { getSetupModel } from '../../../src/native/bautagebuch/db/database';
 import { resolveTemplateOpenPath } from '../../../src/native/bautagebuch/lib/setup-mapping';
 import {
   archiveTemplate,
+  canArchiveTemplate,
   canDeleteTemplate,
   deleteTemplate,
   ensureBuiltinTemplate,
@@ -158,6 +159,7 @@ export default function BautagebuchConfigTabScreen() {
           onActivate={(templateId) => void handleActivate(templateId)}
           onArchive={(templateId) => void handleArchive(templateId)}
           onDelete={handleDelete}
+          canArchive={(template) => canArchiveTemplate(template, activeTemplateId)}
           canDelete={(template) => canDeleteTemplate(template, activeTemplateId)}
         />
       ) : null}

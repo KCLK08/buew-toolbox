@@ -1,10 +1,15 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import { PrimaryButton, SingleLineText, StatusBadge } from '../../../../components/mobile';
-import { colors, shadows, spacing, typography } from '../../../../constants/theme';
-import { templateDisplayStatus } from '../../lib/setup-mapping';
+import { PrimaryButton } from '../../../../components/mobile';
+import { colors, spacing, typography } from '../../../../constants/theme';
 import type { BautagebuchTemplate } from '../../types';
+import { TemplateOverviewCard } from './TemplateOverviewCard';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 type Props = {
   templates: BautagebuchTemplate[];
@@ -16,6 +21,7 @@ type Props = {
   onActivate: (templateId: string) => void;
   onArchive?: (templateId: string) => void;
   onDelete?: (templateId: string) => void;
+  canArchive?: (template: BautagebuchTemplate) => boolean;
   canDelete?: (template: BautagebuchTemplate) => boolean;
 };
 
@@ -35,6 +41,51 @@ function actionForTemplate(
   return { label: 'Öffnen', variant: 'secondary', action: 'open' };
 }
 
+function TemplateCards({
+  templates,
+  activeTemplateId,
+  onOpen,
+  onContinueSetup,
+  onActivate,
+  onArchive,
+  onDelete,
+  canArchive,
+  canDelete
+}: Omit<Props, 'importing' | 'onImport'>) {
+  return (
+    <View style={styles.cardList}>
+      {templates.map((template) => {
+        const isActive = template.templateId === activeTemplateId;
+        const action = actionForTemplate(template, isActive);
+        const handleAction = () => {
+          if (action.action === 'activate') onActivate(template.templateId);
+          else if (action.action === 'continue') onContinueSetup(template.templateId);
+          else onOpen(template.templateId);
+        };
+
+        return (
+          <TemplateOverviewCard
+            key={template.templateId}
+            template={template}
+            isActive={isActive}
+            action={action}
+            onAction={handleAction}
+            onActivate={
+              template.status === 'ready' && !isActive
+                ? () => onActivate(template.templateId)
+                : undefined
+            }
+            onArchive={onArchive ? () => onArchive(template.templateId) : undefined}
+            onDelete={onDelete ? () => onDelete(template.templateId) : undefined}
+            canArchive={canArchive?.(template) ?? false}
+            canDelete={canDelete?.(template) ?? false}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
 export function TemplateOverviewList({
   templates,
   activeTemplateId,
@@ -45,8 +96,29 @@ export function TemplateOverviewList({
   onActivate,
   onArchive,
   onDelete,
+  canArchive,
   canDelete
 }: Props) {
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
+  const activeTemplates = templates.filter((template) => template.status !== 'archived');
+  const archivedTemplates = templates.filter((template) => template.status === 'archived');
+
+  const toggleArchived = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setArchivedExpanded((current) => !current);
+  };
+
+  const sharedCardProps = {
+    activeTemplateId,
+    onOpen,
+    onContinueSetup,
+    onActivate,
+    onArchive,
+    onDelete,
+    canArchive,
+    canDelete
+  };
+
   return (
     <View style={styles.root}>
       <View style={styles.heroCard}>
@@ -76,69 +148,39 @@ export function TemplateOverviewList({
       ) : null}
 
       <Text style={styles.sectionTitle}>
-        {templates.length} Vorlage{templates.length === 1 ? '' : 'n'}
+        {activeTemplates.length} Vorlage{activeTemplates.length === 1 ? '' : 'n'}
       </Text>
 
-      <View style={styles.cardList}>
-        {templates.map((template) => {
-          const isActive = template.templateId === activeTemplateId;
-          const status = templateDisplayStatus(template.status, isActive);
-          const action = actionForTemplate(template, isActive);
+      {activeTemplates.length > 0 ? (
+        <TemplateCards templates={activeTemplates} {...sharedCardProps} />
+      ) : (
+        <Text style={styles.emptyCopy}>Keine aktiven Vorlagen vorhanden.</Text>
+      )}
 
-          const handleAction = () => {
-            if (action.action === 'activate') onActivate(template.templateId);
-            else if (action.action === 'continue') onContinueSetup(template.templateId);
-            else onOpen(template.templateId);
-          };
-
-          return (
-            <View
-              key={template.templateId}
-              style={[styles.templateCard, isActive ? styles.templateCardActive : null, shadows.card]}
-            >
-              <View style={styles.cardTop}>
-                <View style={styles.cardTitleBlock}>
-                  <SingleLineText style={styles.templateName}>{template.templateName}</SingleLineText>
-                  <SingleLineText style={styles.fileName}>{template.fileName}</SingleLineText>
-                </View>
-                <StatusBadge label={status.label} tone={status.tone} />
-              </View>
-
-              <View style={styles.metaRow}>
-                <View style={styles.metaItem}>
-                  <MaterialCommunityIcons name="file-pdf-box" size={16} color={colors.muted} />
-                  <Text style={styles.metaText}>{template.pageCount} Seite(n)</Text>
-                </View>
-                {isActive ? (
-                  <View style={styles.metaItem}>
-                    <MaterialCommunityIcons name="check-circle" size={16} color={colors.success} />
-                    <Text style={[styles.metaText, styles.metaTextActive]}>Aktiv für neue BTBs</Text>
-                  </View>
-                ) : null}
-              </View>
-
-              <View style={styles.actionRow}>
-                <PrimaryButton label={action.label} variant={action.variant} onPress={handleAction} />
-                {template.status === 'ready' && !isActive ? (
-                  <Pressable style={styles.linkBtn} onPress={() => onActivate(template.templateId)}>
-                    <Text style={styles.linkLabel}>Aktivieren</Text>
-                  </Pressable>
-                ) : null}
-                {onArchive && template.status !== 'archived' && !isActive ? (
-                  <Pressable style={styles.linkBtn} onPress={() => onArchive(template.templateId)}>
-                    <Text style={styles.archiveLabel}>Archivieren</Text>
-                  </Pressable>
-                ) : null}
-                {onDelete && canDelete?.(template) ? (
-                  <Pressable style={styles.linkBtn} onPress={() => onDelete(template.templateId)}>
-                    <Text style={styles.deleteLabel}>Löschen</Text>
-                  </Pressable>
-                ) : null}
-              </View>
+      {archivedTemplates.length > 0 ? (
+        <View style={styles.archivedSection}>
+          <Pressable
+            accessibilityRole="button"
+            style={styles.archivedHeader}
+            onPress={toggleArchived}
+          >
+            <View style={styles.archivedHeaderCopy}>
+              <MaterialCommunityIcons name="archive-outline" size={18} color={colors.muted} />
+              <Text style={styles.archivedTitle}>
+                Archivierte Vorlagen ({archivedTemplates.length})
+              </Text>
             </View>
-          );
-        })}
-      </View>
+            <MaterialCommunityIcons
+              name={archivedExpanded ? 'chevron-up' : 'chevron-down'}
+              size={22}
+              color={colors.muted}
+            />
+          </Pressable>
+          {archivedExpanded ? (
+            <TemplateCards templates={archivedTemplates} {...sharedCardProps} />
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -155,8 +197,7 @@ const styles = StyleSheet.create({
     borderRadius: spacing.cardRadius,
     backgroundColor: colors.panelElevated,
     borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.card
+    borderColor: colors.border
   },
   heroIconWrap: {
     width: 48,
@@ -197,81 +238,34 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginTop: spacing.xxs
   },
+  emptyCopy: {
+    ...typography.body,
+    color: colors.muted
+  },
   cardList: {
     gap: spacing.cardGap
   },
-  templateCard: {
+  archivedSection: {
     gap: spacing.sm,
-    padding: spacing.cardPadding,
-    borderRadius: spacing.cardRadius,
-    backgroundColor: colors.panelElevated,
-    borderWidth: 1,
-    borderColor: colors.border
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border
   },
-  templateCardActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.panel
-  },
-  cardTop: {
+  archivedHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.sm
+    minHeight: 44,
+    paddingHorizontal: spacing.xs
   },
-  cardTitleBlock: {
-    flex: 1,
-    gap: 2,
-    minWidth: 0
+  archivedHeaderCopy: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs
   },
-  templateName: {
+  archivedTitle: {
     ...typography.bodyStrong,
-    color: colors.ink,
-    fontSize: 17
-  },
-  fileName: {
-    ...typography.caption,
-    color: colors.muted
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xxs
-  },
-  metaText: {
-    ...typography.caption,
-    color: colors.muted
-  },
-  metaTextActive: {
-    color: colors.success,
-    fontFamily: 'SpaceGrotesk_600SemiBold'
-  },
-  actionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingTop: spacing.xxs
-  },
-  linkBtn: {
-    paddingVertical: spacing.xxs
-  },
-  linkLabel: {
-    ...typography.caption,
-    color: colors.accent,
-    fontFamily: 'SpaceGrotesk_600SemiBold'
-  },
-  archiveLabel: {
-    ...typography.caption,
-    color: colors.muted
-  },
-  deleteLabel: {
-    ...typography.caption,
-    color: colors.danger,
-    fontFamily: 'SpaceGrotesk_600SemiBold'
+    color: colors.ink
   }
 });
