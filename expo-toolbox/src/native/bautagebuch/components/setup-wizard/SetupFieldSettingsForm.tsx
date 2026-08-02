@@ -18,12 +18,14 @@ import {
   updateTableMetaFlags,
   updateTableMetaLabel
 } from '../../lib/setup-field-settings';
+import { DEFAULT_WEATHER_METRIC, SETUP_WEATHER_METRIC_OPTIONS } from '../../lib/weather-metrics';
 import type {
   DetectedField,
   FieldSettingsTarget,
   SetupFieldConfig,
   SetupFieldDateMode,
-  SetupFieldType
+  SetupFieldType,
+  SetupWeatherMetric
 } from '../../types';
 import type { MappingField } from '../../lib/setup-mapping';
 
@@ -324,6 +326,52 @@ export function SetupFieldSettingsForm({
             }
             multiline
           />
+        </>
+      ) : null}
+
+      {fieldType === 'weather' ? (
+        <>
+          <ToggleRow
+            title="Pflichtfeld"
+            value={Boolean(field.required)}
+            disabled={readOnly}
+            onValueChange={(required) => patchField({ required })}
+          />
+          <TextField
+            label="Platzhalter"
+            value={field.placeholder || field.hint || ''}
+            editable={!readOnly}
+            onChangeText={(placeholder) => patchField({ placeholder, hint: placeholder })}
+            placeholder="Optional"
+          />
+          <ToggleRow
+            title="Im BTB ausblenden"
+            value={Boolean(field.skipped)}
+            disabled={readOnly}
+            onValueChange={(skipped) => patchField({ skipped })}
+          />
+          <Text style={styles.sectionLabel}>Wetterwert</Text>
+          {SETUP_WEATHER_METRIC_OPTIONS.map((option) => {
+            const active = (field.weatherMetric || DEFAULT_WEATHER_METRIC) === option.value;
+            return (
+              <Pressable
+                key={option.value}
+                style={[styles.choiceRow, active ? styles.choiceRowActive : null]}
+                disabled={readOnly}
+                onPress={() => {
+                  void hapticSelection();
+                  patchField({ weatherMetric: option.value as SetupWeatherMetric });
+                }}
+              >
+                <MaterialCommunityIcons
+                  name={active ? 'radiobox-marked' : 'radiobox-blank'}
+                  size={20}
+                  color={active ? colors.accent : colors.muted}
+                />
+                <Text style={active ? styles.choiceLabelActive : styles.choiceLabel}>{option.label}</Text>
+              </Pressable>
+            );
+          })}
         </>
       ) : null}
 

@@ -6,7 +6,7 @@ export const ETB_TEMPLATE_KIND = 'builtin-etb';
 export const ETB_TEMPLATE_NAME = 'Vorlage-eBTB';
 export const ETB_TEMPLATE_FILE_NAME = 'Vorlage-eBTB.pdf';
 export const ETB_TEMPLATE_PUBLIC_URL = '/buew-toolbox/bautagebuch/templates/Vorlage-eBTB.pdf';
-export const ETB_SETUP_VERSION = 8;
+export const ETB_SETUP_VERSION = 9;
 
 const ETB_DEFAULT_SECTION_ORDER = [
   { kind: 'single', id: 'header' },
@@ -80,6 +80,39 @@ const REQUIRED_COLUMNS_BY_TABLE = new Map([
 ]);
 
 const SKIPPED_COLUMNS_BY_TABLE = new Map([['table_detail_blocks', new Set(['c3'])]]);
+
+const ETB_WEATHER_FIELD_CONFIG = {
+  Dropdown6: { type: 'weather', weatherMetric: 'condition' },
+  Text11: { type: 'weather', weatherMetric: 'temperature_min' },
+  Text12: { type: 'weather', weatherMetric: 'temperature_max' }
+};
+
+function applyEtbWeatherFieldConfig(field, fieldName) {
+  const config = ETB_WEATHER_FIELD_CONFIG[String(fieldName || '').trim()];
+  if (!config) return field;
+  return {
+    ...field,
+    type: config.type,
+    weatherMetric: config.weatherMetric
+  };
+}
+
+function migrateWeatherFieldsInModel(model) {
+  let changed = false;
+  for (const section of model.single_sections || []) {
+    for (const field of section.fields || []) {
+      const fieldName = String(field?.fieldName || '').trim();
+      const config = ETB_WEATHER_FIELD_CONFIG[fieldName];
+      if (!config) continue;
+      if (field.type !== config.type || field.weatherMetric !== config.weatherMetric) {
+        field.type = config.type;
+        field.weatherMetric = config.weatherMetric;
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
 
 const DEFAULT_LABELS = {
   Date1: 'Datum',
@@ -371,7 +404,7 @@ function buildSnapshotSingleField(snapshotField, sourceField, fieldToken) {
   const field = fieldEntry(sourceField, { label, skipped, multiline: snapshotField?.multiline === true });
   field.required = required;
   field.skipped = skipped;
-  return field;
+  return applyEtbWeatherFieldConfig(field, fieldName);
 }
 
 function buildSnapshotTableCell({ tableId, rowId, column, entry, sourceField }) {
@@ -434,6 +467,10 @@ export function upgradeSetupModel(model) {
   const version = Number(model.version || 0);
 
   if (version < ETB_SETUP_VERSION) {
+    if (version < 9 && migrateWeatherFieldsInModel(model)) {
+      changed = true;
+    }
+
     for (const table of model.table_sections || []) {
       const tableId = String(table.tableId || '');
       const multilineDefaults = MULTILINE_COLUMNS_BY_TABLE.get(tableId);
@@ -539,7 +576,7 @@ export function buildEtbSetupModel({ templateId, pageCount, detectedFields = [] 
         });
         field.required = REQUIRED_SINGLE_FIELDS.has(normalizedFieldName);
         field.skipped = SKIPPED_SINGLE_FIELDS.has(normalizedFieldName);
-        return field;
+        return applyEtbWeatherFieldConfig(field, normalizedFieldName);
       })
       .filter(Boolean)
       .filter((field) => String(field.fieldId || '').trim());

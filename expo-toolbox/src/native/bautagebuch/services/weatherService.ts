@@ -1,69 +1,9 @@
 import * as Location from 'expo-location';
 
-const WEATHER_CATEGORY_KEYWORDS: Record<string, string[][]> = {
-  clear: [['klar', 'sonnig', 'sonne', 'heiter', 'clear', 'sunny']],
-  partly_cloudy: [
-    ['teils bewolkt', 'teilweise bewolkt', 'leicht bewolkt', 'partly cloudy', 'wolkig'],
-    ['bewolkt', 'heiter', 'klar']
-  ],
-  cloudy: [['bedeckt', 'stark bewolkt', 'overcast', 'cloudy', 'bewolkt']],
-  fog: [['nebel', 'fog', 'mist']],
-  rain: [['regen', 'regnerisch', 'schauer', 'niesel', 'drizzle', 'rain']],
-  snow: [['schnee', 'schneefall', 'graupel', 'snow', 'sleet']],
-  thunder: [['gewitter', 'thunder', 'sturm']]
-};
+import { pickWeatherDropdownOption } from '../lib/weather-dropdown';
+import type { WeatherSnapshot } from '../lib/weather-run';
 
-function normalizeSearchText(value: string): string {
-  return String(value || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim();
-}
-
-function weatherCategoryFromCode(code: number): string {
-  const value = Number(code);
-  if (value === 95 || value === 96 || value === 99) return 'thunder';
-  if ((value >= 71 && value <= 77) || value === 85 || value === 86) return 'snow';
-  if ((value >= 51 && value <= 67) || (value >= 80 && value <= 82)) return 'rain';
-  if (value === 45 || value === 48) return 'fog';
-  if (value === 0) return 'clear';
-  if (value === 1 || value === 2 || value === 3) return 'partly_cloudy';
-  return 'cloudy';
-}
-
-export function pickWeatherDropdownOption(options: string[] = [], weatherCode: number): string {
-  const normalizedOptions = options
-    .map((option) => ({
-      raw: String(option || '').trim(),
-      normalized: normalizeSearchText(option)
-    }))
-    .filter((entry) => entry.raw.length > 0 && entry.normalized.length > 0);
-  if (normalizedOptions.length === 0) return '';
-
-  const category = weatherCategoryFromCode(weatherCode);
-  const keywordGroups = WEATHER_CATEGORY_KEYWORDS[category] || [];
-
-  for (const keywords of keywordGroups) {
-    let best: { option: string; score: number } | null = null;
-    for (const option of normalizedOptions) {
-      let score = 0;
-      for (const keyword of keywords) {
-        const normalizedKeyword = normalizeSearchText(keyword);
-        if (!normalizedKeyword) continue;
-        if (!option.normalized.includes(normalizedKeyword)) continue;
-        score = Math.max(score, normalizedKeyword.length);
-      }
-      if (score === 0) continue;
-      if (!best || score > best.score) {
-        best = { option: option.raw, score };
-      }
-    }
-    if (best?.option) return best.option;
-  }
-
-  return '';
-}
+const WIND_DIRECTIONS = ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'];
 
 function formatTemperatureValue(value: unknown): string {
   const number = Number(value);
@@ -71,47 +11,29 @@ function formatTemperatureValue(value: unknown): string {
   return String(Math.round(number));
 }
 
-export async function syncWeatherValues(dropdownOptions: string[] = []): Promise<{
-  weather: string;
-  tempMin: string;
-  tempMax: string;
-  weatherCode: number;
-}> {
-  const permission = await Location.requestForegroundPermissionsAsync();
-  if (!permission.granted) {
-    throw new Error('Standortberechtigung ist für Wetterdaten erforderlich.');
-  }
+function formatPercentValue(value: unknown): string {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '';
+  return `${Math.round(number)} %`;
+}
 
-  const position = await Location.getCurrentPositionAsync({
-    accuracy: Location.Accuracy.Balanced
-  });
-  const { latitude, longitude } = position.coords;
-  const url =
-    `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
-    '&current=weather_code,temperature_2m&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto';
+function formatPrecipitationValue(value: unknown): string {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '';
+  return `${number.toFixed(1).replace('.', ',')} mm`;
+}
 
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error('Wetterdaten konnten nicht geladen werden.');
-  }
+function formatWindSpeedValue(value: unknown): string {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '';
+  return `${Math.round(number)} km/h`;
+}
 
-  const data = (await response.json()) as {
-    current?: { temperature_2m?: number; weather_code?: number };
-    daily?: { temperature_2m_max?: number[]; temperature_2m_min?: number[] };
-  };
-
-  const weatherCode = Number(data.current?.weather_code ?? 0);
-  const picked =
-    pickWeatherDropdownOption(dropdownOptions, weatherCode) ||
-    mapWeatherCodeFallback(weatherCode);
-  const tempMin = formatTemperatureValue(
-    data.daily?.temperature_2m_min?.[0] ?? data.current?.temperature_2m
-  );
-  const tempMax = formatTemperatureValue(
-    data.daily?.temperature_2m_max?.[0] ?? data.current?.temperature_2m
-  );
-
-  return { weather: picked, tempMin, tempMax, weatherCode };
+function formatWindDirectionValue(value: unknown): string {
+  const degrees = Number(value);
+  if (!Number.isFinite(degrees)) return '';
+  const index = Math.round(degrees / 45) % WIND_DIRECTIONS.length;
+  return WIND_DIRECTIONS[index] || 'N';
 }
 
 function mapWeatherCodeFallback(code: number): string {
@@ -124,3 +46,78 @@ function mapWeatherCodeFallback(code: number): string {
   if ([95, 96, 99].includes(code)) return 'Gewitter';
   return 'wechselhaft';
 }
+
+export async function fetchWeatherSnapshot(): Promise<WeatherSnapshot> {
+  const permission = await Location.requestForegroundPermissionsAsync();
+  if (!permission.granted) {
+    throw new Error('Standortberechtigung ist für Wetterdaten erforderlich.');
+  }
+
+  const position = await Location.getCurrentPositionAsync({
+    accuracy: Location.Accuracy.Balanced
+  });
+  const { latitude, longitude } = position.coords;
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
+    '&current=weather_code,temperature_2m,relative_humidity_2m,precipitation,cloud_cover,wind_speed_10m,wind_direction_10m' +
+    '&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto';
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error('Wetterdaten konnten nicht geladen werden.');
+  }
+
+  const data = (await response.json()) as {
+    current?: {
+      temperature_2m?: number;
+      weather_code?: number;
+      relative_humidity_2m?: number;
+      precipitation?: number;
+      cloud_cover?: number;
+      wind_speed_10m?: number;
+      wind_direction_10m?: number;
+    };
+    daily?: { temperature_2m_max?: number[]; temperature_2m_min?: number[] };
+  };
+
+  const weatherCode = Number(data.current?.weather_code ?? 0);
+  const temperature = formatTemperatureValue(data.current?.temperature_2m);
+  const temperatureMin = formatTemperatureValue(
+    data.daily?.temperature_2m_min?.[0] ?? data.current?.temperature_2m
+  );
+  const temperatureMax = formatTemperatureValue(
+    data.daily?.temperature_2m_max?.[0] ?? data.current?.temperature_2m
+  );
+
+  return {
+    temperature,
+    temperatureMin,
+    temperatureMax,
+    condition: mapWeatherCodeFallback(weatherCode),
+    cloudCover: formatPercentValue(data.current?.cloud_cover),
+    precipitation: formatPrecipitationValue(data.current?.precipitation),
+    humidity: formatPercentValue(data.current?.relative_humidity_2m),
+    windDirection: formatWindDirectionValue(data.current?.wind_direction_10m),
+    windSpeed: formatWindSpeedValue(data.current?.wind_speed_10m),
+    weatherCode
+  };
+}
+
+export async function syncWeatherValues(dropdownOptions: string[] = []): Promise<{
+  weather: string;
+  tempMin: string;
+  tempMax: string;
+  weatherCode: number;
+}> {
+  const snapshot = await fetchWeatherSnapshot();
+  const weather =
+    pickWeatherDropdownOption(dropdownOptions, snapshot.weatherCode) || snapshot.condition;
+  return {
+    weather,
+    tempMin: snapshot.temperatureMin,
+    tempMax: snapshot.temperatureMax,
+    weatherCode: snapshot.weatherCode
+  };
+}
+
+export { pickWeatherDropdownOption } from '../lib/weather-dropdown';

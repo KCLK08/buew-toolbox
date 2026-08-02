@@ -26,9 +26,13 @@ import {
   removePhotoDocEntry
 } from '../../../src/native/bautagebuch/services/photoDocService';
 import { getTemplateBundle } from '../../../src/native/bautagebuch/services/templateService';
-import { syncWeatherValues } from '../../../src/native/bautagebuch/services/weatherService';
+import {
+  applyWeatherSnapshotToFields,
+  listWeatherFieldsInSection
+} from '../../../src/native/bautagebuch/lib/weather-run';
+import { fetchWeatherSnapshot } from '../../../src/native/bautagebuch/services/weatherService';
 import { ExportFinishSheet } from '../../../src/native/bautagebuch/components/ExportFinishSheet';
-import type { BautagebuchRun } from '../../../src/native/bautagebuch/types';
+import type { BautagebuchRun, SetupFieldConfig } from '../../../src/native/bautagebuch/types';
 import { nowIso } from '../../../src/lib/ids';
 
 const PREVIEW_DEBOUNCE_MS = 350;
@@ -43,7 +47,7 @@ export default function BautagebuchRunScreen() {
   const [exporting, setExporting] = useState(false);
   const [exportSheetOpen, setExportSheetOpen] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
-  const [weatherBusy, setWeatherBusy] = useState(false);
+  const [weatherBusySectionId, setWeatherBusySectionId] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -141,32 +145,30 @@ export default function BautagebuchRunScreen() {
     });
   };
 
-  const handleWeatherSync = async () => {
+  const handleWeatherSync = async (runSectionId: string) => {
     if (!run || !setupModel) return;
-    setWeatherBusy(true);
+    const rawSectionId = runSectionId.startsWith('single:')
+      ? runSectionId.slice('single:'.length)
+      : runSectionId;
+    const sections =
+      (setupModel.single_sections as Array<{
+        sectionId: string;
+        fields: SetupFieldConfig[];
+      }>) || [];
+    const section = sections.find((entry) => entry.sectionId === rawSectionId);
+    const weatherFields = listWeatherFieldsInSection(section?.fields || []);
+    if (weatherFields.length === 0) return;
+
+    setWeatherBusySectionId(runSectionId);
     try {
-      const sections =
-        (setupModel.single_sections as Array<{
-          sectionId: string;
-          fields: Array<{ fieldName: string; fieldId: string; options?: string[] }>;
-        }>) || [];
-      const weatherSection = sections.find((section) => section.sectionId === 'weather');
-      const dropdownField = weatherSection?.fields.find((field) => field.fieldName === 'Dropdown6');
-      const weather = await syncWeatherValues(dropdownField?.options || []);
-      const nextValues = { ...run.values };
-      const setByName = (name: string, value: string) => {
-        const field = weatherSection?.fields.find((entry) => entry.fieldName === name);
-        if (field) nextValues[`field:${field.fieldId}`] = value;
-      };
-      setByName('Dropdown6', weather.weather);
-      setByName('Text11', weather.tempMin);
-      setByName('Text12', weather.tempMax);
+      const snapshot = await fetchWeatherSnapshot();
+      const nextValues = applyWeatherSnapshotToFields(weatherFields, snapshot, run.values);
       persist({ values: nextValues });
-      showToast('Wetter aktualisiert');
+      showToast('Wetterdaten übernommen');
     } catch (err) {
-      Alert.alert('Wetter', err instanceof Error ? err.message : 'Wetter konnte nicht geladen werden.');
+      Alert.alert('Wetter', err instanceof Error ? err.message : 'Wetterdaten konnten nicht geladen werden.');
     } finally {
-      setWeatherBusy(false);
+      setWeatherBusySectionId(null);
     }
   };
 
@@ -356,7 +358,7 @@ export default function BautagebuchRunScreen() {
         setupModel={setupModel}
         values={run.values}
         sectionIndex={run.sectionIndex}
-        weatherBusy={weatherBusy}
+        weatherBusySectionId={weatherBusySectionId}
         photoDoc={run.photoDoc}
         totalMissingRequired={totalMissingRequired}
         onPhotoDocChange={handlePhotoDocChange}
@@ -364,7 +366,7 @@ export default function BautagebuchRunScreen() {
         onAddPhoto={() => void handleAddPhoto()}
         onPickPhotos={() => void handlePickPhotos()}
         onRemovePhoto={handleRemovePhoto}
-        onWeatherSync={handleWeatherSync}
+        onWeatherSync={(sectionId) => handleWeatherSync(sectionId)}
         onSectionChange={(sectionIndex) => persist({ sectionIndex })}
         onChange={(values) => persist({ values })}
       />
