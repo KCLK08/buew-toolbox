@@ -164,6 +164,8 @@
   let runFocusedFieldId = '';
   let runPreviewToken = 0;
   let runPreviewQueue = Promise.resolve();
+  let runPreviewMaxWidth = 680;
+  let runPreviewResizeObserver = null;
   let runFinishDialogOpen = false;
   let runFinishExportMode = RUN_FINISH_EXPORT_MODE_MERGED;
   let weatherSyncBusy = false;
@@ -378,6 +380,8 @@
     }
     clearPhotoDocObjectUrls();
     detachSetupFieldDragListeners();
+    runPreviewResizeObserver?.disconnect();
+    runPreviewResizeObserver = null;
   });
 
   function nowLabel() {
@@ -2189,6 +2193,8 @@
       overlays.push({
         fieldId: marker.fieldId,
         fieldName: String(resolved?.fieldName || fieldLike?.fieldName || '').trim(),
+        tableId: String(fieldLike?.tableId || resolved?.tableId || '').trim(),
+        columnId: String(fieldLike?.columnId || resolved?.columnId || '').trim(),
         page: marker.page,
         rect: marker.rect.slice(0, 4),
         type,
@@ -2244,7 +2250,7 @@
       valueOverlays: buildRunPreviewValueOverlays(),
       activeFieldId: runFocusedFieldId,
       canvas: runCanvas,
-      maxWidth: 680
+      maxWidth: runPreviewMaxWidth
     };
 
     runPreviewQueue = runPreviewQueue
@@ -2261,8 +2267,36 @@
     await runPreviewQueue;
   }
 
+  function bindRunPreviewPane(node) {
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const updateWidth = () => {
+      const width = Math.floor(node.getBoundingClientRect().width || 0);
+      if (!(width > 0)) return;
+      const next = Math.max(240, Math.min(width, 860));
+      if (Math.abs(next - runPreviewMaxWidth) < 8) return;
+      runPreviewMaxWidth = next;
+      renderRunPreview();
+    };
+
+    runPreviewResizeObserver?.disconnect();
+    runPreviewResizeObserver = new ResizeObserver(updateWidth);
+    runPreviewResizeObserver.observe(node);
+    updateWidth();
+
+    return {
+      destroy() {
+        runPreviewResizeObserver?.disconnect();
+        runPreviewResizeObserver = null;
+      }
+    };
+  }
+
   $: if (view === 'run' && runCanvas && runPreviewDoc) {
     runPreviewMarkers.length;
+    runPreviewMaxWidth;
     renderRunPreview();
   }
 
@@ -4082,7 +4116,7 @@
             </div>
           </div>
 
-          <div class="panel-soft run-preview-pane">
+          <div class="panel-soft run-preview-pane" use:bindRunPreviewPane>
             <div class="run-preview-head">
               <h3>Live-Vorschau</h3>
               <div class="row run-preview-nav">
