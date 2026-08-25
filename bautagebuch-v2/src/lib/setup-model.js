@@ -1,5 +1,7 @@
 import { PDFCheckBox, PDFDropdown, PDFOptionList, PDFRadioGroup, PDFTextField } from 'pdf-lib';
 
+import { getPdfFieldRectangle, prepareMultilinePdfText, shouldAutoFitPdfField } from './pdf-text-fit.js';
+
 const COMPACT_FIELD_FONT_SIZES = new Map([
   ['Text63', 12],
   ['Text64', 12],
@@ -519,16 +521,10 @@ export function applyPdfFieldValue(field, type, value, { fieldName = '', tableId
     return;
   }
 
-  const fontSize = fieldFontSize(fieldName, { tableId, columnId });
-  if (Number.isFinite(fontSize) && typeof field.setFontSize === 'function') {
-    try {
-      field.setFontSize(fontSize);
-    } catch {
-      // Ignore fields that do not support font-size changes.
-    }
-  }
+  const autoFit = shouldAutoFitPdfField({ tableId, columnId, fieldName });
+  const resolvedMultiline = autoFit || normalizedText.includes('\n');
 
-  if (normalizedText.includes('\n') && typeof field.enableMultiline === 'function') {
+  if (resolvedMultiline && typeof field.enableMultiline === 'function') {
     try {
       field.enableMultiline();
     } catch {
@@ -536,5 +532,34 @@ export function applyPdfFieldValue(field, type, value, { fieldName = '', tableId
     }
   }
 
-  field.setText(normalizedText);
+  let textToSet = normalizedText;
+  let fontSize = fieldFontSize(fieldName, { tableId, columnId });
+  if (!Number.isFinite(fontSize) && autoFit) {
+    fontSize = 12;
+  }
+
+  if (autoFit || resolvedMultiline) {
+    const rect = getPdfFieldRectangle(field);
+    const prepared = prepareMultilinePdfText({
+      text: normalizedText,
+      rect,
+      startFontSize: Number.isFinite(fontSize) ? fontSize : 12
+    });
+    textToSet = prepared.text;
+    fontSize = prepared.fontSize;
+  }
+
+  if (Number.isFinite(fontSize) && typeof field.setFontSize === 'function') {
+    try {
+      field.setFontSize(fontSize);
+    } catch {
+      try {
+        field.acroField?.setDefaultAppearance?.(`/Helv ${fontSize} Tf 0 g`);
+      } catch {
+        // Ignore fields that do not support font-size changes.
+      }
+    }
+  }
+
+  field.setText(textToSet);
 }

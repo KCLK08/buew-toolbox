@@ -2,6 +2,7 @@ import { PDFDocument } from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
+import { pdfTextContentBox, prepareMultilinePdfText, rectSizeFromPdfBox, shouldAutoFitPdfField } from './pdf-text-fit.js';
 import { detectPdfFieldType } from './setup-model.js';
 
 let pdfJsPromise = null;
@@ -797,6 +798,9 @@ function normalizeValueOverlay(overlay) {
   return {
     fieldId: String(overlay.fieldId || '').trim(),
     fieldName: String(overlay.fieldName || '').trim(),
+    tableId: String(overlay.tableId || '').trim(),
+    columnId: String(overlay.columnId || '').trim(),
+    autoFit: overlay.autoFit === true,
     page: Number(overlay.page || 1),
     rect: overlay.rect.slice(0, 4),
     type,
@@ -920,9 +924,43 @@ function drawValueOverlay(context, viewport, overlay) {
     return;
   }
 
+  const fieldName = String(overlay.fieldName || '').trim();
+  const autoFit = shouldAutoFitPdfField({
+    tableId: overlay.tableId,
+    columnId: overlay.columnId,
+    fieldName,
+    autoFit: overlay.autoFit
+  });
+
+  context.textAlign = 'left';
+  context.textBaseline = 'top';
+  context.fillStyle = 'rgba(17, 22, 30, 0.95)';
+
+  if (autoFit) {
+    const pdfRect = rectSizeFromPdfBox(overlay.rect);
+    const prepared = prepareMultilinePdfText({
+      text: overlay.text,
+      rect: pdfRect,
+      startFontSize: 12
+    });
+    const scale = Number(viewport?.scale) > 0 ? Number(viewport.scale) : 1;
+    const box = pdfTextContentBox(pdfRect);
+    const paddingX = (box?.paddingX ?? Math.min(8, Math.max(2, (pdfRect?.width || width) * 0.04))) * scale;
+    const paddingY = (box?.paddingY ?? Math.min(6, Math.max(2, (pdfRect?.height || height) * 0.14))) * scale;
+    const fontSize = Math.max(0.5, prepared.fontSize * scale);
+    const lineHeight = Math.max(0.5, prepared.lineHeight * scale);
+
+    context.font = `400 ${fontSize}px Helvetica, Arial, sans-serif`;
+    const linesToRender = Array.isArray(prepared.lines) ? prepared.lines : String(prepared.text || '').split('\n');
+    linesToRender.forEach((line, index) => {
+      context.fillText(line, x + paddingX, y + paddingY + index * lineHeight);
+    });
+    context.restore();
+    return;
+  }
+
   const paddingX = clamp(Math.round(width * 0.04), 2, 8);
   const paddingY = clamp(Math.round(height * 0.14), 2, 6);
-  const fieldName = String(overlay.fieldName || '').trim();
   const fontSize = COMPACT_OVERLAY_FIELDS.has(fieldName)
     ? clamp(Math.round(height * 0.33), 8, 12)
     : clamp(Math.round(height * 0.46), 10, 17);
@@ -931,9 +969,6 @@ function drawValueOverlay(context, viewport, overlay) {
   const maxLines = Math.max(1, Math.floor((height - paddingY * 2) / lineHeight));
 
   context.font = `600 ${fontSize}px "IBM Plex Sans", "Segoe UI", Arial, sans-serif`;
-  context.textAlign = 'left';
-  context.textBaseline = 'top';
-  context.fillStyle = 'rgba(17, 22, 30, 0.95)';
 
   const wrappedLines = wrapTextToWidth(context, overlay.text, maxTextWidth);
   if (wrappedLines.length === 0) {
