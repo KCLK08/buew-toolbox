@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import { blobToDataUrl } from './image';
 import { bufferToBase64, getXlsxMime, isNativePlatform, saveXlsxToFiles } from './native';
+import { layoutPhotoCollage, normalizeEntryPhotos } from './photos';
 
 export async function exportToXlsx({
   protocolTitle,
@@ -120,8 +121,8 @@ async function buildWorkbook({
   const totalCols = 1 + columns.length;
   const minCellWidthPx = 160;
   const minCellHeightPx = 110;
-  const maxCellWidthPx = 360;
-  const maxCellHeightPx = 260;
+  const maxCellWidthPx = 420;
+  const maxCellHeightPx = 280;
   const colPx = (colWidth) => colWidth * 7 + 5;
   const rowPx = (rowHeightPts) => rowHeightPts * (96 / 72);
   const colWidthFromPx = (px) => Math.max(1, Math.round((px - 5) / 7));
@@ -150,30 +151,42 @@ async function buildWorkbook({
   const photoColumn = columns.find((c) => c.isPhoto);
   const photoColIndex = photoColumn ? columns.indexOf(photoColumn) + 2 : null;
   const photoCache = new Map();
-  let maxImgW = 0;
-  let maxImgH = 0;
+  let maxCollageW = 0;
+  let maxCollageH = 0;
   for (const [idx, entry] of entries.entries()) {
-    if (!entry.photoBlob) continue;
-    try {
-      const dataUrl = await blobToDataUrl(entry.photoBlob);
-      const { width, height } = await getImageSize(dataUrl);
-      photoCache.set(entry.id, { dataUrl, width, height });
-      maxImgW = Math.max(maxImgW, width || 0);
-      maxImgH = Math.max(maxImgH, height || 0);
-    } catch (err) {
-      addIssue(`Eintrag ${idx + 1}: Bild konnte nicht vorbereitet werden (${err?.message || 'Unbekannt'}).`);
+    const blobs = normalizeEntryPhotos(entry);
+    if (!blobs.length) continue;
+    const prepared = [];
+    for (const [photoIndex, blob] of blobs.entries()) {
+      try {
+        const dataUrl = await blobToDataUrl(blob);
+        const { width, height } = await getImageSize(dataUrl);
+        prepared.push({
+          dataUrl,
+          width,
+          height,
+          extension: getImageExtension(blob.type)
+        });
+      } catch (err) {
+        addIssue(
+          `Eintrag ${idx + 1}, Bild ${photoIndex + 1}: konnte nicht vorbereitet werden (${err?.message || 'Unbekannt'}).`
+        );
+      }
     }
+    if (!prepared.length) continue;
+    const collage = layoutPhotoCollage(
+      prepared.map((img) => ({ width: img.width, height: img.height })),
+      maxCellWidthPx,
+      maxCellHeightPx,
+      { gap: 4, frame: 2 }
+    );
+    photoCache.set(entry.id, { prepared, collage });
+    maxCollageW = Math.max(maxCollageW, collage.width || 0);
+    maxCollageH = Math.max(maxCollageH, collage.height || 0);
   }
-  const scaleDown = Math.min(
-    maxCellWidthPx / (maxImgW || maxCellWidthPx),
-    maxCellHeightPx / (maxImgH || maxCellHeightPx),
-    1
-  );
-  const scaledMaxImgW = maxImgW ? Math.round(maxImgW * scaleDown) : minCellWidthPx;
-  const scaledMaxImgH = maxImgH ? Math.round(maxImgH * scaleDown) : minCellHeightPx;
 
-  const desiredCellWidthPx = Math.max(scaledMaxImgW, minCellWidthPx);
-  const desiredCellHeightPx = Math.max(scaledMaxImgH, minCellHeightPx);
+  const desiredCellWidthPx = Math.max(Math.round(maxCollageW) || 0, minCellWidthPx);
+  const desiredCellHeightPx = Math.max(Math.round(maxCollageH) || 0, minCellHeightPx);
 
   const photoColWidth = colWidthFromPx(desiredCellWidthPx);
   const rowHeight = rowHeightFromPx(desiredCellHeightPx);
@@ -204,6 +217,10 @@ async function buildWorkbook({
   headerCell.font = { name: 'Calibri', size: 11, color: { argb: 'FF111827' } };
   headerCell.alignment = { vertical: 'top', horizontal: 'left', wrapText: true };
   headerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+  const metaLineCount = headerLines.reduce((sum, line) => {
+    const value = String(line.value || '');
+    return sum + Math.max(1, value.split(/\r?\n/).length);
+  }, 0);
   headerCell.border = {
     top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
     left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
@@ -239,7 +256,7 @@ async function buildWorkbook({
       const logoMargin = 8;
 
       const row1 = worksheet.getRow(1);
-      const textHeightPx = headerLines.length * 18 + 16;
+      const textHeightPx = metaLineCount * 18 + 28;
       row1.height = Math.max(
         row1.height || 18,
         rowHeightFromPx(Math.max(drawH + logoMargin * 2, textHeightPx))
@@ -266,7 +283,7 @@ async function buildWorkbook({
   }
   if (!logoDataUrl) {
     const row1 = worksheet.getRow(1);
-    const textHeightPx = headerLines.length * 18 + 16;
+    const textHeightPx = metaLineCount * 18 + 28;
     row1.height = Math.max(row1.height || 18, rowHeightFromPx(textHeightPx));
   }
 
@@ -296,46 +313,28 @@ async function buildWorkbook({
       cell.alignment = { vertical: 'middle', horizontal: 'center' };
     }
 
-    if (photoColIndex && entry.photoBlob) {
+    const cached = photoCache.get(entry.id);
+    if (photoColIndex && cached?.prepared?.length) {
       try {
-        const cached = photoCache.get(entry.id);
-        const dataUrl = cached?.dataUrl || (await blobToDataUrl(entry.photoBlob));
-        const base64 = stripDataUrlPrefix(dataUrl);
-        const extension = getImageExtension(entry.photoBlob.type);
-        const imageId = workbook.addImage({
-          base64,
-          extension
-        });
-
-        const imgW = cached?.width || 1;
-        const imgH = cached?.height || 1;
-        const maxW = Math.max(1, cellWidthPx);
-        const maxH = Math.max(1, cellHeightPx);
-        let scale = Math.min(maxW / imgW, maxH / imgH);
-        if (!Number.isFinite(scale) || scale <= 0) {
-          scale = 1;
+        const collage = cached.collage;
+        const offsetX = Math.max(0, (cellWidthPx - collage.width) / 2);
+        const offsetY = Math.max(0, (cellHeightPx - collage.height) / 2);
+        for (const [photoIndex, prepared] of cached.prepared.entries()) {
+          const item = collage.items[photoIndex];
+          if (!item) continue;
+          const imageId = workbook.addImage({
+            base64: stripDataUrlPrefix(prepared.dataUrl),
+            extension: prepared.extension === 'png' ? 'png' : 'jpeg'
+          });
+          worksheet.addImage(imageId, {
+            tl: {
+              col: photoColIndex - 1 + (offsetX + item.x) / cellWidthPx,
+              row: row.number - 1 + (offsetY + item.y) / cellHeightPx
+            },
+            ext: { width: Math.max(1, item.width), height: Math.max(1, item.height) },
+            editAs: 'oneCell'
+          });
         }
-        const scaledW = imgW * scale;
-        const scaledH = imgH * scale;
-        const colWidthUnits =
-          worksheet.getColumn(photoColIndex).isCustomWidth && worksheet.getColumn(photoColIndex).width
-            ? Math.floor(worksheet.getColumn(photoColIndex).width * 10000)
-            : 640000;
-        const rowHeightUnits = row.height ? Math.floor(row.height * 10000) : 180000;
-        const imageFracW = Math.min(1, scaledW / cellWidthPx);
-        const imageFracH = Math.min(1, scaledH / cellHeightPx);
-        const colOff = Math.round(((1 - imageFracW) / 2) * colWidthUnits);
-        const rowOff = Math.round(((1 - imageFracH) / 2) * rowHeightUnits);
-        worksheet.addImage(imageId, {
-          tl: {
-            nativeCol: photoColIndex - 1,
-            nativeRow: row.number - 1,
-            nativeColOff: colOff,
-            nativeRowOff: rowOff
-          },
-          ext: { width: Math.max(1, scaledW), height: Math.max(1, scaledH) },
-          editAs: 'oneCell'
-        });
       } catch (err) {
         addIssue(`Eintrag ${idx + 1}: Bild konnte nicht eingebettet werden (${err?.message || 'Unbekannt'}).`);
       }

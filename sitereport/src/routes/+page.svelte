@@ -29,9 +29,63 @@
   import { exportToXlsxData } from '$lib/export';
   import { exportToPdfData } from '$lib/pdf';
   import { getNativePlatform, isNativePlatform, saveBase64File, shareFile } from '$lib/native';
+  import { normalizeEntryPhotos } from '$lib/photos';
 
   const generateId = () => `col_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const withColumnIds = (cols) => cols.map((col) => ({ id: col.id ?? generateId(), ...col }));
+
+  function emptyEntryDraft() {
+    return { fields: {}, photoFiles: [], photoPreviews: [] };
+  }
+
+  function hydrateEntry(entry) {
+    const photoBlobs = normalizeEntryPhotos(entry);
+    const photoPreviews = photoBlobs.map((blob) => blobToObjectUrl(blob));
+    return {
+      ...entry,
+      photoBlobs,
+      photoBlob: photoBlobs[0] ?? null,
+      photoPreviews,
+      photoPreview: photoPreviews[0] ?? ''
+    };
+  }
+
+  function toPersistedEntry(entry) {
+    const photoBlobs = normalizeEntryPhotos(entry);
+    return {
+      id: entry.id,
+      createdAt: entry.createdAt,
+      fields: entry.fields,
+      photoBlob: photoBlobs[0] ?? null,
+      photoBlobs
+    };
+  }
+
+  function today() {
+    return formatDeDate(new Date());
+  }
+
+  function formatDeDate(date) {
+    const dd = String(date.getDate()).padStart(2, '0');
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(date.getFullYear());
+    return `${dd}-${mm}-${yyyy}`;
+  }
+
+  function toIsoDate(value) {
+    const raw = String(value || '').trim();
+    const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (iso) return raw;
+    const de = raw.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (de) return `${de[3]}-${de[2]}-${de[1]}`;
+    return toIsoDate(today());
+  }
+
+  function fromIsoDate(value) {
+    const iso = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!iso) return today();
+    return `${iso[3]}-${iso[2]}-${iso[1]}`;
+  }
 
   const defaultColumns = withColumnIds([
     { name: 'Bilder', type: 'text', isPhoto: true },
@@ -54,11 +108,7 @@
   let newColType = 'text';
 
   let entries = [];
-  let entryDraft = {
-    fields: {},
-    photoFile: null,
-    photoPreview: ''
-  };
+  let entryDraft = emptyEntryDraft();
   let editingEntryId = null;
 
   let stepIndex = 0;
@@ -148,10 +198,7 @@
     logoDataUrl = (await loadLogo()) || '';
 
     const storedEntries = await listEntries();
-    entries = storedEntries.map((e) => ({
-      ...e,
-      photoPreview: e.photoBlob ? blobToObjectUrl(e.photoBlob) : ''
-    }));
+    entries = storedEntries.map(hydrateEntry);
 
     templates = await listTemplates();
     protocolsList = await listProtocols();
@@ -484,7 +531,7 @@
     protocolDescription = '';
     attendees = '';
     editingEntryId = null;
-    entryDraft = { fields: {}, photoFile: null, photoPreview: '' };
+    entryDraft = emptyEntryDraft();
     stepIndex = 0;
     entrySteps = [];
     currentField = null;
@@ -535,19 +582,11 @@
     protocolDescription = protocol.protocolDescription || '';
     attendees = protocol.attendees || '';
     columns = protocol.columns?.length ? withColumnIds(protocol.columns) : defaultColumns.map((col) => ({ ...col }));
-    entries = (protocol.entries || []).map((e) => ({
-      ...e,
-      photoPreview: e.photoBlob ? blobToObjectUrl(e.photoBlob) : ''
-    }));
+    entries = (protocol.entries || []).map(hydrateEntry);
 
     await clearEntries();
     for (const e of entries) {
-      await addEntry({
-        id: e.id,
-        createdAt: e.createdAt,
-        fields: e.fields,
-        photoBlob: e.photoBlob ?? null
-      });
+      await addEntry(toPersistedEntry(e));
     }
 
     isDirty = false;
@@ -558,7 +597,7 @@
 
   const startEntry = () => {
     editingEntryId = null;
-    entryDraft = { fields: {}, photoFile: null, photoPreview: '' };
+    entryDraft = emptyEntryDraft();
     stepIndex = 0;
     entrySteps = columns.map((c) => ({ ...c }));
     if (!entrySteps.length) {
@@ -574,10 +613,11 @@
 
   const editEntry = (entry) => {
     editingEntryId = entry.id;
+    const photoFiles = normalizeEntryPhotos(entry);
     entryDraft = {
       fields: { ...entry.fields },
-      photoFile: entry.photoBlob ?? null,
-      photoPreview: entry.photoPreview ?? ''
+      photoFiles: [...photoFiles],
+      photoPreviews: photoFiles.map((blob) => blobToObjectUrl(blob))
     };
     stepIndex = 0;
     entrySteps = columns.map((c) => ({ ...c }));
@@ -599,13 +639,27 @@
   };
 
   const handlePhoto = async (e) => {
-    const file = e.currentTarget.files?.[0];
-    if (!file) return;
-    const compressed = await compressImage(file);
-    entryDraft.photoFile = compressed;
-    entryDraft.photoPreview = blobToObjectUrl(compressed);
+    const files = Array.from(e.currentTarget.files || []);
+    if (!files.length) return;
+    const photoFiles = [...(entryDraft.photoFiles || [])];
+    const photoPreviews = [...(entryDraft.photoPreviews || [])];
+    for (const file of files) {
+      const compressed = await compressImage(file);
+      photoFiles.push(compressed);
+      photoPreviews.push(blobToObjectUrl(compressed));
+    }
+    entryDraft = { ...entryDraft, photoFiles, photoPreviews };
     isDirty = true;
-    await goNextStep();
+    e.currentTarget.value = '';
+  };
+
+  const removeDraftPhoto = (index) => {
+    const preview = entryDraft.photoPreviews?.[index];
+    if (preview) URL.revokeObjectURL(preview);
+    const photoFiles = (entryDraft.photoFiles || []).filter((_, i) => i !== index);
+    const photoPreviews = (entryDraft.photoPreviews || []).filter((_, i) => i !== index);
+    entryDraft = { ...entryDraft, photoFiles, photoPreviews };
+    isDirty = true;
   };
 
   const currentStep = () => entrySteps[stepIndex];
@@ -641,33 +695,26 @@
 
     try {
       const entryId = editingEntryId || fallbackId();
+      const photoBlobs = normalizeEntryPhotos(entryDraft);
       const snapshot = {
         id: entryId,
         createdAt: editingEntryId ? entryDraft.createdAt || new Date().toISOString() : new Date().toISOString(),
         fields: { ...entryDraft.fields },
-        photoBlob: entryDraft.photoFile ?? null
+        photoBlob: photoBlobs[0] ?? null,
+        photoBlobs
       };
 
-      await addEntry(snapshot);
+      await addEntry(toPersistedEntry(snapshot));
 
+      const hydrated = hydrateEntry(snapshot);
       if (editingEntryId) {
-        entries = entries.map((e) =>
-          e.id === editingEntryId
-            ? { ...snapshot, photoPreview: snapshot.photoBlob ? blobToObjectUrl(snapshot.photoBlob) : '' }
-            : e
-        );
+        entries = entries.map((e) => (e.id === editingEntryId ? hydrated : e));
       } else {
-        entries = [
-          {
-            ...snapshot,
-            photoPreview: snapshot.photoBlob ? blobToObjectUrl(snapshot.photoBlob) : ''
-          },
-          ...entries
-        ];
+        entries = [hydrated, ...entries];
       }
 
       isDirty = true;
-      entryDraft = { fields: {}, photoFile: null, photoPreview: '' };
+      entryDraft = emptyEntryDraft();
       editingEntryId = null;
       stepIndex = 0;
       entrySteps = [];
@@ -697,12 +744,7 @@
       protocolDescription: protocolDescription || '',
       attendees: attendees || '',
       columns: columns.map((c) => ({ ...c })),
-      entries: entries.map((e) => ({
-        id: e.id,
-        createdAt: e.createdAt,
-        fields: e.fields,
-        photoBlob: e.photoBlob ?? null
-      }))
+      entries: entries.map(toPersistedEntry)
     };
   };
 
@@ -799,13 +841,13 @@
     return { protocolRecord, exportRecord, xlsxResult, pdfResult };
   };
 
-  const closeProtocol = () => {
+  const closeProtocol = async () => {
     closeError = '';
     if (isExporting) return;
 
     // If existing protocol and no changes, just return to list without prompt
     if (activeProtocolId && !isDirty) {
-      resetProtocol();
+      await resetProtocol();
       view = 'protocols';
       return;
     }
@@ -822,6 +864,7 @@
       onPrimary: async () => {
         if (isExporting) return;
         isExporting = true;
+        closeError = '';
         try {
           const { exportRecord } = await saveAndExportProtocol({ format: 'xlsx' });
           protocolsList = await listProtocols();
@@ -831,7 +874,7 @@
           view = 'protocols';
           closeConfirm();
         } catch (err) {
-          closeError = 'Abschluss fehlgeschlagen. Bitte erneut versuchen.';
+          closeError = `Abschluss fehlgeschlagen: ${err?.message || 'Bitte erneut versuchen.'}`;
           console.error(err);
         } finally {
           isExporting = false;
@@ -840,6 +883,7 @@
       onSecondary: async () => {
         if (isExporting) return;
         isExporting = true;
+        closeError = '';
         try {
           const { exportRecord } = await saveAndExportProtocol({ format: 'pdf' });
           protocolsList = await listProtocols();
@@ -849,7 +893,7 @@
           view = 'protocols';
           closeConfirm();
         } catch (err) {
-          closeError = 'Abschluss fehlgeschlagen. Bitte erneut versuchen.';
+          closeError = `Abschluss fehlgeschlagen: ${err?.message || 'Bitte erneut versuchen.'}`;
           console.error(err);
         } finally {
           isExporting = false;
@@ -858,6 +902,7 @@
       onTertiary: async () => {
         if (isExporting) return;
         isExporting = true;
+        closeError = '';
         try {
           await saveProtocol();
           protocolsList = await listProtocols();
@@ -867,7 +912,7 @@
           view = 'protocols';
           closeConfirm();
         } catch (err) {
-          closeError = 'Abschluss fehlgeschlagen. Bitte erneut versuchen.';
+          closeError = `Abschluss fehlgeschlagen: ${err?.message || 'Bitte erneut versuchen.'}`;
           console.error(err);
         } finally {
           isExporting = false;
@@ -890,12 +935,12 @@
     activeProtocolId = null;
     activeProtocolCreatedAt = null;
     isDirty = false;
-    view = 'start';
   };
 
-  const cancelProtocol = () => {
+  const cancelProtocol = async () => {
     if (activeProtocolId && !isDirty) {
-      resetProtocol();
+      await resetProtocol();
+      view = 'start';
       return;
     }
     confirmDialog = {
@@ -918,6 +963,7 @@
       },
       onSecondary: async () => {
         await resetProtocol();
+        view = 'start';
         closeConfirm();
       }
     };
@@ -1337,14 +1383,6 @@
     selectionModeExports = false;
   };
 
-  function today() {
-    const now = new Date();
-    const dd = String(now.getDate()).padStart(2, '0');
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const yyyy = String(now.getFullYear());
-    return `${dd}-${mm}-${yyyy}`;
-  }
-
   function buildFilename(name, date) {
     const cleanName = sanitizeFilename(name || 'protokoll');
     const cleanDate = sanitizeFilename(date || today());
@@ -1433,27 +1471,34 @@
 
         <label class="field">
           <span>Beschreibung</span>
-          <input
-            type="text"
+          <textarea
+            rows="4"
             placeholder="Kurzbeschreibung"
             bind:value={protocolDescription}
             on:input={() => (isDirty = true)}
-          />
+          ></textarea>
         </label>
 
         <label class="field">
           <span>Anwesende Personen</span>
-          <input
-            type="text"
+          <textarea
+            rows="4"
             placeholder="z. B. Max Mustermann, Bauleitung"
             bind:value={attendees}
             on:input={() => (isDirty = true)}
-          />
+          ></textarea>
         </label>
 
         <label class="field">
           <span>Datum</span>
-          <div class="readonly-field">{protocolDate}</div>
+          <input
+            type="date"
+            value={toIsoDate(protocolDate)}
+            on:input={(event) => {
+              protocolDate = fromIsoDate(event.currentTarget.value);
+              isDirty = true;
+            }}
+          />
         </label>
 
         <div class="field">
@@ -1681,11 +1726,11 @@
         </div>
         <div>
           <div class="label">Beschreibung</div>
-          <div>{protocolDescription || '—'}</div>
+          <div class="summary-multiline">{protocolDescription || '—'}</div>
         </div>
         <div>
           <div class="label">Anwesende Personen</div>
-          <div>{attendees || '—'}</div>
+          <div class="summary-multiline">{attendees || '—'}</div>
         </div>
         <div>
           <div class="label">Einträge</div>
@@ -1711,14 +1756,20 @@
         {:else}
           {#each entries as e}
             <div class="entry-card">
-              {#if e.photoPreview}
-                <img src={e.photoPreview} alt="Foto" />
+              {#if e.photoPreviews?.length}
+                <div class="photo-collage" class:photo-collage-single={e.photoPreviews.length === 1}>
+                  {#each e.photoPreviews as src, i}
+                    <figure class="photo-frame">
+                      <img src={src} alt={`Bild ${i + 1}`} />
+                    </figure>
+                  {/each}
+                </div>
               {/if}
               <div class="entry-body">
                 <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
                 <div class="entry-fields">
                   {#each Object.entries(e.fields) as [key, value]}
-                    <div><strong>{key}:</strong> {value}</div>
+                    <div><strong>{key}:</strong> <span class="summary-multiline">{value}</span></div>
                   {/each}
                 </div>
                 <div class="entry-actions">
@@ -1747,11 +1798,11 @@
         </div>
         <div>
           <div class="label">Beschreibung</div>
-          <div>{protocolDescription || '—'}</div>
+          <div class="summary-multiline">{protocolDescription || '—'}</div>
         </div>
         <div>
           <div class="label">Anwesende Personen</div>
-          <div>{attendees || '—'}</div>
+          <div class="summary-multiline">{attendees || '—'}</div>
         </div>
         <div>
           <div class="label">Einträge</div>
@@ -1787,14 +1838,20 @@
         {:else}
           {#each entries as e}
             <div class="entry-card">
-              {#if e.photoPreview}
-                <img src={e.photoPreview} alt="Foto" />
+              {#if e.photoPreviews?.length}
+                <div class="photo-collage" class:photo-collage-single={e.photoPreviews.length === 1}>
+                  {#each e.photoPreviews as src, i}
+                    <figure class="photo-frame">
+                      <img src={src} alt={`Bild ${i + 1}`} />
+                    </figure>
+                  {/each}
+                </div>
               {/if}
               <div class="entry-body">
                 <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
                 <div class="entry-fields">
                   {#each Object.entries(e.fields) as [key, value]}
-                    <div><strong>{key}:</strong> {value}</div>
+                    <div><strong>{key}:</strong> <span class="summary-multiline">{value}</span></div>
                   {/each}
                 </div>
               </div>
@@ -1807,14 +1864,24 @@
 
   {#if view === 'photo'}
     <section class="panel">
-      <h2>Bild hinzufügen</h2>
-      <label class="field">
-        <span>Kamera öffnen / Datei auswählen</span>
-        <input type="file" accept="image/*" on:change={handlePhoto} />
+      <h2>Bilder hinzufügen</h2>
+      <p class="muted">Du kannst einem Eintrag mehrere Bilder zuordnen. Sie werden nebeneinander mit Rahmen dargestellt.</p>
+      <label class="file-button">
+        {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Kamera öffnen / Dateien auswählen'}
+        <input type="file" accept="image/*" multiple on:change={handlePhoto} />
       </label>
 
-      {#if entryDraft.photoPreview}
-        <img class="preview" src={entryDraft.photoPreview} alt="Vorschau" />
+      {#if entryDraft.photoPreviews?.length}
+        <div class="photo-collage photo-collage-editor">
+          {#each entryDraft.photoPreviews as src, i}
+            <figure class="photo-frame">
+              <img src={src} alt={`Bild ${i + 1}`} />
+              <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Bild entfernen">
+                ×
+              </button>
+            </figure>
+          {/each}
+        </div>
       {/if}
 
       <div class="cta-row">
@@ -1987,24 +2054,28 @@
   {/if}
 
   {#if confirmDialog.open}
-    <div class="modal-backdrop" on:click={closeConfirm}></div>
+    <div class="modal-backdrop" on:click={() => { if (!isExporting) closeConfirm(); }}></div>
     <div class="modal">
       <h3>{confirmDialog.title}</h3>
       <p class="muted">{confirmDialog.message}</p>
+      {#if closeError}
+        <p class="error">{closeError}</p>
+      {/if}
       <div class="cta-row">
-        <button class="primary" type="button" on:click={confirmDialog.onPrimary}>
+        <button class="primary" type="button" disabled={isExporting} on:click={confirmDialog.onPrimary}>
           {confirmDialog.primaryLabel || 'OK'}
         </button>
         <button
           class:danger={confirmDialog.secondaryDanger}
           class:primary={!confirmDialog.secondaryDanger}
           type="button"
+          disabled={isExporting}
           on:click={confirmDialog.onSecondary}
         >
           {confirmDialog.secondaryLabel}
         </button>
         {#if confirmDialog.tertiaryLabel}
-          <button type="button" on:click={confirmDialog.onTertiary}>{confirmDialog.tertiaryLabel}</button>
+          <button type="button" disabled={isExporting} on:click={confirmDialog.onTertiary}>{confirmDialog.tertiaryLabel}</button>
         {/if}
         {#if confirmDialog.showCancel}
           <button type="button" on:click={closeConfirm}>Abbrechen</button>
@@ -2120,21 +2191,18 @@
     margin-bottom: 12px;
   }
 
-  input, select {
+  input, select, textarea {
     padding: 10px 12px;
     border: 1px solid var(--border);
     border-radius: 10px;
     font-size: 14px;
+    font-family: inherit;
   }
 
-  .readonly-field {
-    padding: 10px 12px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: #f8f5f1;
-    font-size: 14px;
-    color: var(--ink);
-    user-select: none;
+  textarea {
+    min-height: 104px;
+    resize: vertical;
+    line-height: 1.45;
   }
 
   button {
@@ -2346,9 +2414,15 @@
 
   .summary {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    grid-template-columns: minmax(140px, 1.1fr) minmax(110px, 0.7fr) minmax(220px, 1.8fr) minmax(220px, 1.8fr) minmax(80px, 0.5fr);
     gap: 12px;
     margin-bottom: 12px;
+    align-items: start;
+  }
+
+  .summary-multiline {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .label {
@@ -2429,14 +2503,6 @@
     align-items: center;
   }
 
-  .preview {
-    width: 100%;
-    max-width: 320px;
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    margin-bottom: 14px;
-  }
-
   .entries {
     display: grid;
     gap: 12px;
@@ -2444,7 +2510,7 @@
 
   .entry-card {
     display: grid;
-    grid-template-columns: 160px 1fr;
+    grid-template-columns: minmax(180px, 0.9fr) minmax(0, 1.4fr);
     gap: 12px;
     padding: 12px;
     border: 1px solid var(--border);
@@ -2452,10 +2518,54 @@
     background: #fff;
   }
 
-  .entry-card img {
+  .photo-collage {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-content: flex-start;
+    min-width: 0;
+  }
+
+  .photo-frame {
+    margin: 0;
+    position: relative;
+    flex: 1 1 88px;
+    max-width: 160px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    overflow: hidden;
+    aspect-ratio: 1;
+  }
+
+  .photo-collage-single .photo-frame {
+    max-width: 180px;
+    flex-basis: 140px;
+  }
+
+  .photo-collage-editor {
+    margin: 14px 0;
+  }
+
+  .photo-frame img {
     width: 100%;
-    border-radius: 10px;
+    height: 100%;
     object-fit: cover;
+    display: block;
+  }
+
+  .photo-remove {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    padding: 0;
+    line-height: 1;
+    background: rgba(15, 23, 42, 0.82);
+    color: #fff;
+    border: none;
   }
 
   .entry-date {
@@ -2616,8 +2726,14 @@
     .add-row {
       grid-template-columns: 1fr;
     }
+    .summary {
+      grid-template-columns: 1fr;
+    }
     .entry-card {
       grid-template-columns: 1fr;
+    }
+    .photo-frame {
+      max-width: none;
     }
   }
 </style>

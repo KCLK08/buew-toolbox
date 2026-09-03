@@ -23,12 +23,18 @@ const storesV4 = {
   protocols: 'id, createdAt, updatedAt'
 };
 
+const storesV5 = {
+  ...storesV4,
+  exports: 'id, createdAt, protocolId'
+};
+
 export const db = new Dexie(DB_NAME);
 
 db.version(1).stores(storesV1);
 db.version(2).stores(storesV2);
 db.version(3).stores(storesV3);
 db.version(4).stores(storesV4);
+db.version(5).stores(storesV5);
 
 const dbReadyPromise = migrateLegacyDbIfNeeded();
 
@@ -149,9 +155,19 @@ export async function deleteExport(id) {
   await db.exports.delete(id);
 }
 
+async function findExportsByProtocolId(protocolId) {
+  if (!protocolId) return [];
+  try {
+    return await db.exports.where('protocolId').equals(protocolId).toArray();
+  } catch {
+    const rows = await db.exports.toArray();
+    return rows.filter((row) => row?.protocolId === protocolId);
+  }
+}
+
 export async function upsertExportByProtocol(record) {
   await ensureDbReady();
-  const existing = await db.exports.where('protocolId').equals(record.protocolId).first();
+  const existing = (await findExportsByProtocolId(record.protocolId))[0] ?? null;
   if (existing) {
     await db.exports.put({ ...existing, ...record, id: existing.id });
     return { ...existing, ...record, id: existing.id };
@@ -162,7 +178,7 @@ export async function upsertExportByProtocol(record) {
 
 export async function deleteExportsByProtocol(protocolId) {
   await ensureDbReady();
-  const matches = await db.exports.where('protocolId').equals(protocolId).toArray();
+  const matches = await findExportsByProtocolId(protocolId);
   for (const exp of matches) {
     await db.exports.delete(exp.id);
   }

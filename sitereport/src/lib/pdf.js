@@ -1,6 +1,7 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { blobToDataUrl } from './image';
 import { bufferToBase64 } from './native';
+import { layoutPhotoCollage, normalizeEntryPhotos } from './photos';
 
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
@@ -26,26 +27,66 @@ export async function exportToPdfData({
   const margin = 36;
   const lineHeight = 14;
   const headerGap = 18;
-  const blockGap = 20;
-  const imageMaxHeight = 260;
-  const placeholderHeight = 170;
+  const blockGap = 16;
+  const placeholderHeight = 120;
   const tableGap = 12;
   const headerPadding = 14;
   const cardPadding = 12;
+  const photoGap = 4;
+  const photoFrame = 2;
+  const badgeHeight = 18;
+  const badgeGap = 8;
   const cornerColor = rgb(0.17, 0.24, 0.35);
   const softBorder = rgb(0.86, 0.88, 0.9);
   const softBg = rgb(0.97, 0.98, 0.99);
   const rowAlt = rgb(0.96, 0.97, 0.98);
+  const frameColor = rgb(0.78, 0.8, 0.83);
 
   let page = null;
   let cursorY = 0;
 
-  const headerLines = [
-    `Projekt: ${projectName || ''}`,
-    `Datum: ${protocolDate || ''}`,
-    `Beschreibung: ${protocolDescription || ''}`,
-    `Anwesende Personen: ${attendees || ''}`
-  ];
+  const wrapText = (text, maxWidth, size = 11, usedFont = font) => {
+    const raw = pdfSafeText(text);
+    if (!raw.trim()) return ['—'];
+    const paragraphs = raw.replace(/\r\n/g, '\n').split('\n');
+    const lines = [];
+    for (const paragraph of paragraphs) {
+      if (!paragraph) {
+        lines.push(' ');
+        continue;
+      }
+      const words = paragraph.split(/\s+/);
+      let current = '';
+      const pushLongWord = (word) => {
+        let chunk = '';
+        for (const ch of word) {
+          const trial = chunk + ch;
+          if (usedFont.widthOfTextAtSize(trial, size) <= maxWidth) {
+            chunk = trial;
+          } else {
+            if (chunk) lines.push(chunk);
+            chunk = ch;
+          }
+        }
+        current = chunk;
+      };
+      for (const word of words) {
+        const next = current ? `${current} ${word}` : word;
+        if (usedFont.widthOfTextAtSize(next, size) <= maxWidth) {
+          current = next;
+        } else {
+          if (current) lines.push(current);
+          if (usedFont.widthOfTextAtSize(word, size) > maxWidth) {
+            pushLongWord(word);
+          } else {
+            current = word;
+          }
+        }
+      }
+      if (current) lines.push(current);
+    }
+    return lines.length ? lines : ['—'];
+  };
 
   const drawHeader = async () => {
     const pageWidth = A4_WIDTH;
@@ -57,22 +98,42 @@ export async function exportToPdfData({
     let logoHeight = 0;
     let logoImage = null;
     if (logoDataUrl) {
-      const { bytes, extension } = dataUrlToBytes(logoDataUrl);
-      if (extension === 'png') {
-        logoImage = await pdfDoc.embedPng(bytes);
-      } else {
-        logoImage = await pdfDoc.embedJpg(bytes);
+      try {
+        const { bytes, extension } = dataUrlToBytes(logoDataUrl);
+        if (extension === 'png') {
+          logoImage = await pdfDoc.embedPng(bytes);
+        } else {
+          logoImage = await pdfDoc.embedJpg(bytes);
+        }
+        const maxLogoW = 120;
+        const maxLogoH = 60;
+        const scale = Math.min(maxLogoW / logoImage.width, maxLogoH / logoImage.height, 1);
+        logoWidth = logoImage.width * scale;
+        logoHeight = logoImage.height * scale;
+      } catch (err) {
+        addIssue(`Logo konnte nicht eingebettet werden (${err?.message || 'Unbekannt'}).`);
       }
-      const maxLogoW = 120;
-      const maxLogoH = 60;
-      const scale = Math.min(maxLogoW / logoImage.width, maxLogoH / logoImage.height, 1);
-      logoWidth = logoImage.width * scale;
-      logoHeight = logoImage.height * scale;
     }
 
-    const title = protocolTitle || 'Protokoll';
+    const title = pdfSafeText(protocolTitle || 'Protokoll');
     const titleSize = 16;
-    const headerTextHeight = headerLines.length * lineHeight + titleSize + 6;
+    const textMaxWidth = headerWidth - headerPadding * 2 - (logoImage ? logoWidth + 16 : 0);
+    const metaRows = [
+      { label: 'Projekt', value: projectName || '' },
+      { label: 'Datum', value: protocolDate || '' },
+      { label: 'Beschreibung', value: protocolDescription || '' },
+      { label: 'Anwesende Personen', value: attendees || '' }
+    ].map((row) => {
+      const label = `${row.label}: `;
+      const labelWidth = fontBold.widthOfTextAtSize(label, 11);
+      const valueWidth = Math.max(40, textMaxWidth - labelWidth);
+      const valueLines = wrapText(row.value, valueWidth, 11, font).slice(0, 10);
+      return { label, labelWidth, valueLines };
+    });
+
+    const titleLines = wrapText(title, textMaxWidth, titleSize, fontBold);
+    const metaHeight = metaRows.reduce((sum, row) => sum + row.valueLines.length * lineHeight, 0);
+    const headerTextHeight = titleLines.length * (titleSize + 2) + 8 + metaHeight;
     const headerHeight = Math.max(headerTextHeight, logoHeight);
     const headerBoxHeight = headerHeight + headerPadding * 2;
 
@@ -96,23 +157,36 @@ export async function exportToPdfData({
     });
 
     let textY = headerTop - headerPadding - titleSize;
-    page.drawText(title, {
-      x: margin + headerPadding,
-      y: textY,
-      size: titleSize,
-      font: fontBold,
-      color: cornerColor
-    });
-    textY -= 8;
-    for (const line of headerLines) {
-      textY -= lineHeight;
+    titleLines.forEach((line, index) => {
       page.drawText(line, {
         x: margin + headerPadding,
-        y: textY,
+        y: textY - index * (titleSize + 2),
+        size: titleSize,
+        font: fontBold,
+        color: cornerColor
+      });
+    });
+    textY -= titleLines.length * (titleSize + 2) + 6;
+
+    for (const row of metaRows) {
+      let lineY = textY;
+      page.drawText(row.label, {
+        x: margin + headerPadding,
+        y: lineY,
         size: 11,
-        font,
+        font: fontBold,
         color: rgb(0.1, 0.1, 0.1)
       });
+      row.valueLines.forEach((line, i) => {
+        page.drawText(line, {
+          x: margin + headerPadding + row.labelWidth,
+          y: lineY - i * lineHeight,
+          size: 11,
+          font,
+          color: rgb(0.1, 0.1, 0.1)
+        });
+      });
+      textY -= row.valueLines.length * lineHeight;
     }
 
     if (logoImage) {
@@ -145,48 +219,23 @@ export async function exportToPdfData({
   const labelWidth = blockWidth * 0.35;
   const valueWidth = blockWidth - labelWidth - 8;
 
-  const wrapText = (text, maxWidth) => {
-    if (!text) return ['—'];
-    const words = String(text).split(/\s+/);
-    const lines = [];
-    let current = '';
-    for (const word of words) {
-      const next = current ? `${current} ${word}` : word;
-      if (font.widthOfTextAtSize(next, 11) <= maxWidth) {
-        current = next;
-      } else {
-        if (current) lines.push(current);
-        current = word;
-      }
-    }
-    if (current) lines.push(current);
-    return lines.length ? lines : ['—'];
+  const embedPhoto = async (blob) => {
+    const dataUrl = await blobToDataUrl(blob);
+    const { bytes, extension } = dataUrlToBytes(dataUrl);
+    return extension === 'png' ? pdfDoc.embedPng(bytes) : pdfDoc.embedJpg(bytes);
   };
 
   const drawEntry = async (entry, index) => {
-    let imageHeight = placeholderHeight;
-    let imageWidth = blockWidth;
-    let image = null;
-    let imageIsPlaceholder = false;
-
-    if (entry.photoBlob) {
+    const photoBlobs = normalizeEntryPhotos(entry);
+    const images = [];
+    for (const [photoIndex, blob] of photoBlobs.entries()) {
       try {
-        const dataUrl = await blobToDataUrl(entry.photoBlob);
-        const { bytes, extension } = dataUrlToBytes(dataUrl);
-        image = extension === 'png' ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
-        const scale = Math.min(blockWidth / image.width, imageMaxHeight / image.height, 1);
-        imageWidth = image.width * scale;
-        imageHeight = image.height * scale;
+        images.push(await embedPhoto(blob));
       } catch (err) {
-        imageIsPlaceholder = true;
-        imageWidth = blockWidth;
-        imageHeight = placeholderHeight;
-        addIssue(`Eintrag ${index + 1}: Bild konnte nicht eingebettet werden (${err?.message || 'Unbekannt'}).`);
+        addIssue(
+          `Eintrag ${index + 1}, Bild ${photoIndex + 1}: konnte nicht eingebettet werden (${err?.message || 'Unbekannt'}).`
+        );
       }
-    } else {
-      imageIsPlaceholder = true;
-      imageWidth = blockWidth;
-      imageHeight = placeholderHeight;
     }
 
     const rows = tableColumns.map((col) => ({
@@ -196,36 +245,53 @@ export async function exportToPdfData({
 
     let tableHeight = 0;
     const rowHeights = rows.map((row) => {
-      const labelLines = wrapText(row.label, labelWidth - 6);
-      const valueLines = wrapText(row.value, valueWidth - 6);
-      const lines = Math.max(labelLines.length, valueLines.length);
+      const labelLines = wrapText(row.label, labelWidth - 6, 11, fontBold);
+      const valueLines = wrapText(row.value, valueWidth - 6, 11, font);
+      const lines = Math.max(labelLines.length, valueLines.length, 1);
       const height = lines * lineHeight + 6;
       tableHeight += height;
       return { height, labelLines, valueLines };
     });
 
-    const blockHeight = imageHeight + tableGap + tableHeight + blockGap + cardPadding * 2;
-    if (!page || cursorY - blockHeight < margin) {
+    const chromeWithoutImage = cardPadding * 2 + badgeHeight + badgeGap + tableGap + tableHeight;
+    const minImageHeight = images.length ? 72 : placeholderHeight;
+    const minBlockHeight = chromeWithoutImage + minImageHeight + blockGap;
+
+    if (!page || cursorY - minBlockHeight < margin) {
       await startPage();
     }
 
+    const available = Math.max(minImageHeight, cursorY - margin - chromeWithoutImage);
+    const maxImageWidth = blockWidth - cardPadding * 2;
+    const singleImageCap = 280;
+    const maxImageHeight = images.length <= 1 ? Math.min(singleImageCap, available) : available;
+
+    let collage = { items: [], width: maxImageWidth, height: placeholderHeight, cols: 1, rows: 1 };
+    if (images.length) {
+      collage = layoutPhotoCollage(
+        images.map((image) => ({ width: image.width, height: image.height })),
+        maxImageWidth,
+        maxImageHeight,
+        { gap: photoGap, frame: photoFrame }
+      );
+    }
+
+    const imageHeight = images.length ? collage.height : placeholderHeight;
+    const cardHeight = chromeWithoutImage + imageHeight;
     const cardTop = cursorY;
-    const cardBottom = cursorY - (imageHeight + tableGap + tableHeight + cardPadding * 2);
+    const cardBottom = cursorY - cardHeight;
+
     page.drawRectangle({
       x: margin,
       y: cardBottom,
       width: blockWidth,
-      height: cardTop - cardBottom,
+      height: cardHeight,
       color: softBg,
       borderColor: softBorder,
       borderWidth: 1
     });
 
-    const imageX = margin + cardPadding + (blockWidth - cardPadding * 2 - imageWidth) / 2;
-    const imageY = cardTop - cardPadding - imageHeight;
-
     const badgeText = `Bild ${index + 1}`;
-    const badgeHeight = 18;
     const badgePaddingX = 8;
     const badgeWidth = Math.min(
       blockWidth - cardPadding * 2,
@@ -248,28 +314,47 @@ export async function exportToPdfData({
       color: rgb(1, 1, 1)
     });
 
-    if (imageIsPlaceholder) {
+    const collageTop = badgeY - badgeGap;
+    const collageLeft = margin + cardPadding;
+    const imageY = collageTop - imageHeight;
+
+    if (!images.length) {
       page.drawRectangle({
-        x: margin + cardPadding,
+        x: collageLeft,
         y: imageY,
-        width: blockWidth - cardPadding * 2,
+        width: maxImageWidth,
         height: imageHeight,
         borderColor: softBorder,
         borderWidth: 1
       });
       page.drawText('Kein Bild vorhanden', {
-        x: margin + cardPadding + 12,
+        x: collageLeft + 12,
         y: imageY + imageHeight / 2 - 6,
         size: 11,
         font,
         color: rgb(0.45, 0.47, 0.5)
       });
-    } else if (image) {
-      page.drawImage(image, {
-        x: imageX,
-        y: imageY,
-        width: imageWidth,
-        height: imageHeight
+    } else {
+      collage.items.forEach((item, photoIndex) => {
+        const frameX = collageLeft + item.frameX;
+        const frameY = collageTop - item.frameY - item.frameH;
+        page.drawRectangle({
+          x: frameX,
+          y: frameY,
+          width: item.frameW,
+          height: item.frameH,
+          borderColor: frameColor,
+          borderWidth: 1,
+          color: rgb(1, 1, 1)
+        });
+        const image = images[photoIndex];
+        if (!image) return;
+        page.drawImage(image, {
+          x: collageLeft + item.x,
+          y: collageTop - item.y - item.height,
+          width: item.width,
+          height: item.height
+        });
       });
     }
 
@@ -287,7 +372,6 @@ export async function exportToPdfData({
     });
 
     rowHeights.forEach((rowData, idx) => {
-      const row = rows[idx];
       const rowBottom = tableTop - rowData.height;
       if (idx % 2 === 1) {
         page.drawRectangle({
@@ -365,6 +449,30 @@ export async function exportToPdfData({
       issues
     }
   };
+}
+
+function pdfSafeText(text) {
+  const map = {
+    '\u2018': "'",
+    '\u2019': "'",
+    '\u201c': '"',
+    '\u201d': '"',
+    '\u2013': '-',
+    '\u2014': '-',
+    '\u2026': '...',
+    '\u00a0': ' ',
+    '\u2022': '-',
+    '\u20ac': 'EUR'
+  };
+  return Array.from(String(text ?? ''), (ch) => {
+    if (ch === '\n' || ch === '\r') return ch;
+    if (map[ch]) return map[ch];
+    const code = ch.charCodeAt(0);
+    if (code === 9) return ' ';
+    if (code >= 0x20 && code <= 0x7e) return ch;
+    if (code >= 0xa0 && code <= 0xff) return ch;
+    return '?';
+  }).join('');
 }
 
 function dataUrlToBytes(dataUrl) {
