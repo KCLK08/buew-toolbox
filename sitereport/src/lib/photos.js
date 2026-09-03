@@ -47,7 +47,11 @@ export function layoutPhotoCollage(sizes, maxWidth, maxHeight, opts = {}) {
     return { items: [], width: 0, height: 0, cols: 0, rows: 0 };
   }
 
-  const candidates = new Set([preferredPhotoColumns(n), n, Math.ceil(n / 2), Math.min(n, 4)]);
+  const candidates = new Set(
+    n <= 3
+      ? [n]
+      : [preferredPhotoColumns(n), n, Math.ceil(n / 2), Math.min(n, 4)]
+  );
   let best = null;
 
   for (const cols of candidates) {
@@ -82,7 +86,7 @@ export function layoutPhotoCollage(sizes, maxWidth, maxHeight, opts = {}) {
     const width = cols * cellW + gap * (cols - 1);
     const height = rows * cellH + gap * (rows - 1);
     const minArea = Math.min(...items.map((item) => item.width * item.height));
-    const score = minArea * (n <= 3 && rows === 1 ? 1.15 : 1);
+    const score = minArea * (rows === 1 ? 1.1 : 1);
 
     if (!best || score > best.score) {
       best = { items, width, height, cols, rows, score };

@@ -36,6 +36,18 @@ test('layoutPhotoCollage fits all images into the given page box', () => {
   }
 });
 
+test('layoutPhotoCollage keeps up to three images in one row', () => {
+  const sizes = [
+    { width: 400, height: 300 },
+    { width: 400, height: 300 },
+    { width: 400, height: 300 }
+  ];
+  const layout = layoutPhotoCollage(sizes, 500, 500, { gap: 4, frame: 2 });
+  assert.equal(layout.cols, 3);
+  assert.equal(layout.rows, 1);
+  assert.equal(layout.items.length, 3);
+});
+
 test('layoutPhotoCollage wraps many images instead of overflowing one page', () => {
   const sizes = Array.from({ length: 8 }, () => ({ width: 800, height: 600 }));
   const layout = layoutPhotoCollage(sizes, 520, 320, { gap: 4, frame: 2 });
