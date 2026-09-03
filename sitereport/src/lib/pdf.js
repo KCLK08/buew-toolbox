@@ -273,24 +273,35 @@ export async function exportToPdfData({
     const hasImages = images.length > 0;
     const imageChrome = hasImages ? tableGap : 0;
     const chromeWithoutImage = cardPadding * 2 + badgeHeight + badgeGap + imageChrome + tableHeight;
-    const minImageHeight = hasImages ? 72 : 0;
-    const minBlockHeight = chromeWithoutImage + minImageHeight + blockGap;
-
-    if (!page || cursorY - minBlockHeight < margin) {
-      await startPage();
-    }
-
     const maxImageWidth = blockWidth - cardPadding * 2;
+    const minPhotoCell = 180;
+    const maxPhotoCell = 280;
+    const pageBodyHeight = A4_HEIGHT - margin * 2;
+
     let collage = { items: [], width: 0, height: 0, cols: 0, rows: 0 };
     let imageHeight = 0;
     if (hasImages) {
-      const available = Math.max(minImageHeight, cursorY - margin - chromeWithoutImage);
-      const singleImageCap = 280;
-      const maxImageHeight = images.length <= 1 ? Math.min(singleImageCap, available) : available;
+      const sizes = images.map((image) => ({ width: image.width, height: image.height }));
+      collage = layoutPhotoCollage(sizes, maxImageWidth, pageBodyHeight, {
+        gap: photoGap,
+        frame: photoFrame,
+        minCell: minPhotoCell,
+        maxCell: maxPhotoCell
+      });
+      imageHeight = collage.height;
+    }
+
+    const cardHeightNeeded = chromeWithoutImage + imageHeight;
+    if (!page || cursorY - cardHeightNeeded < margin) {
+      await startPage();
+    }
+
+    const available = Math.max(0, cursorY - margin - chromeWithoutImage);
+    if (hasImages && imageHeight > available) {
       collage = layoutPhotoCollage(
         images.map((image) => ({ width: image.width, height: image.height })),
         maxImageWidth,
-        maxImageHeight,
+        Math.max(minPhotoCell, available),
         { gap: photoGap, frame: photoFrame }
       );
       imageHeight = collage.height;
