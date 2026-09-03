@@ -598,6 +598,7 @@
   };
 
   const startEntry = () => {
+    cancelInlineEdit();
     editingEntryId = null;
     bulkEntryMode = false;
     entryDraft = emptyEntryDraft();
@@ -615,6 +616,7 @@
   };
 
   const startBulkEntries = () => {
+    cancelInlineEdit();
     editingEntryId = null;
     bulkEntryMode = true;
     saveError = '';
@@ -633,31 +635,40 @@
   };
 
   const editEntry = (entry) => {
-    editingEntryId = entry.id;
+    if (editingEntryId === entry.id) return;
+    cancelInlineEdit();
     bulkEntryMode = false;
+    saveError = '';
+    editingEntryId = entry.id;
     const photoFiles = normalizeEntryPhotos(entry);
     entryDraft = {
+      createdAt: entry.createdAt,
       fields: { ...entry.fields },
       photoFiles: [...photoFiles],
       photoPreviews: photoFiles.map((blob) => blobToObjectUrl(blob))
     };
-    stepIndex = 0;
-    entrySteps = columns.map((c) => ({ ...c }));
-    if (!entrySteps.length) {
-      finalizeEntry();
-      return;
+  };
+
+  const cancelInlineEdit = () => {
+    if (!editingEntryId) return;
+    for (const url of entryDraft.photoPreviews || []) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // ignore
+      }
     }
-    view = entrySteps[0].isPhoto ? 'photo' : 'field';
-    currentField = entrySteps[0].isPhoto ? null : entrySteps[0];
-    if (view === 'field') {
-      tick().then(() => entryInputRef?.focus());
-    }
+    entryDraft = emptyEntryDraft();
+    editingEntryId = null;
+    saveError = '';
   };
 
   const removeEntryItem = async (entryId) => {
+    if (editingEntryId === entryId) cancelInlineEdit();
     entries = entries.filter((e) => e.id !== entryId);
     await deleteEntry(entryId);
     isDirty = true;
+    if (activeProtocolId) await saveProtocol();
   };
 
   const handlePhoto = async (e) => {
@@ -727,7 +738,7 @@
     }
   };
 
-  const finalizeEntry = async () => {
+  const finalizeEntry = async ({ returnView } = {}) => {
     if (isSaving) return;
     isSaving = true;
     saveError = '';
@@ -781,12 +792,22 @@
       stepIndex = 0;
       entrySteps = [];
       currentField = null;
-      view = 'main';
+      view = returnView || 'main';
     } catch (err) {
       saveError = 'Speichern fehlgeschlagen. Bitte erneut versuchen.';
       console.error(err);
     } finally {
       isSaving = false;
+    }
+  };
+
+  const saveInlineEntry = async () => {
+    if (!editingEntryId) return;
+    const hostView = view;
+    await finalizeEntry({ returnView: hostView });
+    if (saveError) return;
+    if (activeProtocolId) {
+      await saveProtocol();
     }
   };
 
@@ -1081,6 +1102,7 @@
   };
 
   const goToProtocols = async () => {
+    cancelInlineEdit();
     protocolsList = await listProtocols();
     selectionModeProtocols = false;
     selectedProtocols = new Set();
@@ -1824,28 +1846,80 @@
           <p class="muted">Noch keine Einträge.</p>
         {:else}
           {#each entries as e}
-            <div class="entry-card">
-              {#if e.photoPreviews?.length}
-                <div class="photo-collage" class:photo-collage-single={e.photoPreviews.length === 1}>
-                  {#each e.photoPreviews as src, i}
-                    <figure class="photo-frame">
-                      <img src={src} alt={`Bild ${i + 1}`} />
-                    </figure>
-                  {/each}
+            <div class:editing={editingEntryId === e.id} class="entry-card">
+              {#if editingEntryId === e.id}
+                {#if entryDraft.photoPreviews?.length}
+                  <div class="photo-collage photo-collage-editor">
+                    {#each entryDraft.photoPreviews as src, i}
+                      <figure class="photo-frame">
+                        <img src={src} alt={`Bild ${i + 1}`} />
+                        <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Bild entfernen">
+                          ×
+                        </button>
+                      </figure>
+                    {/each}
+                  </div>
+                {/if}
+                <div class="entry-body">
+                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <label class="file-button">
+                    {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Bilder hinzufügen'}
+                    <input type="file" accept="image/*" multiple on:change={handlePhoto} />
+                  </label>
+                  <div class="entry-editor-fields">
+                    {#each columns.filter((c) => !c.isPhoto) as col}
+                      <label class="field">
+                        <span>{col.name}</span>
+                        {#if col.type === 'number'}
+                          <input
+                            type="number"
+                            placeholder={col.name}
+                            bind:value={entryDraft.fields[col.name]}
+                            on:input={() => (isDirty = true)}
+                          />
+                        {:else}
+                          <input
+                            type="text"
+                            placeholder={col.name}
+                            bind:value={entryDraft.fields[col.name]}
+                            on:input={() => (isDirty = true)}
+                          />
+                        {/if}
+                      </label>
+                    {/each}
+                  </div>
+                  <div class="entry-actions">
+                    <button class="primary" type="button" disabled={isSaving} on:click={saveInlineEntry}>Speichern</button>
+                    <button type="button" on:click={cancelInlineEdit}>Abbrechen</button>
+                    <button type="button" class="danger" on:click={() => removeEntryItem(e.id)}>Löschen</button>
+                  </div>
+                  {#if saveError}
+                    <p class="error">{saveError}</p>
+                  {/if}
+                </div>
+              {:else}
+                {#if e.photoPreviews?.length}
+                  <div class="photo-collage" class:photo-collage-single={e.photoPreviews.length === 1}>
+                    {#each e.photoPreviews as src, i}
+                      <figure class="photo-frame">
+                        <img src={src} alt={`Bild ${i + 1}`} />
+                      </figure>
+                    {/each}
+                  </div>
+                {/if}
+                <div class="entry-body">
+                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <div class="entry-fields">
+                    {#each Object.entries(e.fields) as [key, value]}
+                      <div><strong>{key}:</strong> <span class="summary-multiline">{value}</span></div>
+                    {/each}
+                  </div>
+                  <div class="entry-actions">
+                    <button type="button" on:click={() => editEntry(e)}>Bearbeiten</button>
+                    <button type="button" class="danger" on:click={() => removeEntryItem(e.id)}>Löschen</button>
+                  </div>
                 </div>
               {/if}
-              <div class="entry-body">
-                <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
-                <div class="entry-fields">
-                  {#each Object.entries(e.fields) as [key, value]}
-                    <div><strong>{key}:</strong> <span class="summary-multiline">{value}</span></div>
-                  {/each}
-                </div>
-                <div class="entry-actions">
-                  <button type="button" on:click={() => editEntry(e)}>Bearbeiten</button>
-                  <button type="button" class="danger" on:click={() => removeEntryItem(e.id)}>Löschen</button>
-                </div>
-              </div>
             </div>
           {/each}
         {/if}
@@ -1906,24 +1980,80 @@
           <p class="muted">Noch keine Einträge.</p>
         {:else}
           {#each entries as e}
-            <div class="entry-card">
-              {#if e.photoPreviews?.length}
-                <div class="photo-collage" class:photo-collage-single={e.photoPreviews.length === 1}>
-                  {#each e.photoPreviews as src, i}
-                    <figure class="photo-frame">
-                      <img src={src} alt={`Bild ${i + 1}`} />
-                    </figure>
-                  {/each}
+            <div class:editing={editingEntryId === e.id} class="entry-card">
+              {#if editingEntryId === e.id}
+                {#if entryDraft.photoPreviews?.length}
+                  <div class="photo-collage photo-collage-editor">
+                    {#each entryDraft.photoPreviews as src, i}
+                      <figure class="photo-frame">
+                        <img src={src} alt={`Bild ${i + 1}`} />
+                        <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Bild entfernen">
+                          ×
+                        </button>
+                      </figure>
+                    {/each}
+                  </div>
+                {/if}
+                <div class="entry-body">
+                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <label class="file-button">
+                    {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Bilder hinzufügen'}
+                    <input type="file" accept="image/*" multiple on:change={handlePhoto} />
+                  </label>
+                  <div class="entry-editor-fields">
+                    {#each columns.filter((c) => !c.isPhoto) as col}
+                      <label class="field">
+                        <span>{col.name}</span>
+                        {#if col.type === 'number'}
+                          <input
+                            type="number"
+                            placeholder={col.name}
+                            bind:value={entryDraft.fields[col.name]}
+                            on:input={() => (isDirty = true)}
+                          />
+                        {:else}
+                          <input
+                            type="text"
+                            placeholder={col.name}
+                            bind:value={entryDraft.fields[col.name]}
+                            on:input={() => (isDirty = true)}
+                          />
+                        {/if}
+                      </label>
+                    {/each}
+                  </div>
+                  <div class="entry-actions">
+                    <button class="primary" type="button" disabled={isSaving} on:click={saveInlineEntry}>Speichern</button>
+                    <button type="button" on:click={cancelInlineEdit}>Abbrechen</button>
+                    <button type="button" class="danger" on:click={() => removeEntryItem(e.id)}>Löschen</button>
+                  </div>
+                  {#if saveError}
+                    <p class="error">{saveError}</p>
+                  {/if}
+                </div>
+              {:else}
+                {#if e.photoPreviews?.length}
+                  <div class="photo-collage" class:photo-collage-single={e.photoPreviews.length === 1}>
+                    {#each e.photoPreviews as src, i}
+                      <figure class="photo-frame">
+                        <img src={src} alt={`Bild ${i + 1}`} />
+                      </figure>
+                    {/each}
+                  </div>
+                {/if}
+                <div class="entry-body">
+                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <div class="entry-fields">
+                    {#each Object.entries(e.fields) as [key, value]}
+                      <div><strong>{key}:</strong> <span class="summary-multiline">{value}</span></div>
+                    {/each}
+                  </div>
+                  <div class="entry-actions">
+                    <button type="button" on:click={() => editEntry(e)}>Bearbeiten</button>
+                    <button type="button" class="danger" on:click={() => removeEntryItem(e.id)}>Löschen</button>
+                  </div>
                 </div>
               {/if}
-              <div class="entry-body">
-                <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
-                <div class="entry-fields">
-                  {#each Object.entries(e.fields) as [key, value]}
-                    <div><strong>{key}:</strong> <span class="summary-multiline">{value}</span></div>
-                  {/each}
-                </div>
-              </div>
             </div>
           {/each}
         {/if}
@@ -2719,10 +2849,14 @@
     border: none;
   }
 
-  .entry-date {
-    font-size: 12px;
-    color: var(--muted);
-    margin-bottom: 6px;
+  .entry-card.editing {
+    grid-template-columns: 1fr;
+  }
+
+  .entry-editor-fields {
+    display: grid;
+    gap: 10px;
+    margin: 10px 0;
   }
 
   .entry-fields {
