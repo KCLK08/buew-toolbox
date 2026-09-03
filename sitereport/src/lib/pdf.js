@@ -118,21 +118,26 @@ export async function exportToPdfData({
     const title = pdfSafeText(protocolTitle || 'Protokoll');
     const titleSize = 16;
     const textMaxWidth = headerWidth - headerPadding * 2 - (logoImage ? logoWidth + 16 : 0);
+    const stackedLabels = new Set(['Beschreibung', 'Anwesende Personen']);
     const metaRows = [
       { label: 'Projekt', value: projectName || '' },
       { label: 'Datum', value: protocolDate || '' },
       { label: 'Beschreibung', value: protocolDescription || '' },
       { label: 'Anwesende Personen', value: attendees || '' }
     ].map((row) => {
-      const label = `${row.label}: `;
+      const stacked = stackedLabels.has(row.label);
+      const label = stacked ? `${row.label}:` : `${row.label}: `;
       const labelWidth = fontBold.widthOfTextAtSize(label, 11);
-      const valueWidth = Math.max(40, textMaxWidth - labelWidth);
+      const valueWidth = stacked ? textMaxWidth : Math.max(40, textMaxWidth - labelWidth);
       const valueLines = wrapText(row.value, valueWidth, 11, font).slice(0, 10);
-      return { label, labelWidth, valueLines };
+      return { label, labelWidth, stacked, valueLines };
     });
 
     const titleLines = wrapText(title, textMaxWidth, titleSize, fontBold);
-    const metaHeight = metaRows.reduce((sum, row) => sum + row.valueLines.length * lineHeight, 0);
+    const metaHeight = metaRows.reduce((sum, row) => {
+      const valueH = row.valueLines.length * lineHeight;
+      return sum + (row.stacked ? lineHeight + valueH : valueH);
+    }, 0);
     const headerTextHeight = titleLines.length * (titleSize + 2) + 8 + metaHeight;
     const headerHeight = Math.max(headerTextHeight, logoHeight);
     const headerBoxHeight = headerHeight + headerPadding * 2;
@@ -169,24 +174,36 @@ export async function exportToPdfData({
     textY -= titleLines.length * (titleSize + 2) + 6;
 
     for (const row of metaRows) {
-      let lineY = textY;
       page.drawText(row.label, {
         x: margin + headerPadding,
-        y: lineY,
+        y: textY,
         size: 11,
         font: fontBold,
         color: rgb(0.1, 0.1, 0.1)
       });
-      row.valueLines.forEach((line, i) => {
-        page.drawText(line, {
-          x: margin + headerPadding + row.labelWidth,
-          y: lineY - i * lineHeight,
-          size: 11,
-          font,
-          color: rgb(0.1, 0.1, 0.1)
+      if (row.stacked) {
+        row.valueLines.forEach((line, i) => {
+          page.drawText(line, {
+            x: margin + headerPadding,
+            y: textY - (i + 1) * lineHeight,
+            size: 11,
+            font,
+            color: rgb(0.1, 0.1, 0.1)
+          });
         });
-      });
-      textY -= row.valueLines.length * lineHeight;
+        textY -= (1 + row.valueLines.length) * lineHeight;
+      } else {
+        row.valueLines.forEach((line, i) => {
+          page.drawText(line, {
+            x: margin + headerPadding + row.labelWidth,
+            y: textY - i * lineHeight,
+            size: 11,
+            font,
+            color: rgb(0.1, 0.1, 0.1)
+          });
+        });
+        textY -= row.valueLines.length * lineHeight;
+      }
     }
 
     if (logoImage) {

@@ -200,13 +200,19 @@ async function buildWorkbook({
   headerCell.value = {
     richText: headerLines.flatMap((line, idx) => {
       const isTitle = idx === 0 && line.label === 'Protokoll-Name';
+      const stacked = line.label === 'Beschreibung' || line.label === 'Anwesende Personen';
       const parts = [
         ...(isTitle
           ? [{ text: line.value || '—', font: { bold: true, size: 14 } }]
-          : [
-              { text: `${line.label}: `, font: { bold: true } },
-              { text: line.value || '—', font: { bold: false } }
-            ])
+          : stacked
+            ? [
+                { text: `${line.label}:`, font: { bold: true } },
+                { text: `\n${line.value || '—'}`, font: { bold: false } }
+              ]
+            : [
+                { text: `${line.label}: `, font: { bold: true } },
+                { text: line.value || '—', font: { bold: false } }
+              ])
       ];
       if (idx < headerLines.length - 1) {
         parts.push({ text: '\n', font: { bold: false } });
@@ -219,7 +225,8 @@ async function buildWorkbook({
   headerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
   const metaLineCount = headerLines.reduce((sum, line) => {
     const value = String(line.value || '');
-    return sum + Math.max(1, value.split(/\r?\n/).length);
+    const extra = line.label === 'Beschreibung' || line.label === 'Anwesende Personen' ? 1 : 0;
+    return sum + extra + Math.max(1, value.split(/\r?\n/).length);
   }, 0);
   headerCell.border = {
     top: { style: 'thin', color: { argb: 'FFE5E7EB' } },

@@ -110,6 +110,7 @@
   let entries = [];
   let entryDraft = emptyEntryDraft();
   let editingEntryId = null;
+  let bulkEntryMode = false;
 
   let stepIndex = 0;
   let entrySteps = [];
@@ -531,6 +532,7 @@
     protocolDescription = '';
     attendees = '';
     editingEntryId = null;
+    bulkEntryMode = false;
     entryDraft = emptyEntryDraft();
     stepIndex = 0;
     entrySteps = [];
@@ -597,6 +599,7 @@
 
   const startEntry = () => {
     editingEntryId = null;
+    bulkEntryMode = false;
     entryDraft = emptyEntryDraft();
     stepIndex = 0;
     entrySteps = columns.map((c) => ({ ...c }));
@@ -611,8 +614,27 @@
     }
   };
 
+  const startBulkEntries = () => {
+    editingEntryId = null;
+    bulkEntryMode = true;
+    saveError = '';
+    entryDraft = emptyEntryDraft();
+    const photoSteps = columns.filter((c) => c.isPhoto);
+    const otherSteps = columns.filter((c) => !c.isPhoto);
+    entrySteps = [...photoSteps, ...otherSteps];
+    if (!photoSteps.length) {
+      bulkEntryMode = false;
+      startEntry();
+      return;
+    }
+    stepIndex = 0;
+    view = 'photo';
+    currentField = null;
+  };
+
   const editEntry = (entry) => {
     editingEntryId = entry.id;
+    bulkEntryMode = false;
     const photoFiles = normalizeEntryPhotos(entry);
     entryDraft = {
       fields: { ...entry.fields },
@@ -650,6 +672,7 @@
     }
     entryDraft = { ...entryDraft, photoFiles, photoPreviews };
     isDirty = true;
+    saveError = '';
     e.currentTarget.value = '';
   };
 
@@ -674,7 +697,23 @@
     }
   };
 
+  const cancelEntryWizard = () => {
+    bulkEntryMode = false;
+    saveError = '';
+    entryDraft = emptyEntryDraft();
+    editingEntryId = null;
+    stepIndex = 0;
+    entrySteps = [];
+    currentField = null;
+    view = 'main';
+  };
+
   const goNextStep = async () => {
+    if (view === 'photo' && bulkEntryMode && !(entryDraft.photoFiles || []).length) {
+      saveError = 'Bitte mindestens ein Bild auswählen. Jedes Bild wird ein eigener Eintrag.';
+      return;
+    }
+    saveError = '';
     if (stepIndex < entrySteps.length - 1) {
       goToStep(stepIndex + 1);
     } else {
@@ -694,26 +733,49 @@
     saveError = '';
 
     try {
-      const entryId = editingEntryId || fallbackId();
       const photoBlobs = normalizeEntryPhotos(entryDraft);
-      const snapshot = {
-        id: entryId,
-        createdAt: editingEntryId ? entryDraft.createdAt || new Date().toISOString() : new Date().toISOString(),
-        fields: { ...entryDraft.fields },
-        photoBlob: photoBlobs[0] ?? null,
-        photoBlobs
-      };
+      const fields = { ...entryDraft.fields };
 
-      await addEntry(toPersistedEntry(snapshot));
-
-      const hydrated = hydrateEntry(snapshot);
-      if (editingEntryId) {
-        entries = entries.map((e) => (e.id === editingEntryId ? hydrated : e));
+      if (bulkEntryMode) {
+        if (!photoBlobs.length) {
+          saveError = 'Bitte mindestens ein Bild auswählen. Jedes Bild wird ein eigener Eintrag.';
+          return;
+        }
+        const created = [];
+        for (const blob of photoBlobs) {
+          const snapshot = {
+            id: fallbackId(),
+            createdAt: new Date().toISOString(),
+            fields,
+            photoBlob: blob,
+            photoBlobs: [blob]
+          };
+          await addEntry(toPersistedEntry(snapshot));
+          created.push(hydrateEntry(snapshot));
+        }
+        entries = [...created, ...entries];
       } else {
-        entries = [hydrated, ...entries];
+        const entryId = editingEntryId || fallbackId();
+        const snapshot = {
+          id: entryId,
+          createdAt: editingEntryId ? entryDraft.createdAt || new Date().toISOString() : new Date().toISOString(),
+          fields,
+          photoBlob: photoBlobs[0] ?? null,
+          photoBlobs
+        };
+
+        await addEntry(toPersistedEntry(snapshot));
+
+        const hydrated = hydrateEntry(snapshot);
+        if (editingEntryId) {
+          entries = entries.map((e) => (e.id === editingEntryId ? hydrated : e));
+        } else {
+          entries = [hydrated, ...entries];
+        }
       }
 
       isDirty = true;
+      bulkEntryMode = false;
       entryDraft = emptyEntryDraft();
       editingEntryId = null;
       stepIndex = 0;
@@ -934,6 +996,7 @@
     columns = defaultColumns.map((col) => ({ ...col }));
     activeProtocolId = null;
     activeProtocolCreatedAt = null;
+    bulkEntryMode = false;
     isDirty = false;
   };
 
@@ -1740,12 +1803,18 @@
 
       <div class="cta-row">
         <button class="primary" type="button" on:click={startEntry}>Eintrag machen</button>
+        {#if columns.some((c) => c.isPhoto)}
+          <button type="button" on:click={startBulkEntries}>Mehrere Einträge</button>
+        {/if}
         <button type="button" on:click={() => (view = 'edit-setup')}>Stammdaten bearbeiten</button>
         <button type="button" disabled={isExporting} on:click={closeProtocol}>
           {isExporting ? 'Abschließen…' : 'Protokoll abschließen'}
         </button>
         <button type="button" on:click={cancelProtocol}>Protokoll verlassen</button>
       </div>
+      <p class="muted entry-hint">
+        „Eintrag machen“: ein Eintrag, dem du mehrere Bilder zuordnen kannst. „Mehrere Einträge“: jedes hochgeladene Bild wird ein eigener Eintrag mit genau einem Bild.
+      </p>
       {#if closeError}
         <p class="error">{closeError}</p>
       {/if}
@@ -1864,39 +1933,84 @@
 
   {#if view === 'photo'}
     <section class="panel">
-      <h2>Bilder hinzufügen</h2>
-      <p class="muted">Du kannst einem Eintrag mehrere Bilder zuordnen. Sie werden nebeneinander mit Rahmen dargestellt.</p>
+      {#if bulkEntryMode}
+        <h2>Mehrere Einträge anlegen</h2>
+        <p class="muted">
+          Lade mehrere Bilder auf einmal hoch. <strong>Jedes Bild wird ein eigener Eintrag mit genau einem Bild.</strong>
+          Einträge mit mehreren Bildern bitte über „Eintrag machen“ einzeln anlegen.
+        </p>
+      {:else}
+        <h2>Bilder für diesen Eintrag</h2>
+        <p class="muted">
+          Alle hier hinzugefügten Bilder gehören zu <strong>einem</strong> Eintrag und werden nebeneinander dargestellt.
+          Für je ein Bild pro Eintrag nutze auf der Protokollseite „Mehrere Einträge“.
+        </p>
+      {/if}
       <label class="file-button">
-        {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Kamera öffnen / Dateien auswählen'}
+        {#if bulkEntryMode}
+          {entryDraft.photoPreviews?.length ? 'Weitere Einträge (Bilder) hinzufügen' : 'Mehrere Bilder auswählen'}
+        {:else}
+          {entryDraft.photoPreviews?.length ? 'Weitere Bilder zu diesem Eintrag' : 'Kamera öffnen / Dateien auswählen'}
+        {/if}
         <input type="file" accept="image/*" multiple on:change={handlePhoto} />
       </label>
 
       {#if entryDraft.photoPreviews?.length}
-        <div class="photo-collage photo-collage-editor">
-          {#each entryDraft.photoPreviews as src, i}
-            <figure class="photo-frame">
-              <img src={src} alt={`Bild ${i + 1}`} />
-              <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Bild entfernen">
-                ×
-              </button>
-            </figure>
-          {/each}
-        </div>
+        {#if bulkEntryMode}
+          <div class="bulk-entry-list">
+            {#each entryDraft.photoPreviews as src, i}
+              <div class="bulk-entry-item">
+                <div class="bulk-entry-label">Eintrag {i + 1}</div>
+                <figure class="photo-frame">
+                  <img src={src} alt={`Eintrag ${i + 1}`} />
+                  <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Eintrag entfernen">
+                    ×
+                  </button>
+                </figure>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="photo-collage photo-collage-editor">
+            {#each entryDraft.photoPreviews as src, i}
+              <figure class="photo-frame">
+                <img src={src} alt={`Bild ${i + 1}`} />
+                <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Bild entfernen">
+                  ×
+                </button>
+              </figure>
+            {/each}
+          </div>
+        {/if}
       {/if}
 
       <div class="cta-row">
         <button type="button" on:click={goPrevStep} disabled={stepIndex === 0}>Zurück</button>
-        <button type="button" on:click={() => (view = 'main')}>Abbrechen</button>
-        <button class="primary" type="button" on:click={goNextStep}>
-          {stepIndex < entrySteps.length - 1 ? 'Weiter' : 'Speichern'}
+        <button type="button" on:click={cancelEntryWizard}>Abbrechen</button>
+        <button class="primary" type="button" disabled={isSaving} on:click={goNextStep}>
+          {#if bulkEntryMode}
+            {stepIndex < entrySteps.length - 1
+              ? `Weiter (${entryDraft.photoPreviews?.length || 0} Einträge)`
+              : `${entryDraft.photoPreviews?.length || 0} Einträge speichern`}
+          {:else}
+            {stepIndex < entrySteps.length - 1 ? 'Weiter' : 'Speichern'}
+          {/if}
         </button>
       </div>
+      {#if saveError}
+        <p class="error">{saveError}</p>
+      {/if}
     </section>
   {/if}
 
   {#if view === 'field'}
     <section class="panel">
-      <h2>Eintrag</h2>
+      {#if bulkEntryMode}
+        <h2>Angaben für {entryDraft.photoPreviews?.length || 0} Einträge</h2>
+        <p class="muted">Diese Felder gelten für alle neuen Einträge. Jeder Eintrag behält sein eigenes Bild.</p>
+      {:else}
+        <h2>Eintrag</h2>
+      {/if}
       {#if currentField}
         {#key currentField.id}
           <label class="field">
@@ -1924,9 +2038,13 @@
 
       <div class="cta-row">
         <button type="button" on:click={goPrevStep} disabled={stepIndex === 0}>Zurück</button>
-        <button type="button" on:click={() => (view = 'main')}>Abbrechen</button>
+        <button type="button" on:click={cancelEntryWizard}>Abbrechen</button>
         <button class="primary" type="button" disabled={isSaving} on:click={goNextStep}>
-          {stepIndex < entrySteps.length - 1 ? 'Weiter' : 'Speichern'}
+          {#if bulkEntryMode}
+            {stepIndex < entrySteps.length - 1 ? 'Weiter' : `${entryDraft.photoPreviews?.length || 0} Einträge speichern`}
+          {:else}
+            {stepIndex < entrySteps.length - 1 ? 'Weiter' : 'Speichern'}
+          {/if}
         </button>
       </div>
       {#if saveError}
@@ -2545,6 +2663,39 @@
 
   .photo-collage-editor {
     margin: 14px 0;
+  }
+
+  .entry-hint {
+    margin: -8px 0 16px;
+    max-width: 52rem;
+  }
+
+  .bulk-entry-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 14px 0;
+  }
+
+  .bulk-entry-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 120px;
+  }
+
+  .bulk-entry-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .bulk-entry-item .photo-frame {
+    flex: none;
+    width: 120px;
+    max-width: 120px;
   }
 
   .photo-frame img {
