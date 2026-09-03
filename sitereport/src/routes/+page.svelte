@@ -1835,7 +1835,8 @@
         <button type="button" on:click={cancelProtocol}>Protokoll verlassen</button>
       </div>
       <p class="muted entry-hint">
-        „Eintrag machen“: ein Eintrag, dem du mehrere Bilder zuordnen kannst. „Mehrere Einträge“: jedes hochgeladene Bild wird ein eigener Eintrag mit genau einem Bild.
+        „Eintrag machen“: ein Eintrag, optional mit einem oder mehreren Bildern. Ohne Bild erscheint er in der PDF nur mit den Angaben.
+        „Mehrere Einträge“: jedes hochgeladene Bild wird ein eigener Eintrag mit genau einem Bild.
       </p>
       {#if closeError}
         <p class="error">{closeError}</p>
@@ -1845,15 +1846,19 @@
         {#if entries.length === 0}
           <p class="muted">Noch keine Einträge.</p>
         {:else}
-          {#each entries as e}
-            <div class:editing={editingEntryId === e.id} class="entry-card">
+          {#each entries as e, i}
+            <div
+              class:editing={editingEntryId === e.id}
+              class:text-only={!e.photoPreviews?.length && editingEntryId !== e.id}
+              class="entry-card"
+            >
               {#if editingEntryId === e.id}
                 {#if entryDraft.photoPreviews?.length}
                   <div class="photo-collage photo-collage-editor">
-                    {#each entryDraft.photoPreviews as src, i}
+                    {#each entryDraft.photoPreviews as src, photoIndex}
                       <figure class="photo-frame">
-                        <img src={src} alt={`Bild ${i + 1}`} />
-                        <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Bild entfernen">
+                        <img src={src} alt={`Bild ${photoIndex + 1}`} />
+                        <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(photoIndex)} aria-label="Bild entfernen">
                           ×
                         </button>
                       </figure>
@@ -1861,9 +1866,9 @@
                   </div>
                 {/if}
                 <div class="entry-body">
-                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <div class="entry-date">Eintrag {i + 1} · {new Date(e.createdAt).toLocaleString()}</div>
                   <label class="file-button">
-                    {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Bilder hinzufügen'}
+                    {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Bilder hinzufügen (optional)'}
                     <input type="file" accept="image/*" multiple on:change={handlePhoto} />
                   </label>
                   <div class="entry-editor-fields">
@@ -1900,15 +1905,15 @@
               {:else}
                 {#if e.photoPreviews?.length}
                   <div class="photo-collage" class:photo-collage-single={e.photoPreviews.length === 1}>
-                    {#each e.photoPreviews as src, i}
+                    {#each e.photoPreviews as src, photoIndex}
                       <figure class="photo-frame">
-                        <img src={src} alt={`Bild ${i + 1}`} />
+                        <img src={src} alt={`Bild ${photoIndex + 1}`} />
                       </figure>
                     {/each}
                   </div>
                 {/if}
                 <div class="entry-body">
-                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <div class="entry-date">Eintrag {i + 1} · {new Date(e.createdAt).toLocaleString()}</div>
                   <div class="entry-fields">
                     {#each Object.entries(e.fields) as [key, value]}
                       <div><strong>{key}:</strong> <span class="summary-multiline">{value}</span></div>
@@ -1979,15 +1984,19 @@
         {#if entries.length === 0}
           <p class="muted">Noch keine Einträge.</p>
         {:else}
-          {#each entries as e}
-            <div class:editing={editingEntryId === e.id} class="entry-card">
+          {#each entries as e, i}
+            <div
+              class:editing={editingEntryId === e.id}
+              class:text-only={!e.photoPreviews?.length && editingEntryId !== e.id}
+              class="entry-card"
+            >
               {#if editingEntryId === e.id}
                 {#if entryDraft.photoPreviews?.length}
                   <div class="photo-collage photo-collage-editor">
-                    {#each entryDraft.photoPreviews as src, i}
+                    {#each entryDraft.photoPreviews as src, photoIndex}
                       <figure class="photo-frame">
-                        <img src={src} alt={`Bild ${i + 1}`} />
-                        <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Bild entfernen">
+                        <img src={src} alt={`Bild ${photoIndex + 1}`} />
+                        <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(photoIndex)} aria-label="Bild entfernen">
                           ×
                         </button>
                       </figure>
@@ -1995,9 +2004,9 @@
                   </div>
                 {/if}
                 <div class="entry-body">
-                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <div class="entry-date">Eintrag {i + 1} · {new Date(e.createdAt).toLocaleString()}</div>
                   <label class="file-button">
-                    {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Bilder hinzufügen'}
+                    {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Bilder hinzufügen (optional)'}
                     <input type="file" accept="image/*" multiple on:change={handlePhoto} />
                   </label>
                   <div class="entry-editor-fields">
@@ -2034,15 +2043,15 @@
               {:else}
                 {#if e.photoPreviews?.length}
                   <div class="photo-collage" class:photo-collage-single={e.photoPreviews.length === 1}>
-                    {#each e.photoPreviews as src, i}
+                    {#each e.photoPreviews as src, photoIndex}
                       <figure class="photo-frame">
-                        <img src={src} alt={`Bild ${i + 1}`} />
+                        <img src={src} alt={`Bild ${photoIndex + 1}`} />
                       </figure>
                     {/each}
                   </div>
                 {/if}
                 <div class="entry-body">
-                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <div class="entry-date">Eintrag {i + 1} · {new Date(e.createdAt).toLocaleString()}</div>
                   <div class="entry-fields">
                     {#each Object.entries(e.fields) as [key, value]}
                       <div><strong>{key}:</strong> <span class="summary-multiline">{value}</span></div>
@@ -2070,10 +2079,10 @@
           Einträge mit mehreren Bildern bitte über „Eintrag machen“ einzeln anlegen.
         </p>
       {:else}
-        <h2>Bilder für diesen Eintrag</h2>
+        <h2>Bilder für diesen Eintrag (optional)</h2>
         <p class="muted">
-          Alle hier hinzugefügten Bilder gehören zu <strong>einem</strong> Eintrag und werden nebeneinander dargestellt.
-          Für je ein Bild pro Eintrag nutze auf der Protokollseite „Mehrere Einträge“.
+          Bilder sind optional. Alle hier hinzugefügten Bilder gehören zu <strong>einem</strong> Eintrag und werden nebeneinander dargestellt.
+          Ohne Bild erscheint der Eintrag in der PDF nur mit den Angaben.
         </p>
       {/if}
       <label class="file-button">
@@ -2112,6 +2121,8 @@
             {/each}
           </div>
         {/if}
+      {:else if !bulkEntryMode}
+        <p class="muted">Kein Bild ausgewählt. Du kannst ohne Bild fortfahren.</p>
       {/if}
 
       <div class="cta-row">
@@ -2122,6 +2133,8 @@
             {stepIndex < entrySteps.length - 1
               ? `Weiter (${entryDraft.photoPreviews?.length || 0} Einträge)`
               : `${entryDraft.photoPreviews?.length || 0} Einträge speichern`}
+          {:else if !(entryDraft.photoPreviews?.length)}
+            {stepIndex < entrySteps.length - 1 ? 'Weiter ohne Bild' : 'Speichern ohne Bild'}
           {:else}
             {stepIndex < entrySteps.length - 1 ? 'Weiter' : 'Speichern'}
           {/if}
@@ -2849,7 +2862,8 @@
     border: none;
   }
 
-  .entry-card.editing {
+  .entry-card.editing,
+  .entry-card.text-only {
     grid-template-columns: 1fr;
   }
 

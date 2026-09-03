@@ -2,6 +2,7 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { blobToDataUrl } from './image';
 import { bufferToBase64 } from './native';
 import { layoutPhotoCollage, normalizeEntryPhotos } from './photos';
+import { pdfEntryBadgeText } from './pdf-entry';
 
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
@@ -28,7 +29,6 @@ export async function exportToPdfData({
   const lineHeight = 14;
   const headerGap = 18;
   const blockGap = 16;
-  const placeholderHeight = 120;
   const tableGap = 12;
   const headerPadding = 14;
   const cardPadding = 12;
@@ -270,30 +270,32 @@ export async function exportToPdfData({
       return { height, labelLines, valueLines };
     });
 
-    const chromeWithoutImage = cardPadding * 2 + badgeHeight + badgeGap + tableGap + tableHeight;
-    const minImageHeight = images.length ? 72 : placeholderHeight;
+    const hasImages = images.length > 0;
+    const imageChrome = hasImages ? tableGap : 0;
+    const chromeWithoutImage = cardPadding * 2 + badgeHeight + badgeGap + imageChrome + tableHeight;
+    const minImageHeight = hasImages ? 72 : 0;
     const minBlockHeight = chromeWithoutImage + minImageHeight + blockGap;
 
     if (!page || cursorY - minBlockHeight < margin) {
       await startPage();
     }
 
-    const available = Math.max(minImageHeight, cursorY - margin - chromeWithoutImage);
     const maxImageWidth = blockWidth - cardPadding * 2;
-    const singleImageCap = 280;
-    const maxImageHeight = images.length <= 1 ? Math.min(singleImageCap, available) : available;
-
-    let collage = { items: [], width: maxImageWidth, height: placeholderHeight, cols: 1, rows: 1 };
-    if (images.length) {
+    let collage = { items: [], width: 0, height: 0, cols: 0, rows: 0 };
+    let imageHeight = 0;
+    if (hasImages) {
+      const available = Math.max(minImageHeight, cursorY - margin - chromeWithoutImage);
+      const singleImageCap = 280;
+      const maxImageHeight = images.length <= 1 ? Math.min(singleImageCap, available) : available;
       collage = layoutPhotoCollage(
         images.map((image) => ({ width: image.width, height: image.height })),
         maxImageWidth,
         maxImageHeight,
         { gap: photoGap, frame: photoFrame }
       );
+      imageHeight = collage.height;
     }
 
-    const imageHeight = images.length ? collage.height : placeholderHeight;
     const cardHeight = chromeWithoutImage + imageHeight;
     const cardTop = cursorY;
     const cardBottom = cursorY - cardHeight;
@@ -308,7 +310,7 @@ export async function exportToPdfData({
       borderWidth: 1
     });
 
-    const badgeText = `Bild ${index + 1}`;
+    const badgeText = pdfEntryBadgeText(index);
     const badgePaddingX = 8;
     const badgeWidth = Math.min(
       blockWidth - cardPadding * 2,
@@ -334,24 +336,9 @@ export async function exportToPdfData({
     const collageTop = badgeY - badgeGap;
     const collageLeft = margin + cardPadding;
     const imageY = collageTop - imageHeight;
+    const tableTopStart = hasImages ? imageY - tableGap : collageTop;
 
-    if (!images.length) {
-      page.drawRectangle({
-        x: collageLeft,
-        y: imageY,
-        width: maxImageWidth,
-        height: imageHeight,
-        borderColor: softBorder,
-        borderWidth: 1
-      });
-      page.drawText('Kein Bild vorhanden', {
-        x: collageLeft + 12,
-        y: imageY + imageHeight / 2 - 6,
-        size: 11,
-        font,
-        color: rgb(0.45, 0.47, 0.5)
-      });
-    } else {
+    if (hasImages) {
       collage.items.forEach((item, photoIndex) => {
         const frameX = collageLeft + item.frameX;
         const frameY = collageTop - item.frameY - item.frameH;
@@ -375,7 +362,7 @@ export async function exportToPdfData({
       });
     }
 
-    let tableTop = imageY - tableGap;
+    let tableTop = tableTopStart;
     const tableLeft = margin + cardPadding;
     const tableRight = margin + blockWidth - cardPadding;
     const dividerX = tableLeft + labelWidth + 4;
@@ -433,8 +420,8 @@ export async function exportToPdfData({
     });
 
     page.drawLine({
-      start: { x: dividerX, y: imageY - tableGap },
-      end: { x: dividerX, y: imageY - tableGap - tableHeight },
+      start: { x: dividerX, y: tableTopStart },
+      end: { x: dividerX, y: tableTopStart - tableHeight },
       thickness: 1,
       color: softBorder
     });
