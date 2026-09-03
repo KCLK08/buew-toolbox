@@ -110,6 +110,7 @@
   let entries = [];
   let entryDraft = emptyEntryDraft();
   let editingEntryId = null;
+  let bulkEntryMode = false;
 
   let stepIndex = 0;
   let entrySteps = [];
@@ -531,6 +532,7 @@
     protocolDescription = '';
     attendees = '';
     editingEntryId = null;
+    bulkEntryMode = false;
     entryDraft = emptyEntryDraft();
     stepIndex = 0;
     entrySteps = [];
@@ -596,7 +598,9 @@
   };
 
   const startEntry = () => {
+    cancelInlineEdit();
     editingEntryId = null;
+    bulkEntryMode = false;
     entryDraft = emptyEntryDraft();
     stepIndex = 0;
     entrySteps = columns.map((c) => ({ ...c }));
@@ -611,31 +615,60 @@
     }
   };
 
+  const startBulkEntries = () => {
+    cancelInlineEdit();
+    editingEntryId = null;
+    bulkEntryMode = true;
+    saveError = '';
+    entryDraft = emptyEntryDraft();
+    const photoSteps = columns.filter((c) => c.isPhoto);
+    const otherSteps = columns.filter((c) => !c.isPhoto);
+    entrySteps = [...photoSteps, ...otherSteps];
+    if (!photoSteps.length) {
+      bulkEntryMode = false;
+      startEntry();
+      return;
+    }
+    stepIndex = 0;
+    view = 'photo';
+    currentField = null;
+  };
+
   const editEntry = (entry) => {
+    if (editingEntryId === entry.id) return;
+    cancelInlineEdit();
+    bulkEntryMode = false;
+    saveError = '';
     editingEntryId = entry.id;
     const photoFiles = normalizeEntryPhotos(entry);
     entryDraft = {
+      createdAt: entry.createdAt,
       fields: { ...entry.fields },
       photoFiles: [...photoFiles],
       photoPreviews: photoFiles.map((blob) => blobToObjectUrl(blob))
     };
-    stepIndex = 0;
-    entrySteps = columns.map((c) => ({ ...c }));
-    if (!entrySteps.length) {
-      finalizeEntry();
-      return;
+  };
+
+  const cancelInlineEdit = () => {
+    if (!editingEntryId) return;
+    for (const url of entryDraft.photoPreviews || []) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // ignore
+      }
     }
-    view = entrySteps[0].isPhoto ? 'photo' : 'field';
-    currentField = entrySteps[0].isPhoto ? null : entrySteps[0];
-    if (view === 'field') {
-      tick().then(() => entryInputRef?.focus());
-    }
+    entryDraft = emptyEntryDraft();
+    editingEntryId = null;
+    saveError = '';
   };
 
   const removeEntryItem = async (entryId) => {
+    if (editingEntryId === entryId) cancelInlineEdit();
     entries = entries.filter((e) => e.id !== entryId);
     await deleteEntry(entryId);
     isDirty = true;
+    if (activeProtocolId) await saveProtocol();
   };
 
   const handlePhoto = async (e) => {
@@ -650,6 +683,7 @@
     }
     entryDraft = { ...entryDraft, photoFiles, photoPreviews };
     isDirty = true;
+    saveError = '';
     e.currentTarget.value = '';
   };
 
@@ -674,7 +708,23 @@
     }
   };
 
+  const cancelEntryWizard = () => {
+    bulkEntryMode = false;
+    saveError = '';
+    entryDraft = emptyEntryDraft();
+    editingEntryId = null;
+    stepIndex = 0;
+    entrySteps = [];
+    currentField = null;
+    view = 'main';
+  };
+
   const goNextStep = async () => {
+    if (view === 'photo' && bulkEntryMode && !(entryDraft.photoFiles || []).length) {
+      saveError = 'Bitte mindestens ein Bild auswählen. Jedes Bild wird ein eigener Eintrag.';
+      return;
+    }
+    saveError = '';
     if (stepIndex < entrySteps.length - 1) {
       goToStep(stepIndex + 1);
     } else {
@@ -688,43 +738,76 @@
     }
   };
 
-  const finalizeEntry = async () => {
+  const finalizeEntry = async ({ returnView } = {}) => {
     if (isSaving) return;
     isSaving = true;
     saveError = '';
 
     try {
-      const entryId = editingEntryId || fallbackId();
       const photoBlobs = normalizeEntryPhotos(entryDraft);
-      const snapshot = {
-        id: entryId,
-        createdAt: editingEntryId ? entryDraft.createdAt || new Date().toISOString() : new Date().toISOString(),
-        fields: { ...entryDraft.fields },
-        photoBlob: photoBlobs[0] ?? null,
-        photoBlobs
-      };
+      const fields = { ...entryDraft.fields };
 
-      await addEntry(toPersistedEntry(snapshot));
-
-      const hydrated = hydrateEntry(snapshot);
-      if (editingEntryId) {
-        entries = entries.map((e) => (e.id === editingEntryId ? hydrated : e));
+      if (bulkEntryMode) {
+        if (!photoBlobs.length) {
+          saveError = 'Bitte mindestens ein Bild auswählen. Jedes Bild wird ein eigener Eintrag.';
+          return;
+        }
+        const created = [];
+        for (const blob of photoBlobs) {
+          const snapshot = {
+            id: fallbackId(),
+            createdAt: new Date().toISOString(),
+            fields,
+            photoBlob: blob,
+            photoBlobs: [blob]
+          };
+          await addEntry(toPersistedEntry(snapshot));
+          created.push(hydrateEntry(snapshot));
+        }
+        entries = [...created, ...entries];
       } else {
-        entries = [hydrated, ...entries];
+        const entryId = editingEntryId || fallbackId();
+        const snapshot = {
+          id: entryId,
+          createdAt: editingEntryId ? entryDraft.createdAt || new Date().toISOString() : new Date().toISOString(),
+          fields,
+          photoBlob: photoBlobs[0] ?? null,
+          photoBlobs
+        };
+
+        await addEntry(toPersistedEntry(snapshot));
+
+        const hydrated = hydrateEntry(snapshot);
+        if (editingEntryId) {
+          entries = entries.map((e) => (e.id === editingEntryId ? hydrated : e));
+        } else {
+          entries = [hydrated, ...entries];
+        }
       }
 
       isDirty = true;
+      bulkEntryMode = false;
       entryDraft = emptyEntryDraft();
       editingEntryId = null;
       stepIndex = 0;
       entrySteps = [];
       currentField = null;
-      view = 'main';
+      view = returnView || 'main';
     } catch (err) {
       saveError = 'Speichern fehlgeschlagen. Bitte erneut versuchen.';
       console.error(err);
     } finally {
       isSaving = false;
+    }
+  };
+
+  const saveInlineEntry = async () => {
+    if (!editingEntryId) return;
+    const hostView = view;
+    await finalizeEntry({ returnView: hostView });
+    if (saveError) return;
+    if (activeProtocolId) {
+      await saveProtocol();
     }
   };
 
@@ -934,6 +1017,7 @@
     columns = defaultColumns.map((col) => ({ ...col }));
     activeProtocolId = null;
     activeProtocolCreatedAt = null;
+    bulkEntryMode = false;
     isDirty = false;
   };
 
@@ -1018,6 +1102,7 @@
   };
 
   const goToProtocols = async () => {
+    cancelInlineEdit();
     protocolsList = await listProtocols();
     selectionModeProtocols = false;
     selectedProtocols = new Set();
@@ -1740,12 +1825,18 @@
 
       <div class="cta-row">
         <button class="primary" type="button" on:click={startEntry}>Eintrag machen</button>
+        {#if columns.some((c) => c.isPhoto)}
+          <button type="button" on:click={startBulkEntries}>Mehrere Einträge</button>
+        {/if}
         <button type="button" on:click={() => (view = 'edit-setup')}>Stammdaten bearbeiten</button>
         <button type="button" disabled={isExporting} on:click={closeProtocol}>
           {isExporting ? 'Abschließen…' : 'Protokoll abschließen'}
         </button>
         <button type="button" on:click={cancelProtocol}>Protokoll verlassen</button>
       </div>
+      <p class="muted entry-hint">
+        „Eintrag machen“: ein Eintrag, dem du mehrere Bilder zuordnen kannst. „Mehrere Einträge“: jedes hochgeladene Bild wird ein eigener Eintrag mit genau einem Bild.
+      </p>
       {#if closeError}
         <p class="error">{closeError}</p>
       {/if}
@@ -1755,28 +1846,80 @@
           <p class="muted">Noch keine Einträge.</p>
         {:else}
           {#each entries as e}
-            <div class="entry-card">
-              {#if e.photoPreviews?.length}
-                <div class="photo-collage" class:photo-collage-single={e.photoPreviews.length === 1}>
-                  {#each e.photoPreviews as src, i}
-                    <figure class="photo-frame">
-                      <img src={src} alt={`Bild ${i + 1}`} />
-                    </figure>
-                  {/each}
+            <div class:editing={editingEntryId === e.id} class="entry-card">
+              {#if editingEntryId === e.id}
+                {#if entryDraft.photoPreviews?.length}
+                  <div class="photo-collage photo-collage-editor">
+                    {#each entryDraft.photoPreviews as src, i}
+                      <figure class="photo-frame">
+                        <img src={src} alt={`Bild ${i + 1}`} />
+                        <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Bild entfernen">
+                          ×
+                        </button>
+                      </figure>
+                    {/each}
+                  </div>
+                {/if}
+                <div class="entry-body">
+                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <label class="file-button">
+                    {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Bilder hinzufügen'}
+                    <input type="file" accept="image/*" multiple on:change={handlePhoto} />
+                  </label>
+                  <div class="entry-editor-fields">
+                    {#each columns.filter((c) => !c.isPhoto) as col}
+                      <label class="field">
+                        <span>{col.name}</span>
+                        {#if col.type === 'number'}
+                          <input
+                            type="number"
+                            placeholder={col.name}
+                            bind:value={entryDraft.fields[col.name]}
+                            on:input={() => (isDirty = true)}
+                          />
+                        {:else}
+                          <input
+                            type="text"
+                            placeholder={col.name}
+                            bind:value={entryDraft.fields[col.name]}
+                            on:input={() => (isDirty = true)}
+                          />
+                        {/if}
+                      </label>
+                    {/each}
+                  </div>
+                  <div class="entry-actions">
+                    <button class="primary" type="button" disabled={isSaving} on:click={saveInlineEntry}>Speichern</button>
+                    <button type="button" on:click={cancelInlineEdit}>Abbrechen</button>
+                    <button type="button" class="danger" on:click={() => removeEntryItem(e.id)}>Löschen</button>
+                  </div>
+                  {#if saveError}
+                    <p class="error">{saveError}</p>
+                  {/if}
+                </div>
+              {:else}
+                {#if e.photoPreviews?.length}
+                  <div class="photo-collage" class:photo-collage-single={e.photoPreviews.length === 1}>
+                    {#each e.photoPreviews as src, i}
+                      <figure class="photo-frame">
+                        <img src={src} alt={`Bild ${i + 1}`} />
+                      </figure>
+                    {/each}
+                  </div>
+                {/if}
+                <div class="entry-body">
+                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <div class="entry-fields">
+                    {#each Object.entries(e.fields) as [key, value]}
+                      <div><strong>{key}:</strong> <span class="summary-multiline">{value}</span></div>
+                    {/each}
+                  </div>
+                  <div class="entry-actions">
+                    <button type="button" on:click={() => editEntry(e)}>Bearbeiten</button>
+                    <button type="button" class="danger" on:click={() => removeEntryItem(e.id)}>Löschen</button>
+                  </div>
                 </div>
               {/if}
-              <div class="entry-body">
-                <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
-                <div class="entry-fields">
-                  {#each Object.entries(e.fields) as [key, value]}
-                    <div><strong>{key}:</strong> <span class="summary-multiline">{value}</span></div>
-                  {/each}
-                </div>
-                <div class="entry-actions">
-                  <button type="button" on:click={() => editEntry(e)}>Bearbeiten</button>
-                  <button type="button" class="danger" on:click={() => removeEntryItem(e.id)}>Löschen</button>
-                </div>
-              </div>
             </div>
           {/each}
         {/if}
@@ -1837,24 +1980,80 @@
           <p class="muted">Noch keine Einträge.</p>
         {:else}
           {#each entries as e}
-            <div class="entry-card">
-              {#if e.photoPreviews?.length}
-                <div class="photo-collage" class:photo-collage-single={e.photoPreviews.length === 1}>
-                  {#each e.photoPreviews as src, i}
-                    <figure class="photo-frame">
-                      <img src={src} alt={`Bild ${i + 1}`} />
-                    </figure>
-                  {/each}
+            <div class:editing={editingEntryId === e.id} class="entry-card">
+              {#if editingEntryId === e.id}
+                {#if entryDraft.photoPreviews?.length}
+                  <div class="photo-collage photo-collage-editor">
+                    {#each entryDraft.photoPreviews as src, i}
+                      <figure class="photo-frame">
+                        <img src={src} alt={`Bild ${i + 1}`} />
+                        <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Bild entfernen">
+                          ×
+                        </button>
+                      </figure>
+                    {/each}
+                  </div>
+                {/if}
+                <div class="entry-body">
+                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <label class="file-button">
+                    {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Bilder hinzufügen'}
+                    <input type="file" accept="image/*" multiple on:change={handlePhoto} />
+                  </label>
+                  <div class="entry-editor-fields">
+                    {#each columns.filter((c) => !c.isPhoto) as col}
+                      <label class="field">
+                        <span>{col.name}</span>
+                        {#if col.type === 'number'}
+                          <input
+                            type="number"
+                            placeholder={col.name}
+                            bind:value={entryDraft.fields[col.name]}
+                            on:input={() => (isDirty = true)}
+                          />
+                        {:else}
+                          <input
+                            type="text"
+                            placeholder={col.name}
+                            bind:value={entryDraft.fields[col.name]}
+                            on:input={() => (isDirty = true)}
+                          />
+                        {/if}
+                      </label>
+                    {/each}
+                  </div>
+                  <div class="entry-actions">
+                    <button class="primary" type="button" disabled={isSaving} on:click={saveInlineEntry}>Speichern</button>
+                    <button type="button" on:click={cancelInlineEdit}>Abbrechen</button>
+                    <button type="button" class="danger" on:click={() => removeEntryItem(e.id)}>Löschen</button>
+                  </div>
+                  {#if saveError}
+                    <p class="error">{saveError}</p>
+                  {/if}
+                </div>
+              {:else}
+                {#if e.photoPreviews?.length}
+                  <div class="photo-collage" class:photo-collage-single={e.photoPreviews.length === 1}>
+                    {#each e.photoPreviews as src, i}
+                      <figure class="photo-frame">
+                        <img src={src} alt={`Bild ${i + 1}`} />
+                      </figure>
+                    {/each}
+                  </div>
+                {/if}
+                <div class="entry-body">
+                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <div class="entry-fields">
+                    {#each Object.entries(e.fields) as [key, value]}
+                      <div><strong>{key}:</strong> <span class="summary-multiline">{value}</span></div>
+                    {/each}
+                  </div>
+                  <div class="entry-actions">
+                    <button type="button" on:click={() => editEntry(e)}>Bearbeiten</button>
+                    <button type="button" class="danger" on:click={() => removeEntryItem(e.id)}>Löschen</button>
+                  </div>
                 </div>
               {/if}
-              <div class="entry-body">
-                <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
-                <div class="entry-fields">
-                  {#each Object.entries(e.fields) as [key, value]}
-                    <div><strong>{key}:</strong> <span class="summary-multiline">{value}</span></div>
-                  {/each}
-                </div>
-              </div>
             </div>
           {/each}
         {/if}
@@ -1864,39 +2063,84 @@
 
   {#if view === 'photo'}
     <section class="panel">
-      <h2>Bilder hinzufügen</h2>
-      <p class="muted">Du kannst einem Eintrag mehrere Bilder zuordnen. Sie werden nebeneinander mit Rahmen dargestellt.</p>
+      {#if bulkEntryMode}
+        <h2>Mehrere Einträge anlegen</h2>
+        <p class="muted">
+          Lade mehrere Bilder auf einmal hoch. <strong>Jedes Bild wird ein eigener Eintrag mit genau einem Bild.</strong>
+          Einträge mit mehreren Bildern bitte über „Eintrag machen“ einzeln anlegen.
+        </p>
+      {:else}
+        <h2>Bilder für diesen Eintrag</h2>
+        <p class="muted">
+          Alle hier hinzugefügten Bilder gehören zu <strong>einem</strong> Eintrag und werden nebeneinander dargestellt.
+          Für je ein Bild pro Eintrag nutze auf der Protokollseite „Mehrere Einträge“.
+        </p>
+      {/if}
       <label class="file-button">
-        {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Kamera öffnen / Dateien auswählen'}
+        {#if bulkEntryMode}
+          {entryDraft.photoPreviews?.length ? 'Weitere Einträge (Bilder) hinzufügen' : 'Mehrere Bilder auswählen'}
+        {:else}
+          {entryDraft.photoPreviews?.length ? 'Weitere Bilder zu diesem Eintrag' : 'Kamera öffnen / Dateien auswählen'}
+        {/if}
         <input type="file" accept="image/*" multiple on:change={handlePhoto} />
       </label>
 
       {#if entryDraft.photoPreviews?.length}
-        <div class="photo-collage photo-collage-editor">
-          {#each entryDraft.photoPreviews as src, i}
-            <figure class="photo-frame">
-              <img src={src} alt={`Bild ${i + 1}`} />
-              <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Bild entfernen">
-                ×
-              </button>
-            </figure>
-          {/each}
-        </div>
+        {#if bulkEntryMode}
+          <div class="bulk-entry-list">
+            {#each entryDraft.photoPreviews as src, i}
+              <div class="bulk-entry-item">
+                <div class="bulk-entry-label">Eintrag {i + 1}</div>
+                <figure class="photo-frame">
+                  <img src={src} alt={`Eintrag ${i + 1}`} />
+                  <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Eintrag entfernen">
+                    ×
+                  </button>
+                </figure>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="photo-collage photo-collage-editor">
+            {#each entryDraft.photoPreviews as src, i}
+              <figure class="photo-frame">
+                <img src={src} alt={`Bild ${i + 1}`} />
+                <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Bild entfernen">
+                  ×
+                </button>
+              </figure>
+            {/each}
+          </div>
+        {/if}
       {/if}
 
       <div class="cta-row">
         <button type="button" on:click={goPrevStep} disabled={stepIndex === 0}>Zurück</button>
-        <button type="button" on:click={() => (view = 'main')}>Abbrechen</button>
-        <button class="primary" type="button" on:click={goNextStep}>
-          {stepIndex < entrySteps.length - 1 ? 'Weiter' : 'Speichern'}
+        <button type="button" on:click={cancelEntryWizard}>Abbrechen</button>
+        <button class="primary" type="button" disabled={isSaving} on:click={goNextStep}>
+          {#if bulkEntryMode}
+            {stepIndex < entrySteps.length - 1
+              ? `Weiter (${entryDraft.photoPreviews?.length || 0} Einträge)`
+              : `${entryDraft.photoPreviews?.length || 0} Einträge speichern`}
+          {:else}
+            {stepIndex < entrySteps.length - 1 ? 'Weiter' : 'Speichern'}
+          {/if}
         </button>
       </div>
+      {#if saveError}
+        <p class="error">{saveError}</p>
+      {/if}
     </section>
   {/if}
 
   {#if view === 'field'}
     <section class="panel">
-      <h2>Eintrag</h2>
+      {#if bulkEntryMode}
+        <h2>Angaben für {entryDraft.photoPreviews?.length || 0} Einträge</h2>
+        <p class="muted">Diese Felder gelten für alle neuen Einträge. Jeder Eintrag behält sein eigenes Bild.</p>
+      {:else}
+        <h2>Eintrag</h2>
+      {/if}
       {#if currentField}
         {#key currentField.id}
           <label class="field">
@@ -1924,9 +2168,13 @@
 
       <div class="cta-row">
         <button type="button" on:click={goPrevStep} disabled={stepIndex === 0}>Zurück</button>
-        <button type="button" on:click={() => (view = 'main')}>Abbrechen</button>
+        <button type="button" on:click={cancelEntryWizard}>Abbrechen</button>
         <button class="primary" type="button" disabled={isSaving} on:click={goNextStep}>
-          {stepIndex < entrySteps.length - 1 ? 'Weiter' : 'Speichern'}
+          {#if bulkEntryMode}
+            {stepIndex < entrySteps.length - 1 ? 'Weiter' : `${entryDraft.photoPreviews?.length || 0} Einträge speichern`}
+          {:else}
+            {stepIndex < entrySteps.length - 1 ? 'Weiter' : 'Speichern'}
+          {/if}
         </button>
       </div>
       {#if saveError}
@@ -2547,6 +2795,39 @@
     margin: 14px 0;
   }
 
+  .entry-hint {
+    margin: -8px 0 16px;
+    max-width: 52rem;
+  }
+
+  .bulk-entry-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 14px 0;
+  }
+
+  .bulk-entry-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 120px;
+  }
+
+  .bulk-entry-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .bulk-entry-item .photo-frame {
+    flex: none;
+    width: 120px;
+    max-width: 120px;
+  }
+
   .photo-frame img {
     width: 100%;
     height: 100%;
@@ -2568,10 +2849,14 @@
     border: none;
   }
 
-  .entry-date {
-    font-size: 12px;
-    color: var(--muted);
-    margin-bottom: 6px;
+  .entry-card.editing {
+    grid-template-columns: 1fr;
+  }
+
+  .entry-editor-fields {
+    display: grid;
+    gap: 10px;
+    margin: 10px 0;
   }
 
   .entry-fields {
