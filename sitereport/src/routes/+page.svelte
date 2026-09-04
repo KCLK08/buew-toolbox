@@ -28,6 +28,7 @@
   import { compressImage, blobToObjectUrl } from '$lib/image';
   import { exportToXlsxData } from '$lib/export';
   import { exportToPdfData } from '$lib/pdf';
+  import { exportToDocxData } from '$lib/word';
   import { getNativePlatform, isNativePlatform, saveBase64File, shareFile } from '$lib/native';
   import { normalizeEntryPhotos } from '$lib/photos';
 
@@ -172,17 +173,20 @@
     primaryLabel: '',
     secondaryLabel: '',
     tertiaryLabel: '',
+    extraLabel: '',
     showCancel: true,
     secondaryDanger: false,
     onPrimary: null,
     onSecondary: null,
-    onTertiary: null
+    onTertiary: null,
+    onExtra: null
   };
   let downloadDialog = {
     open: false,
     title: '',
     onExcel: null,
-    onPdf: null
+    onPdf: null,
+    onWord: null
   };
   let lastView = view;
   let suppressHistory = false;
@@ -856,7 +860,7 @@
     }
   };
 
-  const buildExportPatch = ({ protocolRecord, xlsxResult, pdfResult, now }) => {
+  const buildExportPatch = ({ protocolRecord, xlsxResult, pdfResult, wordResult, now }) => {
     const patch = {
       id: `export_${protocolRecord.id}`,
       protocolId: protocolRecord.id,
@@ -876,6 +880,14 @@
       patch.pdfUpdatedAt = now;
       patch.pdfStats = pdfResult.stats || null;
     }
+    if (wordResult) {
+      patch.wordFilename =
+        wordResult.filename ||
+        buildFilename(protocolRecord.projectName, protocolRecord.protocolDate).replace(/\.xlsx$/i, '.docx');
+      patch.wordBase64 = wordResult.base64 || '';
+      patch.wordUpdatedAt = now;
+      patch.wordStats = wordResult.stats || null;
+    }
     return patch;
   };
 
@@ -890,38 +902,37 @@
     const protocolRecord = await saveProtocol();
     let xlsxResult = null;
     let pdfResult = null;
+    let wordResult = null;
+
+    const payload = {
+      protocolTitle: protocolRecord.protocolTitle,
+      projectName: protocolRecord.projectName,
+      protocolDate: protocolRecord.protocolDate,
+      protocolDescription: protocolRecord.protocolDescription,
+      attendees: protocolRecord.attendees,
+      logoDataUrl,
+      columns: protocolRecord.columns,
+      entries: protocolRecord.entries
+    };
 
     if (format === 'xlsx') {
-      xlsxResult = await exportToXlsxData({
-        protocolTitle: protocolRecord.protocolTitle,
-        projectName: protocolRecord.projectName,
-        protocolDate: protocolRecord.protocolDate,
-        protocolDescription: protocolRecord.protocolDescription,
-        attendees: protocolRecord.attendees,
-        logoDataUrl,
-        columns: protocolRecord.columns,
-        entries: protocolRecord.entries
-      });
+      xlsxResult = await exportToXlsxData(payload);
     }
     if (format === 'pdf') {
-      pdfResult = await exportToPdfData({
-        protocolTitle: protocolRecord.protocolTitle,
-        projectName: protocolRecord.projectName,
-        protocolDate: protocolRecord.protocolDate,
-        protocolDescription: protocolRecord.protocolDescription,
-        attendees: protocolRecord.attendees,
-        logoDataUrl,
-        columns: protocolRecord.columns,
-        entries: protocolRecord.entries
-      });
+      pdfResult = await exportToPdfData(payload);
+    }
+    if (format === 'docx') {
+      wordResult = await exportToDocxData(payload);
     }
 
     let exportRecord = null;
-    if (xlsxResult || pdfResult) {
+    if (xlsxResult || pdfResult || wordResult) {
       const now = new Date().toISOString();
-      exportRecord = await upsertExportByProtocol(buildExportPatch({ protocolRecord, xlsxResult, pdfResult, now }));
+      exportRecord = await upsertExportByProtocol(
+        buildExportPatch({ protocolRecord, xlsxResult, pdfResult, wordResult, now })
+      );
     }
-    return { protocolRecord, exportRecord, xlsxResult, pdfResult };
+    return { protocolRecord, exportRecord, xlsxResult, pdfResult, wordResult };
   };
 
   const closeProtocol = async () => {
@@ -941,6 +952,7 @@
       message: 'Wie möchtest du den Export herunterladen?',
       primaryLabel: 'Excel herunterladen',
       secondaryLabel: 'PDF herunterladen',
+      extraLabel: 'Word herunterladen',
       tertiaryLabel: 'Nur speichern',
       showCancel: true,
       secondaryDanger: false,
@@ -972,6 +984,25 @@
           protocolsList = await listProtocols();
           exportsList = await listExports();
           if (exportRecord) await downloadExportPdf(exportRecord);
+          await resetProtocol();
+          view = 'protocols';
+          closeConfirm();
+        } catch (err) {
+          closeError = `Abschluss fehlgeschlagen: ${err?.message || 'Bitte erneut versuchen.'}`;
+          console.error(err);
+        } finally {
+          isExporting = false;
+        }
+      },
+      onExtra: async () => {
+        if (isExporting) return;
+        isExporting = true;
+        closeError = '';
+        try {
+          const { exportRecord } = await saveAndExportProtocol({ format: 'docx' });
+          protocolsList = await listProtocols();
+          exportsList = await listExports();
+          if (exportRecord) await downloadExportWord(exportRecord);
           await resetProtocol();
           view = 'protocols';
           closeConfirm();
@@ -1092,12 +1123,14 @@
       message: '',
       primaryLabel: '',
       secondaryLabel: '',
+      extraLabel: '',
       tertiaryLabel: '',
       showCancel: true,
       secondaryDanger: false,
       onPrimary: null,
       onSecondary: null,
-      onTertiary: null
+      onTertiary: null,
+      onExtra: null
     };
   };
 
@@ -1120,12 +1153,12 @@
     view = 'landing';
   };
 
-  const openDownloadDialog = ({ title, onExcel, onPdf }) => {
-    downloadDialog = { open: true, title, onExcel, onPdf };
+  const openDownloadDialog = ({ title, onExcel, onPdf, onWord }) => {
+    downloadDialog = { open: true, title, onExcel, onPdf, onWord };
   };
 
   const closeDownloadDialog = () => {
-    downloadDialog = { open: false, title: '', onExcel: null, onPdf: null };
+    downloadDialog = { open: false, title: '', onExcel: null, onPdf: null, onWord: null };
   };
 
   const downloadFileFromBase64 = async ({ base64, filename, mimeType }) => {
@@ -1232,6 +1265,7 @@
         protocolRecord: protocol,
         xlsxResult,
         pdfResult: null,
+        wordResult: null,
         now
       })
     );
@@ -1288,6 +1322,7 @@
         protocolRecord: protocol,
         xlsxResult: null,
         pdfResult,
+        wordResult: null,
         now
       })
     );
@@ -1347,6 +1382,79 @@
     }
     if (exp?.pdfBase64) {
       await downloadExportPdf(exp, protocol);
+    }
+  };
+
+  const ensureWordExport = async (protocol) => {
+    if (!protocol) return { record: null, result: null };
+    const wordResult = await exportToDocxData({
+      protocolTitle: protocol.protocolTitle,
+      projectName: protocol.projectName,
+      protocolDate: protocol.protocolDate,
+      protocolDescription: protocol.protocolDescription,
+      attendees: protocol.attendees,
+      logoDataUrl,
+      columns: protocol.columns,
+      entries: protocol.entries
+    });
+    if (!wordResult) return { record: null, result: null };
+    const now = new Date().toISOString();
+    const record = await upsertExportByProtocol(
+      buildExportPatch({
+        protocolRecord: protocol,
+        xlsxResult: null,
+        pdfResult: null,
+        wordResult,
+        now
+      })
+    );
+    return { record, result: wordResult };
+  };
+
+  const downloadExportWord = async (exp, protocol) => {
+    let target = exp;
+    let wordResult = null;
+    if (!target?.wordBase64) {
+      const protocolRecord = protocol || (exp?.protocolId ? await getProtocol(exp.protocolId) : null);
+      if (!protocolRecord) {
+        downloadError = 'Download nicht verfügbar.';
+        return;
+      }
+      const generated = await ensureWordExport(protocolRecord);
+      target = generated.record;
+      wordResult = generated.result;
+      exportsList = await listExports();
+    }
+    if (!target?.wordBase64) {
+      downloadError = 'Download nicht verfügbar.';
+      return;
+    }
+    const filename =
+      target.wordFilename ||
+      buildFilename(target.projectName, target.protocolDate).replace(/\.xlsx$/i, '.docx');
+    await downloadFileFromBase64({
+      base64: target.wordBase64,
+      filename,
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    });
+    if (wordResult) {
+      showExportFeedback('Word', wordResult);
+    } else if (target.wordStats) {
+      showExportFeedback('Word', { stats: target.wordStats });
+    }
+  };
+
+  const downloadProtocolWord = async (protocol) => {
+    let exp = exportsList.find((e) => e.protocolId === protocol.id);
+    if (!exp?.wordBase64) {
+      const generated = await ensureWordExport(protocol);
+      if (generated.record) {
+        exp = generated.record;
+        exportsList = await listExports();
+      }
+    }
+    if (exp?.wordBase64) {
+      await downloadExportWord(exp, protocol);
     }
   };
 
@@ -1411,6 +1519,12 @@
           await downloadProtocolPdf(protocol);
         }
         closeDownloadDialog();
+      },
+      onWord: async () => {
+        for (const protocol of protocolsList.filter((p) => selectedProtocols.has(p.id))) {
+          await downloadProtocolWord(protocol);
+        }
+        closeDownloadDialog();
       }
     });
   };
@@ -1431,6 +1545,12 @@
       onPdf: async () => {
         for (const exp of exportsList.filter((e) => selectedExports.has(e.id))) {
           await downloadExportPdf(exp);
+        }
+        closeDownloadDialog();
+      },
+      onWord: async () => {
+        for (const exp of exportsList.filter((e) => selectedExports.has(e.id))) {
+          await downloadExportWord(exp);
         }
         closeDownloadDialog();
       }
@@ -1972,6 +2092,10 @@
               onPdf: async () => {
                 await downloadProtocolPdf(buildProtocolRecord());
                 closeDownloadDialog();
+              },
+              onWord: async () => {
+                await downloadProtocolWord(buildProtocolRecord());
+                closeDownloadDialog();
               }
             })}
         >
@@ -2268,6 +2392,10 @@
                   onPdf: async () => {
                     await downloadExportPdf(exp);
                     closeDownloadDialog();
+                  },
+                  onWord: async () => {
+                    await downloadExportWord(exp);
+                    closeDownloadDialog();
                   }
                 });
               }}
@@ -2335,6 +2463,11 @@
         >
           {confirmDialog.secondaryLabel}
         </button>
+        {#if confirmDialog.extraLabel}
+          <button class="primary" type="button" disabled={isExporting} on:click={confirmDialog.onExtra}>
+            {confirmDialog.extraLabel}
+          </button>
+        {/if}
         {#if confirmDialog.tertiaryLabel}
           <button type="button" disabled={isExporting} on:click={confirmDialog.onTertiary}>{confirmDialog.tertiaryLabel}</button>
         {/if}
@@ -2353,6 +2486,7 @@
       <div class="cta-row">
         <button class="primary" type="button" on:click={downloadDialog.onExcel}>Excel herunterladen</button>
         <button class="primary" type="button" on:click={downloadDialog.onPdf}>PDF herunterladen</button>
+        <button class="primary" type="button" on:click={downloadDialog.onWord}>Word herunterladen</button>
         <button type="button" on:click={closeDownloadDialog}>Abbrechen</button>
       </div>
     </div>
