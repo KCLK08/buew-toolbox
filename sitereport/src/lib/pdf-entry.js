@@ -17,6 +17,9 @@ export const PDF_MAX_CELL = 260;
 export const PDF_HEADER_PADDING = 14;
 export const PDF_HEADER_GAP = 18;
 export const PDF_MIN_PHOTO_HEIGHT = 56;
+/** Extra room so Word tables and photo padding still fit two cards. */
+export const PDF_PACK_SLACK = 80;
+export const PDF_TWO_UP_PHOTO_LIMIT = 3;
 
 export function pdfEntryBadgeText(index) {
   return `Eintrag ${Number(index) + 1}`;
@@ -39,7 +42,37 @@ export function pdfPhotoAreaWidth() {
 }
 
 export function pdfTwoUpCardBudget() {
-  return (pdfPageBodyHeight() - PDF_BLOCK_GAP) / 2;
+  return (pdfPageBodyHeight() - PDF_BLOCK_GAP - PDF_PACK_SLACK) / 2;
+}
+
+export function pdfMaxHeaderHeight() {
+  return pdfPageBodyHeight() - pdfTwoUpCardBudget() - PDF_HEADER_GAP;
+}
+
+export function pdfEntryUsesTwoUp(photoCount) {
+  return (Number(photoCount) || 0) <= PDF_TWO_UP_PHOTO_LIMIT;
+}
+
+function scalePdfCollage(layout, scale) {
+  const factor = Math.max(0.05, Number(scale) || 1);
+  if (factor >= 0.999) return layout;
+  return {
+    items: (layout.items || []).map((item) => ({
+      ...item,
+      x: item.x * factor,
+      y: item.y * factor,
+      width: item.width * factor,
+      height: item.height * factor,
+      frameX: item.frameX * factor,
+      frameY: item.frameY * factor,
+      frameW: item.frameW * factor,
+      frameH: item.frameH * factor
+    })),
+    width: layout.width * factor,
+    height: layout.height * factor,
+    cols: layout.cols,
+    rows: layout.rows
+  };
 }
 
 export function fitPdfPhotoCollage(sizes, maxImageWidth, maxImageHeight) {
@@ -55,11 +88,17 @@ export function fitPdfPhotoCollage(sizes, maxImageWidth, maxImageHeight) {
     minCell: Math.min(PDF_MIN_CELL, budget),
     maxCell: Math.min(PDF_MAX_CELL, budget)
   });
-  if (readable.height <= budget + 1) return readable;
-  return layoutPhotoCollage(list, width, budget, {
-    gap: PDF_PHOTO_GAP,
-    frame: PDF_PHOTO_FRAME
-  });
+  let layout = readable;
+  if (readable.height > budget + 0.5) {
+    layout = layoutPhotoCollage(list, width, budget, {
+      gap: PDF_PHOTO_GAP,
+      frame: PDF_PHOTO_FRAME
+    });
+  }
+  if (layout.height > budget + 0.5 && layout.height > 0) {
+    return scalePdfCollage(layout, budget / layout.height);
+  }
+  return layout;
 }
 
 export function naturalPdfPhotoCollage(sizes) {
@@ -125,7 +164,10 @@ export function estimatePdfHeaderRemaining({
     attendeeLines * PDF_LINE_HEIGHT;
   const headerTextHeight = titleLines * 18 + 8 + metaHeight;
   const logoHeight = hasLogo ? 60 : 0;
-  const headerBoxHeight = Math.max(headerTextHeight, logoHeight) + PDF_HEADER_PADDING * 2;
+  const headerBoxHeight = Math.min(
+    pdfMaxHeaderHeight(),
+    Math.max(headerTextHeight, logoHeight) + PDF_HEADER_PADDING * 2
+  );
   return pdfPageBodyHeight() - headerBoxHeight - PDF_HEADER_GAP;
 }
 
@@ -180,9 +222,10 @@ export function layoutPdfEntryFlow({
     const maxImageHeight = metrics.photoCount
       ? Math.max(PDF_MIN_PHOTO_HEIGHT, Math.min(maxCardHeight, remaining) - metrics.chromeHeight)
       : 0;
-    const cardHeight = metrics.photoCount
+    const fittedHeight = metrics.photoCount
       ? metrics.chromeHeight + fitPdfPhotoCollage(sizes, pdfPhotoAreaWidth(), maxImageHeight).height
       : metrics.chromeHeight;
+    const cardHeight = Math.min(maxCardHeight, fittedHeight);
     planned.push({
       pageBreakBefore,
       maxCardHeight,
@@ -190,7 +233,7 @@ export function layoutPdfEntryFlow({
       chromeHeight: metrics.chromeHeight,
       photoCount: metrics.photoCount
     });
-    remaining -= cardHeight + PDF_BLOCK_GAP;
+    remaining = Math.max(0, remaining - cardHeight - PDF_BLOCK_GAP);
     entriesOnPage += 1;
   }
 
@@ -217,13 +260,14 @@ export function planPdfEntryPlacement({
   const photos = Number(photoCount) || 0;
   const natural = Math.max(0, Number(naturalCardHeight) || 0);
   const chrome = Math.max(0, Number(chromeHeight) || 0);
-  const manyPhotos = photos >= 4 || (photos >= 3 && natural > twoUpMax + 4);
-  const minCard = chrome + (photos ? 72 : 0);
+  const manyPhotos = !pdfEntryUsesTwoUp(photos);
+  const minCard = chrome + (photos ? PDF_MIN_PHOTO_HEIGHT : 0);
+  const twoUpHeight = Math.min(space, twoUpMax);
 
   if (isFirstDocumentPage && onPage === 0) {
     return {
       stayOnPage: true,
-      maxCardHeight: Math.max(minCard, space),
+      maxCardHeight: manyPhotos ? Math.max(minCard, space) : Math.max(minCard, twoUpHeight),
       forceFit: true
     };
   }
@@ -240,6 +284,9 @@ export function planPdfEntryPlacement({
     if (natural <= space) {
       return { stayOnPage: true, maxCardHeight: space, forceFit: false };
     }
+    if (!manyPhotos && space >= minCard) {
+      return { stayOnPage: true, maxCardHeight: space, forceFit: true };
+    }
     return {
       stayOnPage: false,
       maxCardHeight: manyPhotos ? pageBodyHeight : twoUpMax,
@@ -253,8 +300,8 @@ export function planPdfEntryPlacement({
     }
     return {
       stayOnPage: true,
-      maxCardHeight: Math.min(space, twoUpMax),
-      forceFit: false
+      maxCardHeight: Math.max(minCard, twoUpHeight),
+      forceFit: true
     };
   }
 
