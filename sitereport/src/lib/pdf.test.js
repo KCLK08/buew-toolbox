@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  estimatePdfHeaderRemaining,
+  layoutPdfEntryFlow,
   pdfEntryBadgeText,
   pdfEntryNeedsPhotoArea,
   pdfTwoUpCardBudget,
@@ -88,4 +90,31 @@ test('many-photo entries can take a whole continuation page', () => {
   });
   assert.equal(plan.stayOnPage, true);
   assert.ok(plan.maxCardHeight > pdfTwoUpCardBudget());
+});
+
+test('PDF packing keeps two short entries on page one, then two per later page', () => {
+  const columns = [
+    { name: 'Kilometer' },
+    { name: 'Beschreibung' },
+    { name: 'Status' }
+  ];
+  const entries = Array.from({ length: 5 }, (_, i) => ({
+    fields: { Kilometer: String(i), Beschreibung: `Text ${i}`, Status: 'offen' }
+  }));
+  const flow = layoutPdfEntryFlow({
+    entries,
+    tableColumns: columns,
+    photoSizesForEntry: () => [],
+    headerRemaining: estimatePdfHeaderRemaining({
+      protocolTitle: 'Protokoll',
+      protocolDescription: 'Kurz',
+      attendees: 'Max'
+    })
+  });
+  assert.equal(flow.length, 5);
+  assert.equal(flow[0].pageBreakBefore, false);
+  assert.equal(flow[1].pageBreakBefore, false);
+  assert.equal(flow[2].pageBreakBefore, true);
+  assert.equal(flow[3].pageBreakBefore, false);
+  assert.equal(flow[4].pageBreakBefore, true);
 });

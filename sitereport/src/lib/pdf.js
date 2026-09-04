@@ -1,8 +1,13 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { blobToDataUrl } from './image';
 import { bufferToBase64 } from './native';
-import { layoutPhotoCollage, normalizeEntryPhotos } from './photos';
-import { pdfEntryBadgeText, planPdfEntryPlacement } from './pdf-entry';
+import { normalizeEntryPhotos } from './photos';
+import {
+  fitPdfPhotoCollage,
+  naturalPdfPhotoCollage,
+  pdfEntryBadgeText,
+  planPdfEntryPlacement
+} from './pdf-entry';
 
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
@@ -245,20 +250,8 @@ export async function exportToPdfData({
     return extension === 'png' ? pdfDoc.embedPng(bytes) : pdfDoc.embedJpg(bytes);
   };
 
-  const fitCollage = (sizes, maxImageWidth, maxImageHeight) => {
-    if (!sizes.length) {
-      return { items: [], width: 0, height: 0, cols: 0, rows: 0 };
-    }
-    const budget = Math.max(56, maxImageHeight);
-    const readable = layoutPhotoCollage(sizes, maxImageWidth, budget, {
-      gap: photoGap,
-      frame: photoFrame,
-      minCell: Math.min(160, budget),
-      maxCell: Math.min(260, budget)
-    });
-    if (readable.height <= budget + 1) return readable;
-    return layoutPhotoCollage(sizes, maxImageWidth, budget, { gap: photoGap, frame: photoFrame });
-  };
+  const fitCollage = (sizes, maxImageWidth, maxImageHeight) =>
+    fitPdfPhotoCollage(sizes, maxImageWidth, maxImageHeight);
 
   const prepareEntry = async (entry, index) => {
     const photoBlobs = normalizeEntryPhotos(entry);
@@ -293,12 +286,7 @@ export async function exportToPdfData({
     const chromeWithoutImage = cardPadding * 2 + badgeHeight + badgeGap + imageChrome + tableHeight;
     const sizes = images.map((image) => ({ width: image.width, height: image.height }));
     const naturalCollage = hasImages
-      ? layoutPhotoCollage(sizes, blockWidth - cardPadding * 2, A4_HEIGHT - margin * 2, {
-          gap: photoGap,
-          frame: photoFrame,
-          minCell: 160,
-          maxCell: 260
-        })
+      ? naturalPdfPhotoCollage(sizes)
       : { items: [], width: 0, height: 0, cols: 0, rows: 0 };
 
     return {

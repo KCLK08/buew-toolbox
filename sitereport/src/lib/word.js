@@ -4,6 +4,7 @@ import {
   Document,
   ImageRun,
   Packer,
+  PageBreak,
   Paragraph,
   ShadingType,
   Table,
@@ -15,23 +16,35 @@ import {
   convertMillimetersToTwip
 } from 'docx';
 import { blobToDataUrl } from './image.js';
-import { layoutPhotoCollage, normalizeEntryPhotos } from './photos.js';
-import { pdfEntryBadgeText } from './pdf-entry.js';
+import { normalizeEntryPhotos } from './photos.js';
+import {
+  estimatePdfHeaderRemaining,
+  fitPdfPhotoCollage,
+  layoutPdfEntryFlow,
+  pdfEntryBadgeText,
+  pdfPhotoAreaWidth
+} from './pdf-entry.js';
 
-const CONTENT_WIDTH_MM = 180;
+const PAGE_MARGIN_MM = 12.7;
+const CONTENT_WIDTH_MM = 210 - PAGE_MARGIN_MM * 2;
 const CONTENT_TWIP = convertMillimetersToTwip(CONTENT_WIDTH_MM);
-const CONTENT_WIDTH_PX = 680;
-const MIN_PHOTO_CELL = 180;
-const MAX_PHOTO_CELL = 280;
-const PHOTO_GAP = 4;
-const PHOTO_FRAME = 2;
+const PT_TO_PX = 96 / 72;
+const CARD_PADDING_TWIP = 160;
 
 const thinBorder = { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' };
+const cardBorder = { style: BorderStyle.SINGLE, size: 8, color: 'D1D5DB' };
+const noneBorder = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
 const cellBorders = {
   top: thinBorder,
   bottom: thinBorder,
   left: thinBorder,
   right: thinBorder
+};
+const noBorders = {
+  top: noneBorder,
+  bottom: noneBorder,
+  left: noneBorder,
+  right: noneBorder
 };
 
 export async function exportToDocxData({
@@ -63,15 +76,42 @@ export async function exportToDocxData({
   );
 
   const tableColumns = (columns || []).filter((col) => !col.isPhoto);
+  const list = entries || [];
+  const prepared = [];
+  for (const [idx, entry] of list.entries()) {
+    prepared.push(await prepareEntryPhotos(entry, idx, addIssue));
+  }
+
+  const flow = layoutPdfEntryFlow({
+    entries: list,
+    tableColumns,
+    photoSizesForEntry: (_entry, idx) => prepared[idx]?.sizes || [],
+    headerRemaining: estimatePdfHeaderRemaining({
+      protocolTitle,
+      protocolDescription,
+      attendees,
+      hasLogo: Boolean(logoDataUrl)
+    })
+  });
+
   let exportedEntries = 0;
-  for (const [idx, entry] of (entries || []).entries()) {
+  for (const [idx, entry] of list.entries()) {
     try {
+      const plan = flow[idx] || {};
+      if (plan.pageBreakBefore) {
+        children.push(
+          new Paragraph({
+            children: [new PageBreak()]
+          })
+        );
+      }
       children.push(
         ...(await buildEntry({
           entry,
           index: idx,
           tableColumns,
-          addIssue
+          photos: prepared[idx],
+          maxImageHeightPt: plan.maxImageHeight || 0
         }))
       );
       exportedEntries += 1;
@@ -111,10 +151,10 @@ export async function exportToDocxData({
               height: convertMillimetersToTwip(297)
             },
             margin: {
-              top: convertMillimetersToTwip(15),
-              bottom: convertMillimetersToTwip(15),
-              left: convertMillimetersToTwip(15),
-              right: convertMillimetersToTwip(15)
+              top: convertMillimetersToTwip(PAGE_MARGIN_MM),
+              bottom: convertMillimetersToTwip(PAGE_MARGIN_MM),
+              left: convertMillimetersToTwip(PAGE_MARGIN_MM),
+              right: convertMillimetersToTwip(PAGE_MARGIN_MM)
             }
           }
         },
@@ -129,7 +169,7 @@ export async function exportToDocxData({
     base64,
     stats: {
       format: 'docx',
-      requestedEntries: (entries || []).length,
+      requestedEntries: list.length,
       exportedEntries,
       issues
     }
@@ -206,12 +246,12 @@ async function buildHeader({
       new TableRow({
         children: [
           new TableCell({
-            borders: noBorderSet(),
+            borders: noBorders,
             width: { size: CONTENT_TWIP - convertMillimetersToTwip(40), type: WidthType.DXA },
             children: textChildren
           }),
           new TableCell({
-            borders: noBorderSet(),
+            borders: noBorders,
             width: { size: convertMillimetersToTwip(40), type: WidthType.DXA },
             verticalAlign: VerticalAlign.TOP,
             children: [
@@ -247,49 +287,91 @@ function headerBox(textChildren) {
   });
 }
 
-async function buildEntry({ entry, index, tableColumns, addIssue }) {
-  const blocks = [
-    new Paragraph({ spacing: { before: 240 }, children: [] }),
+async function buildEntry({ entry, index, tableColumns, photos, maxImageHeightPt }) {
+  const inner = [buildBadgeTable(index)];
+
+  const photoTable = buildPhotoTable(photos, index, maxImageHeightPt);
+  if (photoTable) {
+    inner.push(new Paragraph({ spacing: { after: 80 }, children: [] }));
+    inner.push(photoTable);
+  }
+
+  const fieldTable = buildFieldTable(entry, tableColumns);
+  if (fieldTable) {
+    inner.push(new Paragraph({ spacing: { after: 80 }, children: [] }));
+    inner.push(fieldTable);
+  }
+
+  return [
     new Table({
-      width: { size: convertMillimetersToTwip(32), type: WidthType.DXA },
+      width: { size: CONTENT_TWIP, type: WidthType.DXA },
+      borders: {
+        top: cardBorder,
+        bottom: cardBorder,
+        left: cardBorder,
+        right: cardBorder,
+        insideHorizontal: noneBorder,
+        insideVertical: noneBorder
+      },
       rows: [
         new TableRow({
+          cantSplit: true,
           children: [
             new TableCell({
-              borders: {
-                top: { style: BorderStyle.SINGLE, size: 4, color: '2C3E59' },
-                bottom: { style: BorderStyle.SINGLE, size: 4, color: '2C3E59' },
-                left: { style: BorderStyle.SINGLE, size: 4, color: '2C3E59' },
-                right: { style: BorderStyle.SINGLE, size: 4, color: '2C3E59' }
+              borders: noBorders,
+              shading: { type: ShadingType.CLEAR, fill: 'F7F8F9' },
+              margins: {
+                top: CARD_PADDING_TWIP,
+                bottom: CARD_PADDING_TWIP,
+                left: CARD_PADDING_TWIP,
+                right: CARD_PADDING_TWIP
               },
-              shading: { type: ShadingType.CLEAR, fill: '2C3E59' },
-              margins: { top: 40, bottom: 40, left: 80, right: 80 },
-              children: [
-                new Paragraph({
-                  children: [
-                    new TextRun({
-                      text: pdfEntryBadgeText(index),
-                      bold: true,
-                      color: 'FFFFFF',
-                      size: 20
-                    })
-                  ]
-                })
-              ]
+              children: inner
             })
           ]
         })
       ]
     }),
-    new Paragraph({ spacing: { after: 80 }, children: [] })
+    new Paragraph({ spacing: { after: 240 }, children: [] })
   ];
+}
 
-  const photoTable = await buildPhotoTable(entry, index, addIssue);
-  if (photoTable) {
-    blocks.push(photoTable);
-    blocks.push(new Paragraph({ spacing: { after: 80 }, children: [] }));
-  }
+function buildBadgeTable(index) {
+  return new Table({
+    width: { size: convertMillimetersToTwip(32), type: WidthType.DXA },
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({
+            borders: {
+              top: { style: BorderStyle.SINGLE, size: 4, color: '2C3E59' },
+              bottom: { style: BorderStyle.SINGLE, size: 4, color: '2C3E59' },
+              left: { style: BorderStyle.SINGLE, size: 4, color: '2C3E59' },
+              right: { style: BorderStyle.SINGLE, size: 4, color: '2C3E59' }
+            },
+            shading: { type: ShadingType.CLEAR, fill: '2C3E59' },
+            margins: { top: 40, bottom: 40, left: 80, right: 80 },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: pdfEntryBadgeText(index),
+                    bold: true,
+                    color: 'FFFFFF',
+                    size: 20
+                  })
+                ]
+              })
+            ]
+          })
+        ]
+      })
+    ]
+  });
+}
 
+function buildFieldTable(entry, tableColumns) {
+  if (!tableColumns.length) return null;
   const labelTwip = Math.round(CONTENT_TWIP * 0.35);
   const valueTwip = CONTENT_TWIP - labelTwip;
   const fieldRows = tableColumns.map(
@@ -318,31 +400,23 @@ async function buildEntry({ entry, index, tableColumns, addIssue }) {
       })
   );
 
-  if (fieldRows.length) {
-    blocks.push(
-      new Table({
-        width: { size: CONTENT_TWIP, type: WidthType.DXA },
-        columnWidths: [labelTwip, valueTwip],
-        rows: fieldRows
-      })
-    );
-  }
-
-  return blocks;
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    columnWidths: [labelTwip, valueTwip],
+    rows: fieldRows
+  });
 }
 
-async function buildPhotoTable(entry, index, addIssue) {
+async function prepareEntryPhotos(entry, index, addIssue) {
   const blobs = normalizeEntryPhotos(entry);
-  if (!blobs.length) return null;
-
-  const prepared = [];
+  const images = [];
   for (const [photoIndex, blob] of blobs.entries()) {
     try {
       const dataUrl = await blobToDataUrl(blob);
       const parsed = dataUrlToImage(dataUrl);
       if (!parsed) throw new Error('Ungültiges Bildformat');
       const size = await getImageSize(dataUrl);
-      prepared.push({
+      images.push({
         ...parsed,
         width: size.width,
         height: size.height
@@ -353,15 +427,17 @@ async function buildPhotoTable(entry, index, addIssue) {
       );
     }
   }
-  if (!prepared.length) return null;
+  return {
+    images,
+    sizes: images.map((img) => ({ width: img.width, height: img.height }))
+  };
+}
 
-  const collage = layoutPhotoCollage(
-    prepared.map((img) => ({ width: img.width, height: img.height })),
-    CONTENT_WIDTH_PX,
-    2000,
-    { gap: PHOTO_GAP, frame: PHOTO_FRAME, minCell: MIN_PHOTO_CELL, maxCell: MAX_PHOTO_CELL }
-  );
+function buildPhotoTable(photos, index, maxImageHeightPt) {
+  const images = photos?.images || [];
+  if (!images.length) return null;
 
+  const collage = fitPdfPhotoCollage(photos.sizes, pdfPhotoAreaWidth(), maxImageHeightPt);
   const cols = Math.max(1, collage.cols || 1);
   const rows = Math.max(1, collage.rows || 1);
   const colTwip = Math.floor(CONTENT_TWIP / cols);
@@ -372,11 +448,11 @@ async function buildPhotoTable(entry, index, addIssue) {
     for (let col = 0; col < cols; col += 1) {
       const photoIndex = row * cols + col;
       const item = collage.items[photoIndex];
-      const image = prepared[photoIndex];
+      const image = images[photoIndex];
       if (!item || !image) {
         cells.push(
           new TableCell({
-            borders: noBorderSet(),
+            borders: noBorders,
             width: { size: colTwip, type: WidthType.DXA },
             children: [new Paragraph({ children: [] })]
           })
@@ -385,12 +461,7 @@ async function buildPhotoTable(entry, index, addIssue) {
       }
       cells.push(
         new TableCell({
-          borders: {
-            top: thinBorder,
-            bottom: thinBorder,
-            left: thinBorder,
-            right: thinBorder
-          },
+          borders: cellBorders,
           width: { size: colTwip, type: WidthType.DXA },
           margins: { top: 40, bottom: 40, left: 40, right: 40 },
           verticalAlign: VerticalAlign.CENTER,
@@ -402,10 +473,14 @@ async function buildPhotoTable(entry, index, addIssue) {
                   type: image.type,
                   data: image.bytes,
                   transformation: {
-                    width: Math.max(1, Math.round(item.width)),
-                    height: Math.max(1, Math.round(item.height))
+                    width: Math.max(1, Math.round(item.width * PT_TO_PX)),
+                    height: Math.max(1, Math.round(item.height * PT_TO_PX))
                   },
-                  altText: { title: `Eintrag ${index + 1}`, description: `Foto ${photoIndex + 1}`, name: `foto-${index + 1}-${photoIndex + 1}` }
+                  altText: {
+                    title: `Eintrag ${index + 1}`,
+                    description: `Foto ${photoIndex + 1}`,
+                    name: `foto-${index + 1}-${photoIndex + 1}`
+                  }
                 })
               ]
             })
@@ -417,7 +492,7 @@ async function buildPhotoTable(entry, index, addIssue) {
   }
 
   return new Table({
-    width: { size: CONTENT_TWIP, type: WidthType.DXA },
+    width: { size: 100, type: WidthType.PERCENTAGE },
     columnWidths: Array.from({ length: cols }, () => colTwip),
     rows: tableRows
   });
@@ -454,11 +529,6 @@ function splitMultiline(value) {
         children: [new TextRun(line || ' ')]
       })
   );
-}
-
-function noBorderSet() {
-  const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
-  return { top: none, bottom: none, left: none, right: none };
 }
 
 function dataUrlToImage(dataUrl) {
