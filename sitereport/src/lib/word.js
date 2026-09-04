@@ -18,12 +18,10 @@ import {
 import { blobToDataUrl } from './image.js';
 import { normalizeEntryPhotos } from './photos.js';
 import {
-  estimatePdfHeaderRemaining,
+  planExportEntryFlow,
   fitPdfPhotoCollage,
-  layoutPdfEntryFlow,
   pdfEntryBadgeText,
-  pdfPhotoAreaWidth,
-  pdfTwoUpCardBudget
+  pdfPhotoAreaWidth
 } from './pdf-entry.js';
 
 const PAGE_MARGIN_MM = 12.7;
@@ -90,19 +88,14 @@ export async function exportToDocxData({
     prepared.push(await prepareEntryPhotos(entry, idx, addIssue));
   }
 
-  const flow = layoutPdfEntryFlow({
+  const flow = planExportEntryFlow({
     entries: list,
     tableColumns,
     photoSizesForEntry: (_entry, idx) => prepared[idx]?.sizes || [],
-    headerRemaining: Math.max(
-      pdfTwoUpCardBudget(),
-      estimatePdfHeaderRemaining({
-        protocolTitle,
-        protocolDescription,
-        attendees,
-        hasLogo: Boolean(logoDataUrl)
-      }) - 36
-    )
+    protocolTitle,
+    protocolDescription,
+    attendees,
+    hasLogo: Boolean(logoDataUrl)
   });
 
   let exportedEntries = 0;

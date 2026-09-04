@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
-import { layoutPdfEntryFlow, estimatePdfHeaderRemaining, pdfTwoUpCardBudget } from './pdf-entry.js';
+import { planExportEntryFlow } from './pdf-entry.js';
 import { buildDocxFilename, exportToDocxData } from './word.js';
 
 const TEXT_COLUMNS = [
@@ -24,11 +24,14 @@ function textEntries(count) {
 
 function expectedWordPageBreaks(entries, meta = {}) {
   const tableColumns = TEXT_COLUMNS.filter((col) => !col.isPhoto);
-  const flow = layoutPdfEntryFlow({
+  const flow = planExportEntryFlow({
     entries,
     tableColumns,
     photoSizesForEntry: () => [],
-    headerRemaining: Math.max(pdfTwoUpCardBudget(), estimatePdfHeaderRemaining(meta) - 36)
+    protocolTitle: meta.protocolTitle,
+    protocolDescription: meta.protocolDescription,
+    attendees: meta.attendees,
+    hasLogo: false
   });
   return flow.filter((item) => item.pageBreakBefore).length;
 }

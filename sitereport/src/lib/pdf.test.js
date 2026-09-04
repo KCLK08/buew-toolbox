@@ -72,18 +72,20 @@ test('first PDF page skips a second entry when leftover is too small', () => {
   assert.equal(plan.stayOnPage, false);
 });
 
-test('continuation pages size a normal entry for two-up', () => {
+test('one- and two-photo entries stay at half-page even with tall field chrome', () => {
   const twoUp = pdfTwoUpCardBudget();
-  const plan = planPdfEntryPlacement({
-    remaining: 770,
-    isFirstDocumentPage: false,
-    entriesOnPage: 0,
-    photoCount: 1,
-    naturalCardHeight: 500,
-    chromeHeight: 110
-  });
-  assert.equal(plan.stayOnPage, true);
-  assert.ok(plan.maxCardHeight <= twoUp + 0.01);
+  for (const photoCount of [1, 2]) {
+    const plan = planPdfEntryPlacement({
+      remaining: 770,
+      isFirstDocumentPage: false,
+      entriesOnPage: 0,
+      photoCount,
+      naturalCardHeight: 900,
+      chromeHeight: 520
+    });
+    assert.equal(plan.stayOnPage, true, `${photoCount} photos`);
+    assert.ok(plan.maxCardHeight <= twoUp + 0.01, `${photoCount} photos`);
+  }
 });
 
 test('a second continuation entry stays when it fits', () => {
@@ -217,6 +219,26 @@ test('PDF packs four short entries onto two pages', async () => {
     entries: Array.from({ length: 4 }, (_, i) => ({
       id: `e${i + 1}`,
       fields: { Kilometer: String(i + 1), Beschreibung: `Text ${i + 1}`, Status: 'offen' }
+    }))
+  });
+  const pdf = await PDFDocument.load(Buffer.from(result.base64, 'base64'));
+  assert.equal(pdf.getPageCount(), 2);
+  assert.equal(result.stats.exportedEntries, 4);
+});
+
+test('PDF packs four entries with long descriptions onto two pages', async () => {
+  const longText = Array.from({ length: 12 }, (_, i) => `Beschreibungssatz ${i + 1} mit extra Text.`).join(' ');
+  const result = await exportToPdfData({
+    protocolTitle: 'Protokoll',
+    projectName: 'Nord',
+    protocolDate: '04-09-2026',
+    protocolDescription: 'Kurz',
+    attendees: 'Max',
+    logoDataUrl: '',
+    columns: PDF_COLUMNS,
+    entries: Array.from({ length: 4 }, (_, i) => ({
+      id: `e${i + 1}`,
+      fields: { Kilometer: String(i + 1), Beschreibung: longText, Status: 'offen' }
     }))
   });
   const pdf = await PDFDocument.load(Buffer.from(result.base64, 'base64'));
