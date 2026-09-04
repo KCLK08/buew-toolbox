@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
-import { layoutPdfEntryFlow, estimatePdfHeaderRemaining } from './pdf-entry.js';
+import { layoutPdfEntryFlow, estimatePdfHeaderRemaining, pdfTwoUpCardBudget } from './pdf-entry.js';
 import { buildDocxFilename, exportToDocxData } from './word.js';
 
 const TEXT_COLUMNS = [
@@ -28,7 +28,7 @@ function expectedWordPageBreaks(entries, meta = {}) {
     entries,
     tableColumns,
     photoSizesForEntry: () => [],
-    headerRemaining: estimatePdfHeaderRemaining(meta)
+    headerRemaining: Math.max(pdfTwoUpCardBudget(), estimatePdfHeaderRemaining(meta) - 36)
   });
   return flow.filter((item) => item.pageBreakBefore).length;
 }
@@ -116,5 +116,23 @@ test('two short Word entries stay on the first page like the PDF', async () => {
   });
   const zip = await JSZip.loadAsync(Buffer.from(result.base64, 'base64'));
   const xml = await zip.file('word/document.xml').async('string');
+  assert.equal((xml.match(/w:type="page"/g) || []).length, 0);
+});
+
+test('Word keeps the first entry with a long header instead of page-breaking', async () => {
+  const result = await exportToDocxData({
+    protocolTitle: 'Langprotokoll',
+    projectName: 'Projekt Nord',
+    protocolDate: '04-09-2026',
+    protocolDescription: Array.from({ length: 16 }, (_, i) => `Beschreibung Zeile ${i + 1}`).join('\n'),
+    attendees: Array.from({ length: 10 }, (_, i) => `Person ${i + 1}`).join('\n'),
+    logoDataUrl: '',
+    columns: TEXT_COLUMNS,
+    entries: textEntries(2)
+  });
+  const zip = await JSZip.loadAsync(Buffer.from(result.base64, 'base64'));
+  const xml = await zip.file('word/document.xml').async('string');
+  assert.match(xml, /Eintrag 1/);
+  assert.match(xml, /w:keepNext/);
   assert.equal((xml.match(/w:type="page"/g) || []).length, 0);
 });

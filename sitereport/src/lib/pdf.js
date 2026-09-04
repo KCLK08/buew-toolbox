@@ -6,6 +6,7 @@ import {
   fitPdfPhotoCollage,
   naturalPdfPhotoCollage,
   pdfEntryBadgeText,
+  pdfMaxHeaderHeight,
   planPdfEntryPlacement
 } from './pdf-entry';
 
@@ -139,13 +140,33 @@ export async function exportToPdfData({
     });
 
     const titleLines = wrapText(title, textMaxWidth, titleSize, fontBold);
-    const metaHeight = metaRows.reduce((sum, row) => {
-      const valueH = row.valueLines.length * lineHeight;
-      return sum + (row.stacked ? lineHeight + valueH : valueH);
-    }, 0);
-    const headerTextHeight = titleLines.length * (titleSize + 2) + 8 + metaHeight;
-    const headerHeight = Math.max(headerTextHeight, logoHeight);
-    const headerBoxHeight = headerHeight + headerPadding * 2;
+    const stackedRows = () => metaRows.filter((row) => row.stacked);
+    const measureHeaderBox = () => {
+      const metaHeight = metaRows.reduce((sum, row) => {
+        const valueH = row.valueLines.length * lineHeight;
+        return sum + (row.stacked ? lineHeight + valueH : valueH);
+      }, 0);
+      const headerTextHeight = titleLines.length * (titleSize + 2) + 8 + metaHeight;
+      const headerHeight = Math.max(headerTextHeight, logoHeight);
+      return headerHeight + headerPadding * 2;
+    };
+
+    const maxHeaderBox = pdfMaxHeaderHeight();
+    while (measureHeaderBox() > maxHeaderBox) {
+      const stacked = stackedRows()
+        .filter((row) => row.valueLines.length > 1)
+        .sort((a, b) => b.valueLines.length - a.valueLines.length)[0];
+      if (!stacked) {
+        if (titleLines.length > 1) {
+          titleLines.pop();
+          continue;
+        }
+        break;
+      }
+      stacked.valueLines.pop();
+    }
+
+    const headerBoxHeight = Math.min(maxHeaderBox, measureHeaderBox());
 
     const headerBottom = headerTop - headerBoxHeight;
     page.drawRectangle({
@@ -302,15 +323,17 @@ export async function exportToPdfData({
 
   const drawPreparedEntry = async (prepared, index, maxCardHeight) => {
     const maxImageWidth = blockWidth - cardPadding * 2;
+    const available = Math.max(0, remainingSpace());
+    const cardLimit = Math.min(maxCardHeight, available);
     let collage = { items: [], width: 0, height: 0, cols: 0, rows: 0 };
     let imageHeight = 0;
     if (prepared.hasImages) {
-      const maxImageHeight = Math.max(56, Math.min(maxCardHeight, remainingSpace()) - prepared.chromeWithoutImage);
+      const maxImageHeight = Math.max(56, cardLimit - prepared.chromeWithoutImage);
       collage = fitCollage(prepared.sizes, maxImageWidth, maxImageHeight);
-      imageHeight = collage.height;
+      imageHeight = Math.min(collage.height, Math.max(0, cardLimit - prepared.chromeWithoutImage));
     }
 
-    const cardHeight = prepared.chromeWithoutImage + imageHeight;
+    const cardHeight = Math.min(cardLimit || prepared.chromeWithoutImage, prepared.chromeWithoutImage + imageHeight);
     const cardTop = cursorY;
     const cardBottom = cursorY - cardHeight;
 

@@ -22,14 +22,16 @@ import {
   fitPdfPhotoCollage,
   layoutPdfEntryFlow,
   pdfEntryBadgeText,
-  pdfPhotoAreaWidth
+  pdfPhotoAreaWidth,
+  pdfTwoUpCardBudget
 } from './pdf-entry.js';
 
 const PAGE_MARGIN_MM = 12.7;
 const CONTENT_WIDTH_MM = 210 - PAGE_MARGIN_MM * 2;
 const CONTENT_TWIP = convertMillimetersToTwip(CONTENT_WIDTH_MM);
 const PT_TO_PX = 96 / 72;
-const CARD_PADDING_TWIP = 160;
+const CARD_PADDING_TWIP = 80;
+const MAX_HEADER_STACKED_LINES = 5;
 
 const thinBorder = { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' };
 const cardBorder = { style: BorderStyle.SINGLE, size: 8, color: 'D1D5DB' };
@@ -86,12 +88,15 @@ export async function exportToDocxData({
     entries: list,
     tableColumns,
     photoSizesForEntry: (_entry, idx) => prepared[idx]?.sizes || [],
-    headerRemaining: estimatePdfHeaderRemaining({
-      protocolTitle,
-      protocolDescription,
-      attendees,
-      hasLogo: Boolean(logoDataUrl)
-    })
+    headerRemaining: Math.max(
+      pdfTwoUpCardBudget(),
+      estimatePdfHeaderRemaining({
+        protocolTitle,
+        protocolDescription,
+        attendees,
+        hasLogo: Boolean(logoDataUrl)
+      }) - 36
+    )
   });
 
   let exportedEntries = 0;
@@ -201,20 +206,24 @@ async function buildHeader({
 
   const textChildren = [
     new Paragraph({
-      spacing: { after: 80 },
+      keepNext: true,
+      spacing: { after: 60 },
       children: [new TextRun({ text: title, bold: true, size: 32, color: '2C3E59' })]
     }),
     ...meta.flatMap((row) => {
       const value = String(row.value || '').trim() || '—';
       if (row.stacked) {
+        const lines = value.split(/\r?\n/).slice(0, MAX_HEADER_STACKED_LINES);
         return [
           new Paragraph({
-            spacing: { before: 40 },
+            keepNext: true,
+            spacing: { before: 20 },
             children: [new TextRun({ text: `${row.label}:`, bold: true })]
           }),
-          ...value.split(/\r?\n/).map(
+          ...lines.map(
             (line) =>
               new Paragraph({
+                keepNext: true,
                 children: [new TextRun(line || ' ')]
               })
           )
@@ -222,6 +231,7 @@ async function buildHeader({
       }
       return [
         new Paragraph({
+          keepNext: true,
           children: [
             new TextRun({ text: `${row.label}: `, bold: true }),
             new TextRun(value)
@@ -235,7 +245,7 @@ async function buildHeader({
   if (!logo) {
     return [
       headerBox(textChildren),
-      new Paragraph({ spacing: { after: 200 }, children: [] })
+      new Paragraph({ keepNext: true, spacing: { after: 120 }, children: [] })
     ];
   }
 
@@ -266,7 +276,7 @@ async function buildHeader({
     ]
   });
 
-  return [headerTable, new Paragraph({ spacing: { after: 200 }, children: [] })];
+  return [headerTable, new Paragraph({ keepNext: true, spacing: { after: 120 }, children: [] })];
 }
 
 function headerBox(textChildren) {
@@ -278,7 +288,7 @@ function headerBox(textChildren) {
           new TableCell({
             borders: cellBorders,
             shading: { type: ShadingType.CLEAR, fill: 'F3F4F6' },
-            margins: { top: 80, bottom: 80, left: 120, right: 120 },
+            margins: { top: 60, bottom: 60, left: 80, right: 80 },
             children: textChildren
           })
         ]
@@ -332,7 +342,7 @@ async function buildEntry({ entry, index, tableColumns, photos, maxImageHeightPt
         })
       ]
     }),
-    new Paragraph({ spacing: { after: 240 }, children: [] })
+    new Paragraph({ spacing: { after: 160 }, children: [] })
   ];
 }
 
@@ -463,7 +473,7 @@ function buildPhotoTable(photos, index, maxImageHeightPt) {
         new TableCell({
           borders: cellBorders,
           width: { size: colTwip, type: WidthType.DXA },
-          margins: { top: 40, bottom: 40, left: 40, right: 40 },
+          margins: { top: 20, bottom: 20, left: 20, right: 20 },
           verticalAlign: VerticalAlign.CENTER,
           children: [
             new Paragraph({

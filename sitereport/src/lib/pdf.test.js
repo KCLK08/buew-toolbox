@@ -5,6 +5,8 @@ import {
   layoutPdfEntryFlow,
   pdfEntryBadgeText,
   pdfEntryNeedsPhotoArea,
+  pdfMaxHeaderHeight,
+  pdfPageBodyHeight,
   pdfTwoUpCardBudget,
   planPdfEntryPlacement
 } from './pdf-entry.js';
@@ -28,6 +30,7 @@ test('entries with photos still get a PDF image area', () => {
 });
 
 test('first PDF entry always stays on the header page', () => {
+  const twoUp = pdfTwoUpCardBudget();
   const plan = planPdfEntryPlacement({
     remaining: 420,
     isFirstDocumentPage: true,
@@ -38,12 +41,26 @@ test('first PDF entry always stays on the header page', () => {
   });
   assert.equal(plan.stayOnPage, true);
   assert.equal(plan.forceFit, true);
-  assert.equal(plan.maxCardHeight, 420);
+  assert.ok(plan.maxCardHeight <= twoUp + 0.01);
+  assert.ok(plan.maxCardHeight <= 420);
 });
 
-test('first PDF page does not require a second entry', () => {
+test('first PDF page force-fits a second 1-photo entry when leftover is enough', () => {
   const plan = planPdfEntryPlacement({
     remaining: 180,
+    isFirstDocumentPage: true,
+    entriesOnPage: 1,
+    photoCount: 1,
+    naturalCardHeight: 300,
+    chromeHeight: 110
+  });
+  assert.equal(plan.stayOnPage, true);
+  assert.equal(plan.forceFit, true);
+});
+
+test('first PDF page skips a second entry when leftover is too small', () => {
+  const plan = planPdfEntryPlacement({
+    remaining: 80,
     isFirstDocumentPage: true,
     entriesOnPage: 1,
     photoCount: 1,
@@ -117,4 +134,46 @@ test('PDF packing keeps two short entries on page one, then two per later page',
   assert.equal(flow[2].pageBreakBefore, true);
   assert.equal(flow[3].pageBreakBefore, false);
   assert.equal(flow[4].pageBreakBefore, true);
+});
+
+test('a long header still leaves room for the first entry', () => {
+  const remaining = estimatePdfHeaderRemaining({
+    protocolTitle: 'Sehr langes Protokoll',
+    protocolDescription: Array.from({ length: 20 }, (_, i) => `Beschreibung Zeile ${i + 1}`).join('\n'),
+    attendees: Array.from({ length: 12 }, (_, i) => `Person ${i + 1}`).join('\n')
+  });
+  assert.ok(remaining >= pdfTwoUpCardBudget() - 0.01);
+  assert.ok(pdfMaxHeaderHeight() < pdfPageBodyHeight());
+});
+
+test('one- and two-photo entries are packed two per continuation page', () => {
+  const columns = [
+    { name: 'Kilometer' },
+    { name: 'Beschreibung' },
+    { name: 'Status' }
+  ];
+  const entries = Array.from({ length: 4 }, (_, i) => ({
+    fields: { Kilometer: String(i), Beschreibung: `Text ${i}`, Status: 'offen' }
+  }));
+  const photos = (count) => Array.from({ length: count }, () => ({ width: 1600, height: 900 }));
+  for (const photoCount of [1, 2]) {
+    const flow = layoutPdfEntryFlow({
+      entries,
+      tableColumns: columns,
+      photoSizesForEntry: () => photos(photoCount),
+      headerRemaining: estimatePdfHeaderRemaining({
+        protocolTitle: 'Protokoll',
+        protocolDescription: 'Kurz',
+        attendees: 'Max'
+      })
+    });
+    assert.equal(flow.length, 4, `${photoCount} photos`);
+    assert.equal(flow[0].pageBreakBefore, false, `${photoCount} photos first stays`);
+    assert.equal(flow[1].pageBreakBefore, false, `${photoCount} photos second stays`);
+    assert.equal(flow[2].pageBreakBefore, true, `${photoCount} photos page 2`);
+    assert.equal(flow[3].pageBreakBefore, false, `${photoCount} photos two-up`);
+    const twoUp = pdfTwoUpCardBudget();
+    assert.ok(flow[0].maxCardHeight <= twoUp + 1);
+    assert.ok(flow[2].maxCardHeight <= twoUp + 1);
+  }
 });
