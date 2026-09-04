@@ -2,7 +2,7 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { blobToDataUrl } from './image';
 import { bufferToBase64 } from './native';
 import { layoutPhotoCollage, normalizeEntryPhotos } from './photos';
-import { pdfEntryBadgeText } from './pdf-entry';
+import { pdfEntryBadgeText, planPdfEntryPlacement } from './pdf-entry';
 
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
@@ -220,16 +220,19 @@ export async function exportToPdfData({
     return headerBottom - headerGap;
   };
 
-  let isFirstPage = true;
+  let pageCount = 0;
+  let entriesOnCurrentPage = 0;
   const startPage = async () => {
     page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
-    if (isFirstPage) {
+    pageCount += 1;
+    entriesOnCurrentPage = 0;
+    if (pageCount === 1) {
       cursorY = await drawHeader();
-      isFirstPage = false;
     } else {
       cursorY = A4_HEIGHT - margin;
     }
   };
+  const remainingSpace = () => cursorY - margin;
 
   const tableColumns = columns.filter((c) => !c.isPhoto);
   const blockWidth = A4_WIDTH - margin * 2;
@@ -242,7 +245,22 @@ export async function exportToPdfData({
     return extension === 'png' ? pdfDoc.embedPng(bytes) : pdfDoc.embedJpg(bytes);
   };
 
-  const drawEntry = async (entry, index) => {
+  const fitCollage = (sizes, maxImageWidth, maxImageHeight) => {
+    if (!sizes.length) {
+      return { items: [], width: 0, height: 0, cols: 0, rows: 0 };
+    }
+    const budget = Math.max(56, maxImageHeight);
+    const readable = layoutPhotoCollage(sizes, maxImageWidth, budget, {
+      gap: photoGap,
+      frame: photoFrame,
+      minCell: Math.min(160, budget),
+      maxCell: Math.min(260, budget)
+    });
+    if (readable.height <= budget + 1) return readable;
+    return layoutPhotoCollage(sizes, maxImageWidth, budget, { gap: photoGap, frame: photoFrame });
+  };
+
+  const prepareEntry = async (entry, index) => {
     const photoBlobs = normalizeEntryPhotos(entry);
     const images = [];
     for (const [photoIndex, blob] of photoBlobs.entries()) {
@@ -273,41 +291,38 @@ export async function exportToPdfData({
     const hasImages = images.length > 0;
     const imageChrome = hasImages ? tableGap : 0;
     const chromeWithoutImage = cardPadding * 2 + badgeHeight + badgeGap + imageChrome + tableHeight;
-    const maxImageWidth = blockWidth - cardPadding * 2;
-    const minPhotoCell = 180;
-    const maxPhotoCell = 280;
-    const pageBodyHeight = A4_HEIGHT - margin * 2;
+    const sizes = images.map((image) => ({ width: image.width, height: image.height }));
+    const naturalCollage = hasImages
+      ? layoutPhotoCollage(sizes, blockWidth - cardPadding * 2, A4_HEIGHT - margin * 2, {
+          gap: photoGap,
+          frame: photoFrame,
+          minCell: 160,
+          maxCell: 260
+        })
+      : { items: [], width: 0, height: 0, cols: 0, rows: 0 };
 
+    return {
+      images,
+      sizes,
+      hasImages,
+      rowHeights,
+      tableHeight,
+      chromeWithoutImage,
+      naturalCardHeight: chromeWithoutImage + (hasImages ? naturalCollage.height : 0)
+    };
+  };
+
+  const drawPreparedEntry = async (prepared, index, maxCardHeight) => {
+    const maxImageWidth = blockWidth - cardPadding * 2;
     let collage = { items: [], width: 0, height: 0, cols: 0, rows: 0 };
     let imageHeight = 0;
-    if (hasImages) {
-      const sizes = images.map((image) => ({ width: image.width, height: image.height }));
-      collage = layoutPhotoCollage(sizes, maxImageWidth, pageBodyHeight, {
-        gap: photoGap,
-        frame: photoFrame,
-        minCell: minPhotoCell,
-        maxCell: maxPhotoCell
-      });
+    if (prepared.hasImages) {
+      const maxImageHeight = Math.max(56, Math.min(maxCardHeight, remainingSpace()) - prepared.chromeWithoutImage);
+      collage = fitCollage(prepared.sizes, maxImageWidth, maxImageHeight);
       imageHeight = collage.height;
     }
 
-    const cardHeightNeeded = chromeWithoutImage + imageHeight;
-    if (!page || cursorY - cardHeightNeeded < margin) {
-      await startPage();
-    }
-
-    const available = Math.max(0, cursorY - margin - chromeWithoutImage);
-    if (hasImages && imageHeight > available) {
-      collage = layoutPhotoCollage(
-        images.map((image) => ({ width: image.width, height: image.height })),
-        maxImageWidth,
-        Math.max(minPhotoCell, available),
-        { gap: photoGap, frame: photoFrame }
-      );
-      imageHeight = collage.height;
-    }
-
-    const cardHeight = chromeWithoutImage + imageHeight;
+    const cardHeight = prepared.chromeWithoutImage + imageHeight;
     const cardTop = cursorY;
     const cardBottom = cursorY - cardHeight;
 
@@ -347,9 +362,9 @@ export async function exportToPdfData({
     const collageTop = badgeY - badgeGap;
     const collageLeft = margin + cardPadding;
     const imageY = collageTop - imageHeight;
-    const tableTopStart = hasImages ? imageY - tableGap : collageTop;
+    const tableTopStart = prepared.hasImages ? imageY - tableGap : collageTop;
 
-    if (hasImages) {
+    if (prepared.hasImages) {
       collage.items.forEach((item, photoIndex) => {
         const frameX = collageLeft + item.frameX;
         const frameY = collageTop - item.frameY - item.frameH;
@@ -362,7 +377,7 @@ export async function exportToPdfData({
           borderWidth: 1,
           color: rgb(1, 1, 1)
         });
-        const image = images[photoIndex];
+        const image = prepared.images[photoIndex];
         if (!image) return;
         page.drawImage(image, {
           x: collageLeft + item.x,
@@ -386,7 +401,7 @@ export async function exportToPdfData({
       color: softBorder
     });
 
-    rowHeights.forEach((rowData, idx) => {
+    prepared.rowHeights.forEach((rowData, idx) => {
       const rowBottom = tableTop - rowData.height;
       if (idx % 2 === 1) {
         page.drawRectangle({
@@ -432,19 +447,41 @@ export async function exportToPdfData({
 
     page.drawLine({
       start: { x: dividerX, y: tableTopStart },
-      end: { x: dividerX, y: tableTopStart - tableHeight },
+      end: { x: dividerX, y: tableTopStart - prepared.tableHeight },
       thickness: 1,
       color: softBorder
     });
 
     cursorY = tableTop - blockGap;
+    entriesOnCurrentPage += 1;
   };
 
   await startPage();
   let exportedEntries = 0;
   for (const [idx, entry] of entries.entries()) {
     try {
-      await drawEntry(entry, idx);
+      const prepared = await prepareEntry(entry, idx);
+      let plan = planPdfEntryPlacement({
+        remaining: remainingSpace(),
+        isFirstDocumentPage: pageCount === 1,
+        entriesOnPage: entriesOnCurrentPage,
+        photoCount: prepared.images.length,
+        naturalCardHeight: prepared.naturalCardHeight,
+        chromeHeight: prepared.chromeWithoutImage
+      });
+      if (!plan.stayOnPage) {
+        await startPage();
+        plan = planPdfEntryPlacement({
+          remaining: remainingSpace(),
+          isFirstDocumentPage: false,
+          entriesOnPage: 0,
+          photoCount: prepared.images.length,
+          naturalCardHeight: prepared.naturalCardHeight,
+          chromeHeight: prepared.chromeWithoutImage
+        });
+      }
+      const maxCardHeight = Math.min(plan.maxCardHeight, Math.max(prepared.chromeWithoutImage, remainingSpace()));
+      await drawPreparedEntry(prepared, idx, maxCardHeight);
       exportedEntries += 1;
     } catch (err) {
       addIssue(`Eintrag ${idx + 1}: PDF-Block konnte nicht erstellt werden (${err?.message || 'Unbekannt'}).`);
