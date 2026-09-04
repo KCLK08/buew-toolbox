@@ -73,7 +73,8 @@ test('Word export includes Eintrag badges and field values without a photo place
   assert.match(xml, /Beschreibung Zeile 1/);
   assert.doesNotMatch(xml, /Kein Bild vorhanden/);
   assert.doesNotMatch(xml, /Bild 1/);
-  assert.match(xml, /w:fill="F7F8F9"/);
+  assert.match(xml, /w:fill="F3F4F6"/);
+  assert.match(xml, /w:color="4B5563"/);
   assert.match(xml, /<w:tbl[\s\S]*<w:tbl[\s\S]*Eintrag 1/);
 });
 

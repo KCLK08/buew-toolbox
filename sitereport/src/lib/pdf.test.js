@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { PDFDocument } from 'pdf-lib';
 import {
   estimatePdfHeaderRemaining,
   layoutPdfEntryFlow,
@@ -10,6 +11,7 @@ import {
   pdfTwoUpCardBudget,
   planPdfEntryPlacement
 } from './pdf-entry.js';
+import { exportToPdfData } from './pdf.js';
 
 test('pdf badges use Eintrag numbering instead of Bild', () => {
   assert.equal(pdfEntryBadgeText(0), 'Eintrag 1');
@@ -176,4 +178,48 @@ test('one- and two-photo entries are packed two per continuation page', () => {
     assert.ok(flow[0].maxCardHeight <= twoUp + 1);
     assert.ok(flow[2].maxCardHeight <= twoUp + 1);
   }
+});
+
+const PDF_COLUMNS = [
+  { name: 'Bilder', isPhoto: true },
+  { name: 'Kilometer', isPhoto: false },
+  { name: 'Beschreibung', isPhoto: false },
+  { name: 'Status', isPhoto: false }
+];
+
+test('PDF keeps a single entry on the header page even with a long header', async () => {
+  const result = await exportToPdfData({
+    protocolTitle: 'Langprotokoll',
+    projectName: 'Nord',
+    protocolDate: '04-09-2026',
+    protocolDescription: Array.from({ length: 16 }, (_, i) => `Beschreibung Zeile ${i + 1}`).join('\n'),
+    attendees: Array.from({ length: 10 }, (_, i) => `Person ${i + 1}`).join('\n'),
+    logoDataUrl: '',
+    columns: PDF_COLUMNS,
+    entries: [
+      { id: 'e1', fields: { Kilometer: '1', Beschreibung: 'Erster Eintrag', Status: 'offen' } }
+    ]
+  });
+  const pdf = await PDFDocument.load(Buffer.from(result.base64, 'base64'));
+  assert.equal(pdf.getPageCount(), 1);
+  assert.equal(result.stats.exportedEntries, 1);
+});
+
+test('PDF packs four short entries onto two pages', async () => {
+  const result = await exportToPdfData({
+    protocolTitle: 'Protokoll',
+    projectName: 'Nord',
+    protocolDate: '04-09-2026',
+    protocolDescription: 'Kurz',
+    attendees: 'Max',
+    logoDataUrl: '',
+    columns: PDF_COLUMNS,
+    entries: Array.from({ length: 4 }, (_, i) => ({
+      id: `e${i + 1}`,
+      fields: { Kilometer: String(i + 1), Beschreibung: `Text ${i + 1}`, Status: 'offen' }
+    }))
+  });
+  const pdf = await PDFDocument.load(Buffer.from(result.base64, 'base64'));
+  assert.equal(pdf.getPageCount(), 2);
+  assert.equal(result.stats.exportedEntries, 4);
 });
