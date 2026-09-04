@@ -28,6 +28,7 @@
   import { compressImage, blobToObjectUrl } from '$lib/image';
   import { exportToXlsxData } from '$lib/export';
   import { exportToPdfData } from '$lib/pdf';
+  import { exportToDocxData } from '$lib/word';
   import { getNativePlatform, isNativePlatform, saveBase64File, shareFile } from '$lib/native';
   import { normalizeEntryPhotos } from '$lib/photos';
 
@@ -172,17 +173,20 @@
     primaryLabel: '',
     secondaryLabel: '',
     tertiaryLabel: '',
+    extraLabel: '',
     showCancel: true,
     secondaryDanger: false,
     onPrimary: null,
     onSecondary: null,
-    onTertiary: null
+    onTertiary: null,
+    onExtra: null
   };
   let downloadDialog = {
     open: false,
     title: '',
     onExcel: null,
-    onPdf: null
+    onPdf: null,
+    onWord: null
   };
   let lastView = view;
   let suppressHistory = false;
@@ -856,7 +860,7 @@
     }
   };
 
-  const buildExportPatch = ({ protocolRecord, xlsxResult, pdfResult, now }) => {
+  const buildExportPatch = ({ protocolRecord, xlsxResult, pdfResult, wordResult, now }) => {
     const patch = {
       id: `export_${protocolRecord.id}`,
       protocolId: protocolRecord.id,
@@ -876,6 +880,14 @@
       patch.pdfUpdatedAt = now;
       patch.pdfStats = pdfResult.stats || null;
     }
+    if (wordResult) {
+      patch.wordFilename =
+        wordResult.filename ||
+        buildFilename(protocolRecord.projectName, protocolRecord.protocolDate).replace(/\.xlsx$/i, '.docx');
+      patch.wordBase64 = wordResult.base64 || '';
+      patch.wordUpdatedAt = now;
+      patch.wordStats = wordResult.stats || null;
+    }
     return patch;
   };
 
@@ -890,38 +902,37 @@
     const protocolRecord = await saveProtocol();
     let xlsxResult = null;
     let pdfResult = null;
+    let wordResult = null;
+
+    const payload = {
+      protocolTitle: protocolRecord.protocolTitle,
+      projectName: protocolRecord.projectName,
+      protocolDate: protocolRecord.protocolDate,
+      protocolDescription: protocolRecord.protocolDescription,
+      attendees: protocolRecord.attendees,
+      logoDataUrl,
+      columns: protocolRecord.columns,
+      entries: protocolRecord.entries
+    };
 
     if (format === 'xlsx') {
-      xlsxResult = await exportToXlsxData({
-        protocolTitle: protocolRecord.protocolTitle,
-        projectName: protocolRecord.projectName,
-        protocolDate: protocolRecord.protocolDate,
-        protocolDescription: protocolRecord.protocolDescription,
-        attendees: protocolRecord.attendees,
-        logoDataUrl,
-        columns: protocolRecord.columns,
-        entries: protocolRecord.entries
-      });
+      xlsxResult = await exportToXlsxData(payload);
     }
     if (format === 'pdf') {
-      pdfResult = await exportToPdfData({
-        protocolTitle: protocolRecord.protocolTitle,
-        projectName: protocolRecord.projectName,
-        protocolDate: protocolRecord.protocolDate,
-        protocolDescription: protocolRecord.protocolDescription,
-        attendees: protocolRecord.attendees,
-        logoDataUrl,
-        columns: protocolRecord.columns,
-        entries: protocolRecord.entries
-      });
+      pdfResult = await exportToPdfData(payload);
+    }
+    if (format === 'docx') {
+      wordResult = await exportToDocxData(payload);
     }
 
     let exportRecord = null;
-    if (xlsxResult || pdfResult) {
+    if (xlsxResult || pdfResult || wordResult) {
       const now = new Date().toISOString();
-      exportRecord = await upsertExportByProtocol(buildExportPatch({ protocolRecord, xlsxResult, pdfResult, now }));
+      exportRecord = await upsertExportByProtocol(
+        buildExportPatch({ protocolRecord, xlsxResult, pdfResult, wordResult, now })
+      );
     }
-    return { protocolRecord, exportRecord, xlsxResult, pdfResult };
+    return { protocolRecord, exportRecord, xlsxResult, pdfResult, wordResult };
   };
 
   const closeProtocol = async () => {
@@ -941,6 +952,7 @@
       message: 'Wie möchtest du den Export herunterladen?',
       primaryLabel: 'Excel herunterladen',
       secondaryLabel: 'PDF herunterladen',
+      extraLabel: 'Word herunterladen',
       tertiaryLabel: 'Nur speichern',
       showCancel: true,
       secondaryDanger: false,
@@ -972,6 +984,25 @@
           protocolsList = await listProtocols();
           exportsList = await listExports();
           if (exportRecord) await downloadExportPdf(exportRecord);
+          await resetProtocol();
+          view = 'protocols';
+          closeConfirm();
+        } catch (err) {
+          closeError = `Abschluss fehlgeschlagen: ${err?.message || 'Bitte erneut versuchen.'}`;
+          console.error(err);
+        } finally {
+          isExporting = false;
+        }
+      },
+      onExtra: async () => {
+        if (isExporting) return;
+        isExporting = true;
+        closeError = '';
+        try {
+          const { exportRecord } = await saveAndExportProtocol({ format: 'docx' });
+          protocolsList = await listProtocols();
+          exportsList = await listExports();
+          if (exportRecord) await downloadExportWord(exportRecord);
           await resetProtocol();
           view = 'protocols';
           closeConfirm();
@@ -1092,12 +1123,14 @@
       message: '',
       primaryLabel: '',
       secondaryLabel: '',
+      extraLabel: '',
       tertiaryLabel: '',
       showCancel: true,
       secondaryDanger: false,
       onPrimary: null,
       onSecondary: null,
-      onTertiary: null
+      onTertiary: null,
+      onExtra: null
     };
   };
 
@@ -1120,12 +1153,12 @@
     view = 'landing';
   };
 
-  const openDownloadDialog = ({ title, onExcel, onPdf }) => {
-    downloadDialog = { open: true, title, onExcel, onPdf };
+  const openDownloadDialog = ({ title, onExcel, onPdf, onWord }) => {
+    downloadDialog = { open: true, title, onExcel, onPdf, onWord };
   };
 
   const closeDownloadDialog = () => {
-    downloadDialog = { open: false, title: '', onExcel: null, onPdf: null };
+    downloadDialog = { open: false, title: '', onExcel: null, onPdf: null, onWord: null };
   };
 
   const downloadFileFromBase64 = async ({ base64, filename, mimeType }) => {
@@ -1232,6 +1265,7 @@
         protocolRecord: protocol,
         xlsxResult,
         pdfResult: null,
+        wordResult: null,
         now
       })
     );
@@ -1288,6 +1322,7 @@
         protocolRecord: protocol,
         xlsxResult: null,
         pdfResult,
+        wordResult: null,
         now
       })
     );
@@ -1347,6 +1382,79 @@
     }
     if (exp?.pdfBase64) {
       await downloadExportPdf(exp, protocol);
+    }
+  };
+
+  const ensureWordExport = async (protocol) => {
+    if (!protocol) return { record: null, result: null };
+    const wordResult = await exportToDocxData({
+      protocolTitle: protocol.protocolTitle,
+      projectName: protocol.projectName,
+      protocolDate: protocol.protocolDate,
+      protocolDescription: protocol.protocolDescription,
+      attendees: protocol.attendees,
+      logoDataUrl,
+      columns: protocol.columns,
+      entries: protocol.entries
+    });
+    if (!wordResult) return { record: null, result: null };
+    const now = new Date().toISOString();
+    const record = await upsertExportByProtocol(
+      buildExportPatch({
+        protocolRecord: protocol,
+        xlsxResult: null,
+        pdfResult: null,
+        wordResult,
+        now
+      })
+    );
+    return { record, result: wordResult };
+  };
+
+  const downloadExportWord = async (exp, protocol) => {
+    let target = exp;
+    let wordResult = null;
+    if (!target?.wordBase64) {
+      const protocolRecord = protocol || (exp?.protocolId ? await getProtocol(exp.protocolId) : null);
+      if (!protocolRecord) {
+        downloadError = 'Download nicht verfügbar.';
+        return;
+      }
+      const generated = await ensureWordExport(protocolRecord);
+      target = generated.record;
+      wordResult = generated.result;
+      exportsList = await listExports();
+    }
+    if (!target?.wordBase64) {
+      downloadError = 'Download nicht verfügbar.';
+      return;
+    }
+    const filename =
+      target.wordFilename ||
+      buildFilename(target.projectName, target.protocolDate).replace(/\.xlsx$/i, '.docx');
+    await downloadFileFromBase64({
+      base64: target.wordBase64,
+      filename,
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    });
+    if (wordResult) {
+      showExportFeedback('Word', wordResult);
+    } else if (target.wordStats) {
+      showExportFeedback('Word', { stats: target.wordStats });
+    }
+  };
+
+  const downloadProtocolWord = async (protocol) => {
+    let exp = exportsList.find((e) => e.protocolId === protocol.id);
+    if (!exp?.wordBase64) {
+      const generated = await ensureWordExport(protocol);
+      if (generated.record) {
+        exp = generated.record;
+        exportsList = await listExports();
+      }
+    }
+    if (exp?.wordBase64) {
+      await downloadExportWord(exp, protocol);
     }
   };
 
@@ -1411,6 +1519,12 @@
           await downloadProtocolPdf(protocol);
         }
         closeDownloadDialog();
+      },
+      onWord: async () => {
+        for (const protocol of protocolsList.filter((p) => selectedProtocols.has(p.id))) {
+          await downloadProtocolWord(protocol);
+        }
+        closeDownloadDialog();
       }
     });
   };
@@ -1431,6 +1545,12 @@
       onPdf: async () => {
         for (const exp of exportsList.filter((e) => selectedExports.has(e.id))) {
           await downloadExportPdf(exp);
+        }
+        closeDownloadDialog();
+      },
+      onWord: async () => {
+        for (const exp of exportsList.filter((e) => selectedExports.has(e.id))) {
+          await downloadExportWord(exp);
         }
         closeDownloadDialog();
       }
@@ -1835,7 +1955,8 @@
         <button type="button" on:click={cancelProtocol}>Protokoll verlassen</button>
       </div>
       <p class="muted entry-hint">
-        „Eintrag machen“: ein Eintrag, dem du mehrere Bilder zuordnen kannst. „Mehrere Einträge“: jedes hochgeladene Bild wird ein eigener Eintrag mit genau einem Bild.
+        „Eintrag machen“: ein Eintrag, optional mit einem oder mehreren Bildern. Ohne Bild erscheint er in der PDF nur mit den Angaben.
+        „Mehrere Einträge“: jedes hochgeladene Bild wird ein eigener Eintrag mit genau einem Bild.
       </p>
       {#if closeError}
         <p class="error">{closeError}</p>
@@ -1845,15 +1966,19 @@
         {#if entries.length === 0}
           <p class="muted">Noch keine Einträge.</p>
         {:else}
-          {#each entries as e}
-            <div class:editing={editingEntryId === e.id} class="entry-card">
+          {#each entries as e, i}
+            <div
+              class:editing={editingEntryId === e.id}
+              class:text-only={!e.photoPreviews?.length && editingEntryId !== e.id}
+              class="entry-card"
+            >
               {#if editingEntryId === e.id}
                 {#if entryDraft.photoPreviews?.length}
                   <div class="photo-collage photo-collage-editor">
-                    {#each entryDraft.photoPreviews as src, i}
+                    {#each entryDraft.photoPreviews as src, photoIndex}
                       <figure class="photo-frame">
-                        <img src={src} alt={`Bild ${i + 1}`} />
-                        <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Bild entfernen">
+                        <img src={src} alt={`Bild ${photoIndex + 1}`} />
+                        <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(photoIndex)} aria-label="Bild entfernen">
                           ×
                         </button>
                       </figure>
@@ -1861,9 +1986,9 @@
                   </div>
                 {/if}
                 <div class="entry-body">
-                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <div class="entry-date">Eintrag {i + 1} · {new Date(e.createdAt).toLocaleString()}</div>
                   <label class="file-button">
-                    {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Bilder hinzufügen'}
+                    {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Bilder hinzufügen (optional)'}
                     <input type="file" accept="image/*" multiple on:change={handlePhoto} />
                   </label>
                   <div class="entry-editor-fields">
@@ -1900,15 +2025,15 @@
               {:else}
                 {#if e.photoPreviews?.length}
                   <div class="photo-collage" class:photo-collage-single={e.photoPreviews.length === 1}>
-                    {#each e.photoPreviews as src, i}
+                    {#each e.photoPreviews as src, photoIndex}
                       <figure class="photo-frame">
-                        <img src={src} alt={`Bild ${i + 1}`} />
+                        <img src={src} alt={`Bild ${photoIndex + 1}`} />
                       </figure>
                     {/each}
                   </div>
                 {/if}
                 <div class="entry-body">
-                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <div class="entry-date">Eintrag {i + 1} · {new Date(e.createdAt).toLocaleString()}</div>
                   <div class="entry-fields">
                     {#each Object.entries(e.fields) as [key, value]}
                       <div><strong>{key}:</strong> <span class="summary-multiline">{value}</span></div>
@@ -1967,6 +2092,10 @@
               onPdf: async () => {
                 await downloadProtocolPdf(buildProtocolRecord());
                 closeDownloadDialog();
+              },
+              onWord: async () => {
+                await downloadProtocolWord(buildProtocolRecord());
+                closeDownloadDialog();
               }
             })}
         >
@@ -1979,15 +2108,19 @@
         {#if entries.length === 0}
           <p class="muted">Noch keine Einträge.</p>
         {:else}
-          {#each entries as e}
-            <div class:editing={editingEntryId === e.id} class="entry-card">
+          {#each entries as e, i}
+            <div
+              class:editing={editingEntryId === e.id}
+              class:text-only={!e.photoPreviews?.length && editingEntryId !== e.id}
+              class="entry-card"
+            >
               {#if editingEntryId === e.id}
                 {#if entryDraft.photoPreviews?.length}
                   <div class="photo-collage photo-collage-editor">
-                    {#each entryDraft.photoPreviews as src, i}
+                    {#each entryDraft.photoPreviews as src, photoIndex}
                       <figure class="photo-frame">
-                        <img src={src} alt={`Bild ${i + 1}`} />
-                        <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(i)} aria-label="Bild entfernen">
+                        <img src={src} alt={`Bild ${photoIndex + 1}`} />
+                        <button type="button" class="photo-remove" on:click={() => removeDraftPhoto(photoIndex)} aria-label="Bild entfernen">
                           ×
                         </button>
                       </figure>
@@ -1995,9 +2128,9 @@
                   </div>
                 {/if}
                 <div class="entry-body">
-                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <div class="entry-date">Eintrag {i + 1} · {new Date(e.createdAt).toLocaleString()}</div>
                   <label class="file-button">
-                    {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Bilder hinzufügen'}
+                    {entryDraft.photoPreviews?.length ? 'Weitere Bilder hinzufügen' : 'Bilder hinzufügen (optional)'}
                     <input type="file" accept="image/*" multiple on:change={handlePhoto} />
                   </label>
                   <div class="entry-editor-fields">
@@ -2034,15 +2167,15 @@
               {:else}
                 {#if e.photoPreviews?.length}
                   <div class="photo-collage" class:photo-collage-single={e.photoPreviews.length === 1}>
-                    {#each e.photoPreviews as src, i}
+                    {#each e.photoPreviews as src, photoIndex}
                       <figure class="photo-frame">
-                        <img src={src} alt={`Bild ${i + 1}`} />
+                        <img src={src} alt={`Bild ${photoIndex + 1}`} />
                       </figure>
                     {/each}
                   </div>
                 {/if}
                 <div class="entry-body">
-                  <div class="entry-date">{new Date(e.createdAt).toLocaleString()}</div>
+                  <div class="entry-date">Eintrag {i + 1} · {new Date(e.createdAt).toLocaleString()}</div>
                   <div class="entry-fields">
                     {#each Object.entries(e.fields) as [key, value]}
                       <div><strong>{key}:</strong> <span class="summary-multiline">{value}</span></div>
@@ -2070,10 +2203,10 @@
           Einträge mit mehreren Bildern bitte über „Eintrag machen“ einzeln anlegen.
         </p>
       {:else}
-        <h2>Bilder für diesen Eintrag</h2>
+        <h2>Bilder für diesen Eintrag (optional)</h2>
         <p class="muted">
-          Alle hier hinzugefügten Bilder gehören zu <strong>einem</strong> Eintrag und werden nebeneinander dargestellt.
-          Für je ein Bild pro Eintrag nutze auf der Protokollseite „Mehrere Einträge“.
+          Bilder sind optional. Alle hier hinzugefügten Bilder gehören zu <strong>einem</strong> Eintrag und werden nebeneinander dargestellt.
+          Ohne Bild erscheint der Eintrag in der PDF nur mit den Angaben.
         </p>
       {/if}
       <label class="file-button">
@@ -2112,6 +2245,8 @@
             {/each}
           </div>
         {/if}
+      {:else if !bulkEntryMode}
+        <p class="muted">Kein Bild ausgewählt. Du kannst ohne Bild fortfahren.</p>
       {/if}
 
       <div class="cta-row">
@@ -2122,6 +2257,8 @@
             {stepIndex < entrySteps.length - 1
               ? `Weiter (${entryDraft.photoPreviews?.length || 0} Einträge)`
               : `${entryDraft.photoPreviews?.length || 0} Einträge speichern`}
+          {:else if !(entryDraft.photoPreviews?.length)}
+            {stepIndex < entrySteps.length - 1 ? 'Weiter ohne Bild' : 'Speichern ohne Bild'}
           {:else}
             {stepIndex < entrySteps.length - 1 ? 'Weiter' : 'Speichern'}
           {/if}
@@ -2255,6 +2392,10 @@
                   onPdf: async () => {
                     await downloadExportPdf(exp);
                     closeDownloadDialog();
+                  },
+                  onWord: async () => {
+                    await downloadExportWord(exp);
+                    closeDownloadDialog();
                   }
                 });
               }}
@@ -2322,6 +2463,11 @@
         >
           {confirmDialog.secondaryLabel}
         </button>
+        {#if confirmDialog.extraLabel}
+          <button class="primary" type="button" disabled={isExporting} on:click={confirmDialog.onExtra}>
+            {confirmDialog.extraLabel}
+          </button>
+        {/if}
         {#if confirmDialog.tertiaryLabel}
           <button type="button" disabled={isExporting} on:click={confirmDialog.onTertiary}>{confirmDialog.tertiaryLabel}</button>
         {/if}
@@ -2340,6 +2486,7 @@
       <div class="cta-row">
         <button class="primary" type="button" on:click={downloadDialog.onExcel}>Excel herunterladen</button>
         <button class="primary" type="button" on:click={downloadDialog.onPdf}>PDF herunterladen</button>
+        <button class="primary" type="button" on:click={downloadDialog.onWord}>Word herunterladen</button>
         <button type="button" on:click={closeDownloadDialog}>Abbrechen</button>
       </div>
     </div>
@@ -2849,7 +2996,8 @@
     border: none;
   }
 
-  .entry-card.editing {
+  .entry-card.editing,
+  .entry-card.text-only {
     grid-template-columns: 1fr;
   }
 

@@ -1,7 +1,13 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { blobToDataUrl } from './image';
 import { bufferToBase64 } from './native';
-import { layoutPhotoCollage, normalizeEntryPhotos } from './photos';
+import { normalizeEntryPhotos } from './photos';
+import {
+  fitPdfPhotoCollage,
+  naturalPdfPhotoCollage,
+  pdfEntryBadgeText,
+  planPdfEntryPlacement
+} from './pdf-entry';
 
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
@@ -28,7 +34,6 @@ export async function exportToPdfData({
   const lineHeight = 14;
   const headerGap = 18;
   const blockGap = 16;
-  const placeholderHeight = 120;
   const tableGap = 12;
   const headerPadding = 14;
   const cardPadding = 12;
@@ -220,16 +225,19 @@ export async function exportToPdfData({
     return headerBottom - headerGap;
   };
 
-  let isFirstPage = true;
+  let pageCount = 0;
+  let entriesOnCurrentPage = 0;
   const startPage = async () => {
     page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
-    if (isFirstPage) {
+    pageCount += 1;
+    entriesOnCurrentPage = 0;
+    if (pageCount === 1) {
       cursorY = await drawHeader();
-      isFirstPage = false;
     } else {
       cursorY = A4_HEIGHT - margin;
     }
   };
+  const remainingSpace = () => cursorY - margin;
 
   const tableColumns = columns.filter((c) => !c.isPhoto);
   const blockWidth = A4_WIDTH - margin * 2;
@@ -242,7 +250,10 @@ export async function exportToPdfData({
     return extension === 'png' ? pdfDoc.embedPng(bytes) : pdfDoc.embedJpg(bytes);
   };
 
-  const drawEntry = async (entry, index) => {
+  const fitCollage = (sizes, maxImageWidth, maxImageHeight) =>
+    fitPdfPhotoCollage(sizes, maxImageWidth, maxImageHeight);
+
+  const prepareEntry = async (entry, index) => {
     const photoBlobs = normalizeEntryPhotos(entry);
     const images = [];
     for (const [photoIndex, blob] of photoBlobs.entries()) {
@@ -270,31 +281,36 @@ export async function exportToPdfData({
       return { height, labelLines, valueLines };
     });
 
-    const chromeWithoutImage = cardPadding * 2 + badgeHeight + badgeGap + tableGap + tableHeight;
-    const minImageHeight = images.length ? 72 : placeholderHeight;
-    const minBlockHeight = chromeWithoutImage + minImageHeight + blockGap;
+    const hasImages = images.length > 0;
+    const imageChrome = hasImages ? tableGap : 0;
+    const chromeWithoutImage = cardPadding * 2 + badgeHeight + badgeGap + imageChrome + tableHeight;
+    const sizes = images.map((image) => ({ width: image.width, height: image.height }));
+    const naturalCollage = hasImages
+      ? naturalPdfPhotoCollage(sizes)
+      : { items: [], width: 0, height: 0, cols: 0, rows: 0 };
 
-    if (!page || cursorY - minBlockHeight < margin) {
-      await startPage();
-    }
+    return {
+      images,
+      sizes,
+      hasImages,
+      rowHeights,
+      tableHeight,
+      chromeWithoutImage,
+      naturalCardHeight: chromeWithoutImage + (hasImages ? naturalCollage.height : 0)
+    };
+  };
 
-    const available = Math.max(minImageHeight, cursorY - margin - chromeWithoutImage);
+  const drawPreparedEntry = async (prepared, index, maxCardHeight) => {
     const maxImageWidth = blockWidth - cardPadding * 2;
-    const singleImageCap = 280;
-    const maxImageHeight = images.length <= 1 ? Math.min(singleImageCap, available) : available;
-
-    let collage = { items: [], width: maxImageWidth, height: placeholderHeight, cols: 1, rows: 1 };
-    if (images.length) {
-      collage = layoutPhotoCollage(
-        images.map((image) => ({ width: image.width, height: image.height })),
-        maxImageWidth,
-        maxImageHeight,
-        { gap: photoGap, frame: photoFrame }
-      );
+    let collage = { items: [], width: 0, height: 0, cols: 0, rows: 0 };
+    let imageHeight = 0;
+    if (prepared.hasImages) {
+      const maxImageHeight = Math.max(56, Math.min(maxCardHeight, remainingSpace()) - prepared.chromeWithoutImage);
+      collage = fitCollage(prepared.sizes, maxImageWidth, maxImageHeight);
+      imageHeight = collage.height;
     }
 
-    const imageHeight = images.length ? collage.height : placeholderHeight;
-    const cardHeight = chromeWithoutImage + imageHeight;
+    const cardHeight = prepared.chromeWithoutImage + imageHeight;
     const cardTop = cursorY;
     const cardBottom = cursorY - cardHeight;
 
@@ -308,7 +324,7 @@ export async function exportToPdfData({
       borderWidth: 1
     });
 
-    const badgeText = `Bild ${index + 1}`;
+    const badgeText = pdfEntryBadgeText(index);
     const badgePaddingX = 8;
     const badgeWidth = Math.min(
       blockWidth - cardPadding * 2,
@@ -334,24 +350,9 @@ export async function exportToPdfData({
     const collageTop = badgeY - badgeGap;
     const collageLeft = margin + cardPadding;
     const imageY = collageTop - imageHeight;
+    const tableTopStart = prepared.hasImages ? imageY - tableGap : collageTop;
 
-    if (!images.length) {
-      page.drawRectangle({
-        x: collageLeft,
-        y: imageY,
-        width: maxImageWidth,
-        height: imageHeight,
-        borderColor: softBorder,
-        borderWidth: 1
-      });
-      page.drawText('Kein Bild vorhanden', {
-        x: collageLeft + 12,
-        y: imageY + imageHeight / 2 - 6,
-        size: 11,
-        font,
-        color: rgb(0.45, 0.47, 0.5)
-      });
-    } else {
+    if (prepared.hasImages) {
       collage.items.forEach((item, photoIndex) => {
         const frameX = collageLeft + item.frameX;
         const frameY = collageTop - item.frameY - item.frameH;
@@ -364,7 +365,7 @@ export async function exportToPdfData({
           borderWidth: 1,
           color: rgb(1, 1, 1)
         });
-        const image = images[photoIndex];
+        const image = prepared.images[photoIndex];
         if (!image) return;
         page.drawImage(image, {
           x: collageLeft + item.x,
@@ -375,7 +376,7 @@ export async function exportToPdfData({
       });
     }
 
-    let tableTop = imageY - tableGap;
+    let tableTop = tableTopStart;
     const tableLeft = margin + cardPadding;
     const tableRight = margin + blockWidth - cardPadding;
     const dividerX = tableLeft + labelWidth + 4;
@@ -388,7 +389,7 @@ export async function exportToPdfData({
       color: softBorder
     });
 
-    rowHeights.forEach((rowData, idx) => {
+    prepared.rowHeights.forEach((rowData, idx) => {
       const rowBottom = tableTop - rowData.height;
       if (idx % 2 === 1) {
         page.drawRectangle({
@@ -433,20 +434,42 @@ export async function exportToPdfData({
     });
 
     page.drawLine({
-      start: { x: dividerX, y: imageY - tableGap },
-      end: { x: dividerX, y: imageY - tableGap - tableHeight },
+      start: { x: dividerX, y: tableTopStart },
+      end: { x: dividerX, y: tableTopStart - prepared.tableHeight },
       thickness: 1,
       color: softBorder
     });
 
     cursorY = tableTop - blockGap;
+    entriesOnCurrentPage += 1;
   };
 
   await startPage();
   let exportedEntries = 0;
   for (const [idx, entry] of entries.entries()) {
     try {
-      await drawEntry(entry, idx);
+      const prepared = await prepareEntry(entry, idx);
+      let plan = planPdfEntryPlacement({
+        remaining: remainingSpace(),
+        isFirstDocumentPage: pageCount === 1,
+        entriesOnPage: entriesOnCurrentPage,
+        photoCount: prepared.images.length,
+        naturalCardHeight: prepared.naturalCardHeight,
+        chromeHeight: prepared.chromeWithoutImage
+      });
+      if (!plan.stayOnPage) {
+        await startPage();
+        plan = planPdfEntryPlacement({
+          remaining: remainingSpace(),
+          isFirstDocumentPage: false,
+          entriesOnPage: 0,
+          photoCount: prepared.images.length,
+          naturalCardHeight: prepared.naturalCardHeight,
+          chromeHeight: prepared.chromeWithoutImage
+        });
+      }
+      const maxCardHeight = Math.min(plan.maxCardHeight, Math.max(prepared.chromeWithoutImage, remainingSpace()));
+      await drawPreparedEntry(prepared, idx, maxCardHeight);
       exportedEntries += 1;
     } catch (err) {
       addIssue(`Eintrag ${idx + 1}: PDF-Block konnte nicht erstellt werden (${err?.message || 'Unbekannt'}).`);

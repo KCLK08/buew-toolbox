@@ -32,6 +32,7 @@
     "@capacitor/share": "6.0.2",
     "browser-image-compression": "2.0.2",
     "dexie": "4.0.7",
+    "docx": "9.7.1",
     "exceljs": "4.4.0",
     "pdf-lib": "1.17.1"
   }

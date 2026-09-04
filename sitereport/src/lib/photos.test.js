@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutPhotoCollage, normalizeEntryPhotos, preferredPhotoColumns } from './photos.js';
+import {
+  layoutPhotoCollage,
+  normalizeEntryPhotos,
+  preferredPhotoColumns,
+  preferredReadableColumns
+} from './photos.js';
 
 test('normalizeEntryPhotos reads legacy photoBlob and photoBlobs', () => {
   assert.deepEqual(normalizeEntryPhotos({ photoBlob: 'a' }), ['a']);
@@ -46,6 +51,34 @@ test('layoutPhotoCollage keeps up to three images in one row', () => {
   assert.equal(layout.cols, 3);
   assert.equal(layout.rows, 1);
   assert.equal(layout.items.length, 3);
+});
+
+test('layoutPhotoCollage with minCell grows the entry instead of shrinking photos', () => {
+  const sizes = [
+    { width: 1600, height: 900 },
+    { width: 1600, height: 900 },
+    { width: 1600, height: 900 }
+  ];
+  const squeezed = layoutPhotoCollage(sizes, 500, 160, { gap: 4, frame: 2 });
+  const readable = layoutPhotoCollage(sizes, 500, 2000, {
+    gap: 4,
+    frame: 2,
+    minCell: 180,
+    maxCell: 280
+  });
+  assert.equal(readable.cols, 2);
+  assert.ok(readable.rows >= 2);
+  assert.ok(readable.height > squeezed.height);
+  const minReadableWidth = Math.min(...readable.items.map((item) => item.width));
+  const minSqueezedWidth = Math.min(...squeezed.items.map((item) => item.width));
+  assert.ok(minReadableWidth > minSqueezedWidth);
+  assert.ok(minReadableWidth >= 160);
+});
+
+test('preferredReadableColumns keeps cells at least minCell wide', () => {
+  assert.equal(preferredReadableColumns(3, 500, 180, 4), 2);
+  assert.equal(preferredReadableColumns(2, 500, 180, 4), 2);
+  assert.equal(preferredReadableColumns(1, 500, 180, 4), 1);
 });
 
 test('layoutPhotoCollage wraps many images instead of overflowing one page', () => {
