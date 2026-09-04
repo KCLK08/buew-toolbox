@@ -3,11 +3,12 @@ import { blobToDataUrl } from './image.js';
 import { bufferToBase64 } from './native.js';
 import { normalizeEntryPhotos } from './photos.js';
 import {
-  layoutPdfEntryFlow,
+  planExportEntryFlow,
   fitPdfPhotoCollage,
   naturalPdfPhotoCollage,
   pdfEntryBadgeText,
-  pdfMaxHeaderHeight
+  pdfMaxHeaderHeight,
+  pdfTwoUpCardBudget
 } from './pdf-entry.js';
 
 const A4_WIDTH = 595.28;
@@ -135,7 +136,7 @@ export async function exportToPdfData({
       const label = stacked ? `${row.label}:` : `${row.label}: `;
       const labelWidth = fontBold.widthOfTextAtSize(label, 11);
       const valueWidth = stacked ? textMaxWidth : Math.max(40, textMaxWidth - labelWidth);
-      const valueLines = wrapText(row.value, valueWidth, 11, font).slice(0, 10);
+      const valueLines = wrapText(row.value, valueWidth, 11, font).slice(0, stacked ? 5 : 2);
       return { label, labelWidth, stacked, valueLines };
     });
 
@@ -295,7 +296,7 @@ export async function exportToPdfData({
     let tableHeight = 0;
     const rowHeights = rows.map((row) => {
       const labelLines = wrapText(row.label, labelWidth - 6, 11, fontBold);
-      const valueLines = wrapText(row.value, valueWidth - 6, 11, font);
+      const valueLines = wrapText(row.value, valueWidth - 6, 11, font).slice(0, 5);
       const lines = Math.max(labelLines.length, valueLines.length, 1);
       const height = lines * lineHeight + 6;
       tableHeight += height;
@@ -324,19 +325,21 @@ export async function exportToPdfData({
   const drawPreparedEntry = async (prepared, index, maxCardHeight) => {
     const maxImageWidth = blockWidth - cardPadding * 2;
     const available = Math.max(0, remainingSpace());
-    const cardLimit = Math.max(0, Math.min(maxCardHeight, available));
+    const cardLimit = Math.min(maxCardHeight, available > 24 ? available : maxCardHeight);
     let collage = { items: [], width: 0, height: 0, cols: 0, rows: 0 };
     let imageHeight = 0;
-    if (prepared.hasImages) {
-      const maxImageHeight = Math.max(0, cardLimit - prepared.chromeWithoutImage);
-      if (maxImageHeight >= 24) {
-        collage = fitCollage(prepared.sizes, maxImageWidth, Math.max(56, maxImageHeight));
-        imageHeight = Math.min(collage.height, maxImageHeight);
-      }
+    if (prepared.hasImages && cardLimit > 0) {
+      const reservedChrome = Math.min(
+        prepared.chromeWithoutImage,
+        Math.max(88, cardLimit * 0.42)
+      );
+      const maxImageHeight = Math.max(40, cardLimit - reservedChrome);
+      collage = fitCollage(prepared.sizes, maxImageWidth, maxImageHeight);
+      imageHeight = Math.min(collage.height, maxImageHeight);
     }
 
     const rawHeight = prepared.chromeWithoutImage + imageHeight;
-    const cardHeight = Math.min(rawHeight, cardLimit > 0 ? cardLimit : rawHeight);
+    const cardHeight = Math.min(rawHeight, cardLimit || rawHeight);
     const cardTop = cursorY;
     const cardBottom = cursorY - cardHeight;
 
@@ -489,22 +492,14 @@ export async function exportToPdfData({
     }
   }
 
-  const flow = layoutPdfEntryFlow({
+  const flow = planExportEntryFlow({
     entries,
     tableColumns,
     photoSizesForEntry: (_entry, idx) => preparedList[idx]?.sizes || [],
-    headerRemaining: remainingSpace(),
-    metricsForEntry: (_entry, idx) => {
-      const prepared = preparedList[idx];
-      if (!prepared) {
-        return { photoCount: 0, chromeHeight: 80, naturalCardHeight: 80 };
-      }
-      return {
-        photoCount: prepared.images.length,
-        chromeHeight: prepared.chromeWithoutImage,
-        naturalCardHeight: prepared.naturalCardHeight
-      };
-    }
+    protocolTitle,
+    protocolDescription,
+    attendees,
+    hasLogo: Boolean(logoDataUrl)
   });
 
   for (const [idx, entry] of entries.entries()) {
@@ -512,13 +507,12 @@ export async function exportToPdfData({
     if (!prepared) continue;
     try {
       const plan = flow[idx] || {};
-      if (idx > 0 && plan.pageBreakBefore) {
+      if (idx > 0 && (plan.pageBreakBefore || remainingSpace() < 80)) {
         await startPage();
       }
-      const maxCardHeight = Math.min(
-        plan.maxCardHeight || remainingSpace(),
-        Math.max(0, remainingSpace())
-      );
+      const plannedHeight = plan.maxCardHeight || pdfTwoUpCardBudget();
+      const maxCardHeight =
+        remainingSpace() > 24 ? Math.min(plannedHeight, remainingSpace()) : plannedHeight;
       await drawPreparedEntry(prepared, idx, maxCardHeight);
       exportedEntries += 1;
     } catch (err) {

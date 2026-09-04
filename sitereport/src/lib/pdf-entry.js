@@ -46,7 +46,7 @@ export function pdfTwoUpCardBudget() {
 }
 
 export function pdfMaxHeaderHeight() {
-  return pdfPageBodyHeight() - pdfTwoUpCardBudget() - PDF_HEADER_GAP;
+  return pdfPageBodyHeight() - pdfTwoUpCardBudget() - PDF_HEADER_GAP - PDF_BLOCK_GAP;
 }
 
 export function pdfEntryUsesTwoUp(photoCount) {
@@ -245,9 +245,36 @@ export function layoutPdfEntryFlow({
 }
 
 /**
+ * Same page plan Word and PDF use, so both documents break at the same entries.
+ */
+export function planExportEntryFlow({
+  entries,
+  tableColumns,
+  photoSizesForEntry,
+  protocolTitle,
+  protocolDescription,
+  attendees,
+  hasLogo
+} = {}) {
+  return layoutPdfEntryFlow({
+    entries,
+    tableColumns,
+    photoSizesForEntry,
+    headerRemaining: Math.max(
+      pdfTwoUpCardBudget(),
+      estimatePdfHeaderRemaining({
+        protocolTitle,
+        protocolDescription,
+        attendees,
+        hasLogo
+      }) - 36
+    )
+  });
+}
+
+/**
  * Decide whether the next entry stays on the current page and how tall it may be.
- * First page: always keep the first entry under the header.
- * Later pages: try to place two entries, unless many photos need a full page.
+ * Entries with up to 3 photos are always capped to half a page so two fit.
  */
 export function planPdfEntryPlacement({
   remaining,
@@ -263,18 +290,9 @@ export function planPdfEntryPlacement({
   const onPage = Number(entriesOnPage) || 0;
   const photos = Number(photoCount) || 0;
   const natural = Math.max(0, Number(naturalCardHeight) || 0);
-  const chrome = Math.max(0, Number(chromeHeight) || 0);
   const manyPhotos = !pdfEntryUsesTwoUp(photos);
-  const minCard = chrome + (photos ? PDF_MIN_PHOTO_HEIGHT : 0);
-  const twoUpHeight = Math.min(space, twoUpMax);
-
-  if (isFirstDocumentPage && onPage === 0) {
-    return {
-      stayOnPage: true,
-      maxCardHeight: manyPhotos ? Math.max(minCard, space) : Math.max(minCard, twoUpHeight),
-      forceFit: true
-    };
-  }
+  const twoUpHeight = space > 0 ? Math.min(space, twoUpMax) : twoUpMax;
+  const minSecondSlot = 96;
 
   if (onPage >= 2) {
     return {
@@ -284,40 +302,36 @@ export function planPdfEntryPlacement({
     };
   }
 
-  if (isFirstDocumentPage && onPage === 1) {
+  if (onPage === 0) {
+    return {
+      stayOnPage: true,
+      maxCardHeight: manyPhotos ? Math.max(space, twoUpMax) : twoUpHeight,
+      forceFit: !manyPhotos
+    };
+  }
+
+  if (manyPhotos) {
     if (natural <= space) {
       return { stayOnPage: true, maxCardHeight: space, forceFit: false };
     }
-    if (!manyPhotos && space >= minCard) {
-      return { stayOnPage: true, maxCardHeight: space, forceFit: true };
-    }
     return {
       stayOnPage: false,
-      maxCardHeight: manyPhotos ? pageBodyHeight : twoUpMax,
+      maxCardHeight: pageBodyHeight,
       forceFit: false
     };
   }
 
-  if (onPage === 0) {
-    if (manyPhotos) {
-      return { stayOnPage: true, maxCardHeight: space, forceFit: false };
-    }
+  if (space >= minSecondSlot) {
     return {
       stayOnPage: true,
-      maxCardHeight: Math.max(minCard, twoUpHeight),
+      maxCardHeight: Math.min(space, twoUpMax),
       forceFit: true
     };
   }
 
-  if (natural <= space) {
-    return { stayOnPage: true, maxCardHeight: space, forceFit: false };
-  }
-  if (!manyPhotos && space >= minCard) {
-    return { stayOnPage: true, maxCardHeight: space, forceFit: true };
-  }
   return {
     stayOnPage: false,
-    maxCardHeight: manyPhotos ? pageBodyHeight : twoUpMax,
+    maxCardHeight: twoUpMax,
     forceFit: false
   };
 }
