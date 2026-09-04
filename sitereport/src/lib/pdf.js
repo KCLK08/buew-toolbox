@@ -1,14 +1,14 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { blobToDataUrl } from './image';
-import { bufferToBase64 } from './native';
-import { normalizeEntryPhotos } from './photos';
+import { blobToDataUrl } from './image.js';
+import { bufferToBase64 } from './native.js';
+import { normalizeEntryPhotos } from './photos.js';
 import {
+  layoutPdfEntryFlow,
   fitPdfPhotoCollage,
   naturalPdfPhotoCollage,
   pdfEntryBadgeText,
-  pdfMaxHeaderHeight,
-  planPdfEntryPlacement
-} from './pdf-entry';
+  pdfMaxHeaderHeight
+} from './pdf-entry.js';
 
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
@@ -324,16 +324,19 @@ export async function exportToPdfData({
   const drawPreparedEntry = async (prepared, index, maxCardHeight) => {
     const maxImageWidth = blockWidth - cardPadding * 2;
     const available = Math.max(0, remainingSpace());
-    const cardLimit = Math.min(maxCardHeight, available);
+    const cardLimit = Math.max(0, Math.min(maxCardHeight, available));
     let collage = { items: [], width: 0, height: 0, cols: 0, rows: 0 };
     let imageHeight = 0;
     if (prepared.hasImages) {
-      const maxImageHeight = Math.max(56, cardLimit - prepared.chromeWithoutImage);
-      collage = fitCollage(prepared.sizes, maxImageWidth, maxImageHeight);
-      imageHeight = Math.min(collage.height, Math.max(0, cardLimit - prepared.chromeWithoutImage));
+      const maxImageHeight = Math.max(0, cardLimit - prepared.chromeWithoutImage);
+      if (maxImageHeight >= 24) {
+        collage = fitCollage(prepared.sizes, maxImageWidth, Math.max(56, maxImageHeight));
+        imageHeight = Math.min(collage.height, maxImageHeight);
+      }
     }
 
-    const cardHeight = Math.min(cardLimit || prepared.chromeWithoutImage, prepared.chromeWithoutImage + imageHeight);
+    const rawHeight = prepared.chromeWithoutImage + imageHeight;
+    const cardHeight = Math.min(rawHeight, cardLimit > 0 ? cardLimit : rawHeight);
     const cardTop = cursorY;
     const cardBottom = cursorY - cardHeight;
 
@@ -412,8 +415,12 @@ export async function exportToPdfData({
       color: softBorder
     });
 
-    prepared.rowHeights.forEach((rowData, idx) => {
+    const drawnTableTop = tableTopStart;
+    for (let idx = 0; idx < prepared.rowHeights.length; idx += 1) {
+      const rowData = prepared.rowHeights[idx];
       const rowBottom = tableTop - rowData.height;
+      if (rowBottom < cardBottom + 1) break;
+
       if (idx % 2 === 1) {
         page.drawRectangle({
           x: tableLeft,
@@ -454,44 +461,64 @@ export async function exportToPdfData({
       });
 
       tableTop = rowBottom;
-    });
+    }
 
-    page.drawLine({
-      start: { x: dividerX, y: tableTopStart },
-      end: { x: dividerX, y: tableTopStart - prepared.tableHeight },
-      thickness: 1,
-      color: softBorder
-    });
+    const drawnTableHeight = Math.max(0, drawnTableTop - tableTop);
+    if (drawnTableHeight > 0) {
+      page.drawLine({
+        start: { x: dividerX, y: drawnTableTop },
+        end: { x: dividerX, y: tableTop },
+        thickness: 1,
+        color: softBorder
+      });
+    }
 
-    cursorY = tableTop - blockGap;
+    cursorY = cardTop - cardHeight - blockGap;
     entriesOnCurrentPage += 1;
   };
 
   await startPage();
   let exportedEntries = 0;
+  const preparedList = [];
   for (const [idx, entry] of entries.entries()) {
     try {
-      const prepared = await prepareEntry(entry, idx);
-      let plan = planPdfEntryPlacement({
-        remaining: remainingSpace(),
-        isFirstDocumentPage: pageCount === 1,
-        entriesOnPage: entriesOnCurrentPage,
-        photoCount: prepared.images.length,
-        naturalCardHeight: prepared.naturalCardHeight,
-        chromeHeight: prepared.chromeWithoutImage
-      });
-      if (!plan.stayOnPage) {
-        await startPage();
-        plan = planPdfEntryPlacement({
-          remaining: remainingSpace(),
-          isFirstDocumentPage: false,
-          entriesOnPage: 0,
-          photoCount: prepared.images.length,
-          naturalCardHeight: prepared.naturalCardHeight,
-          chromeHeight: prepared.chromeWithoutImage
-        });
+      preparedList[idx] = await prepareEntry(entry, idx);
+    } catch (err) {
+      addIssue(`Eintrag ${idx + 1}: PDF-Block konnte nicht erstellt werden (${err?.message || 'Unbekannt'}).`);
+      preparedList[idx] = null;
+    }
+  }
+
+  const flow = layoutPdfEntryFlow({
+    entries,
+    tableColumns,
+    photoSizesForEntry: (_entry, idx) => preparedList[idx]?.sizes || [],
+    headerRemaining: remainingSpace(),
+    metricsForEntry: (_entry, idx) => {
+      const prepared = preparedList[idx];
+      if (!prepared) {
+        return { photoCount: 0, chromeHeight: 80, naturalCardHeight: 80 };
       }
-      const maxCardHeight = Math.min(plan.maxCardHeight, Math.max(prepared.chromeWithoutImage, remainingSpace()));
+      return {
+        photoCount: prepared.images.length,
+        chromeHeight: prepared.chromeWithoutImage,
+        naturalCardHeight: prepared.naturalCardHeight
+      };
+    }
+  });
+
+  for (const [idx, entry] of entries.entries()) {
+    const prepared = preparedList[idx];
+    if (!prepared) continue;
+    try {
+      const plan = flow[idx] || {};
+      if (idx > 0 && plan.pageBreakBefore) {
+        await startPage();
+      }
+      const maxCardHeight = Math.min(
+        plan.maxCardHeight || remainingSpace(),
+        Math.max(0, remainingSpace())
+      );
       await drawPreparedEntry(prepared, idx, maxCardHeight);
       exportedEntries += 1;
     } catch (err) {

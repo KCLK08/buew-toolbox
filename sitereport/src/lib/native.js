@@ -73,6 +73,9 @@ export async function shareFile({ uri, title, text = 'Baustellen-Protokoll', dia
 }
 
 export async function bufferToBase64(buffer) {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(buffer).toString('base64');
+  }
   const blob = new Blob([buffer], { type: 'application/octet-stream' });
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

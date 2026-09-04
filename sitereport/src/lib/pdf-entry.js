@@ -178,6 +178,7 @@ export function layoutPdfEntryFlow({
   entries,
   tableColumns,
   photoSizesForEntry,
+  metricsForEntry,
   headerRemaining
 } = {}) {
   const list = Array.isArray(entries) ? entries : [];
@@ -191,7 +192,10 @@ export function layoutPdfEntryFlow({
   for (let i = 0; i < list.length; i += 1) {
     const sizes =
       typeof photoSizesForEntry === 'function' ? photoSizesForEntry(list[i], i) || [] : [];
-    const metrics = estimatePdfEntryMetrics(list[i], columns, sizes);
+    const metrics =
+      typeof metricsForEntry === 'function'
+        ? metricsForEntry(list[i], i, sizes)
+        : estimatePdfEntryMetrics(list[i], columns, sizes);
     let pageBreakBefore = false;
     let plan = planPdfEntryPlacement({
       remaining,

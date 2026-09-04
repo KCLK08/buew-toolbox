@@ -34,13 +34,19 @@ const CARD_PADDING_TWIP = 80;
 const MAX_HEADER_STACKED_LINES = 5;
 
 const thinBorder = { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' };
-const cardBorder = { style: BorderStyle.SINGLE, size: 8, color: 'D1D5DB' };
+const cardBorder = { style: BorderStyle.SINGLE, size: 18, color: '4B5563' };
 const noneBorder = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
 const cellBorders = {
   top: thinBorder,
   bottom: thinBorder,
   left: thinBorder,
   right: thinBorder
+};
+const cardCellBorders = {
+  top: cardBorder,
+  bottom: cardBorder,
+  left: cardBorder,
+  right: cardBorder
 };
 const noBorders = {
   top: noneBorder,
@@ -328,8 +334,8 @@ async function buildEntry({ entry, index, tableColumns, photos, maxImageHeightPt
           cantSplit: true,
           children: [
             new TableCell({
-              borders: noBorders,
-              shading: { type: ShadingType.CLEAR, fill: 'F7F8F9' },
+              borders: cardCellBorders,
+              shading: { type: ShadingType.CLEAR, fill: 'F3F4F6' },
               margins: {
                 top: CARD_PADDING_TWIP,
                 bottom: CARD_PADDING_TWIP,
