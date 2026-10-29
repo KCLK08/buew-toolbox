@@ -43,6 +43,14 @@
   } from '$lib/setup-model';
   import { normalizeClockTime } from '$lib/time-format';
   import { revivePhotoBlob } from '$lib/photo-storage';
+  import {
+    buildProjectFirstTree,
+    DEFAULT_BTB_FILTERS,
+    formatGroupLabel,
+    listProjectsFromRuns
+  } from '$lib/btb-filter';
+  import { formatRunCount } from '$lib/group-runs-by-calendar';
+  import ScrollablePdfPreview from '$lib/ScrollablePdfPreview.svelte';
 
   const MAX_PDF_SIZE = 40 * 1024 * 1024;
   const TABLE_ROW_COUNT_KEY_PREFIX = '__tableRows:';
@@ -93,7 +101,7 @@
   const MAX_RUN_TEXTAREA_HEIGHT = 168;
   const PHOTO_DOC_SECTION_ID = 'photo-doc';
   const PHOTO_DOC_ENABLED_RUN_KEY = '__photoDoc:enabled';
-  const DAY_MS = 24 * 60 * 60 * 1000;
+  const RUN_PREVIEW_DEBOUNCE_MS = 350;
   const RUN_FINISH_EXPORT_MODE_BTB = 'btb_only';
   const RUN_FINISH_EXPORT_MODE_PHOTO = 'photo_doc_only';
   const RUN_FINISH_EXPORT_MODE_MERGED = 'btb_with_photo_doc';
@@ -104,7 +112,11 @@
   let newRunNameInput = '';
   let homeSelectionMode = false;
   let selectedHomeRunIds = [];
-  let homeRunWeekGroups = [];
+  let homeSetupModel = null;
+  let homeSelectedProjectKey = null;
+  let homeProjectOptions = [];
+  let homeProjectTree = null;
+  let homeExpandedYearKeys = [];
   let homeExpandedWeekKeySet = new Set();
   let homeExpandedWeekKeys = [];
   let homeRunSelectionPulseIds = [];
@@ -155,17 +167,13 @@
   let runAutosaveTimer = null;
   let runSectionRenderNonce = 0;
   let runReviewExpanded = false;
-  let runCanvas;
-  let runPreviewDoc = null;
-  let runPreviewPageCount = 1;
-  let runPreviewDocBusy = false;
-  let runPreviewDocToken = 0;
-  let runPreviewTarget = { page: 1, rect: null };
+  let showRunPreview = false;
+  let runPreviewPdfBytes = null;
+  let runPreviewLoading = false;
+  let runPreviewError = '';
+  let runPreviewRevision = 0;
+  let runPreviewDebounceTimer = null;
   let runFocusedFieldId = '';
-  let runPreviewToken = 0;
-  let runPreviewQueue = Promise.resolve();
-  let runPreviewMaxWidth = 680;
-  let runPreviewResizeObserver = null;
   let runFinishDialogOpen = false;
   let runFinishExportMode = RUN_FINISH_EXPORT_MODE_MERGED;
   let weatherSyncBusy = false;
@@ -230,40 +238,52 @@
     (section) => runSectionProgress(section, runValues) === 'done'
   ).length;
   $: runCompletionPercent = runSections.length > 0 ? Math.round((doneSectionsCount / runSections.length) * 100) : 0;
-  $: runPreviewMarkers = buildRunPreviewMarkers();
-  $: if (runPreviewDoc) {
-    runPreviewPageCount = Math.max(1, Number(runPreviewDoc?.numPages || 1));
-  }
-  $: if (view === 'run' && runPreviewDoc) {
-    const current = Number(runPreviewTarget?.page || 1);
-    const normalized = Math.max(1, Math.min(current, runPreviewPageCount));
-    if (normalized !== current) {
-      runPreviewTarget = {
-        page: normalized,
-        rect: null
-      };
-      runFocusedFieldId = '';
-      renderRunPreview();
-    }
+  $: if (view === 'run' && showRunPreview) {
+    runValues;
+    runPhotoDoc;
+    scheduleRunLivePdfPreview();
   }
   $: syncPhotoDocObjectUrls(runPhotoDoc?.entries || []);
   $: selectedHomeRunCount = selectedHomeRunIds.length;
   $: selectableHomeRunIds = runs.map((run) => String(run?.runId || '').trim()).filter(Boolean);
   $: selectedHomeRunIdSet = new Set(selectedHomeRunIds.map((runId) => String(runId || '').trim()).filter(Boolean));
-  $: homeRunWeekGroups = buildHomeRunWeekGroups(runs);
+  $: homeProjectOptions = listProjectsFromRuns(runs, homeSetupModel);
+  $: homeProjectTree =
+    homeSelectedProjectKey && runs.length > 0
+      ? buildProjectFirstTree(runs, homeSetupModel, homeSelectedProjectKey, DEFAULT_BTB_FILTERS)
+      : null;
   $: homeExpandedWeekKeySet = new Set(
     homeExpandedWeekKeys.map((key) => String(key || '').trim()).filter(Boolean)
+  );
+  $: homeExpandedYearKeySet = new Set(
+    homeExpandedYearKeys.map((key) => Number(key)).filter((year) => Number.isFinite(year))
   );
   $: homeRunSelectionPulseIdSet = new Set(homeRunSelectionPulseIds.map((runId) => String(runId || '').trim()).filter(Boolean));
   $: allHomeRunsSelected = selectableHomeRunIds.length > 0 && selectedHomeRunCount >= selectableHomeRunIds.length;
   $: {
-    const allowedWeekKeys = new Set(homeRunWeekGroups.map((group) => String(group?.weekKey || '').trim()).filter(Boolean));
+    const allowedWeekKeys = new Set(
+      (homeProjectTree?.years || [])
+        .flatMap((year) => (year.weeks || []).map((week) => String(week?.weekKey || '').trim()))
+        .filter(Boolean)
+    );
     const filteredWeekKeys = homeExpandedWeekKeys.filter((key) => allowedWeekKeys.has(String(key || '').trim()));
     if (
       filteredWeekKeys.length !== homeExpandedWeekKeys.length ||
       filteredWeekKeys.some((key, index) => key !== homeExpandedWeekKeys[index])
     ) {
       homeExpandedWeekKeys = filteredWeekKeys;
+    }
+  }
+  $: {
+    const allowedYears = new Set(
+      (homeProjectTree?.years || []).map((year) => Number(year?.year)).filter((year) => Number.isFinite(year))
+    );
+    const filteredYears = homeExpandedYearKeys.filter((year) => allowedYears.has(Number(year)));
+    if (
+      filteredYears.length !== homeExpandedYearKeys.length ||
+      filteredYears.some((year, index) => year !== homeExpandedYearKeys[index])
+    ) {
+      homeExpandedYearKeys = filteredYears;
     }
   }
   $: {
@@ -380,8 +400,10 @@
     }
     clearPhotoDocObjectUrls();
     detachSetupFieldDragListeners();
-    runPreviewResizeObserver?.disconnect();
-    runPreviewResizeObserver = null;
+    if (runPreviewDebounceTimer) {
+      clearTimeout(runPreviewDebounceTimer);
+      runPreviewDebounceTimer = null;
+    }
   });
 
   function nowLabel() {
@@ -573,58 +595,52 @@
     return sectionProgressState(section, values, sectionRunOptions(section, values));
   }
 
-  async function refreshRunPreviewDocument() {
-    if (!runTemplate?.pdfBlob) return;
-    runPreviewDocBusy = true;
-    const token = ++runPreviewDocToken;
-    const currentPage = Number(runPreviewTarget?.page || 1);
+  function scheduleRunLivePdfPreview() {
+    if (!showRunPreview || view !== 'run') return;
+    if (runPreviewDebounceTimer) clearTimeout(runPreviewDebounceTimer);
+    runPreviewDebounceTimer = setTimeout(() => {
+      runPreviewDebounceTimer = null;
+      void refreshRunLivePdfPreview();
+    }, RUN_PREVIEW_DEBOUNCE_MS);
+  }
 
+  async function refreshRunLivePdfPreview() {
+    if (!showRunPreview || !activeRun || !runTemplate?.pdfBlob || !runModel) return;
+    runPreviewLoading = true;
+    runPreviewError = '';
     try {
-      const baseBytes = new Uint8Array(await runTemplate.pdfBlob.arrayBuffer());
-      const merged = await mergeBtbWithPhotoDoc({
-        btbPdfBytes: baseBytes,
-        photoDocEnabled: isPhotoDocEnabled(),
-        photoEntries: runPhotoDoc.entries
+      await flushRunAutosave();
+      const bytes = await buildFinalPdfBytes({
+        templateBlob: runTemplate.pdfBlob,
+        setupModel: runModel,
+        runValues
       });
-      const previewBlob = new Blob([merged.bytes], { type: 'application/pdf' });
-
-      const doc = await loadPdfPreviewDocument(previewBlob);
-      if (token !== runPreviewDocToken) return;
-      runPreviewDoc = doc;
-      runPreviewPageCount = Math.max(1, Number(doc?.numPages || 1));
-
-      const normalizedPage = Math.max(1, Math.min(currentPage, runPreviewPageCount));
-      if (normalizedPage !== Number(runPreviewTarget?.page || 1)) {
-        runPreviewTarget = { page: normalizedPage, rect: null };
-        runFocusedFieldId = '';
-      }
-
-      await renderRunPreview();
+      runPreviewPdfBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      runPreviewRevision += 1;
     } catch (error) {
-      if (token !== runPreviewDocToken) return;
-      runError = error?.message || 'Run-Vorschau konnte nicht geladen werden.';
+      runPreviewError = error?.message || 'Vorschau fehlgeschlagen.';
     } finally {
-      if (token === runPreviewDocToken) {
-        runPreviewDocBusy = false;
-      }
+      runPreviewLoading = false;
     }
   }
 
-  function setRunPreviewPage(page) {
-    const max = Math.max(1, Number(runPreviewPageCount || 1));
-    const next = Math.max(1, Math.min(Number(page || 1), max));
-    if (next === Number(runPreviewTarget?.page || 1)) return;
-    runPreviewTarget = {
-      page: next,
-      rect: null
-    };
-    runFocusedFieldId = '';
-    renderRunPreview();
-  }
-
-  function moveRunPreviewPage(delta) {
-    const current = Number(runPreviewTarget?.page || 1);
-    setRunPreviewPage(current + Number(delta || 0));
+  function toggleRunPreview(force) {
+    const next = typeof force === 'boolean' ? force : !showRunPreview;
+    if (next === showRunPreview) return;
+    showRunPreview = next;
+    if (!showRunPreview) {
+      runPreviewPdfBytes = null;
+      runPreviewError = '';
+      runPreviewLoading = false;
+      if (runPreviewDebounceTimer) {
+        clearTimeout(runPreviewDebounceTimer);
+        runPreviewDebounceTimer = null;
+      }
+      return;
+    }
+    if (!runPreviewPdfBytes) {
+      void refreshRunLivePdfPreview();
+    }
   }
 
   function updateRunPhotoDoc(nextPhotoDoc, { refreshPreview = false, persistImmediately = false } = {}) {
@@ -640,7 +656,7 @@
       scheduleRunAutosave();
     }
     if (refreshPreview) {
-      void refreshRunPreviewDocument();
+      scheduleRunLivePdfPreview();
     }
   }
 
@@ -665,53 +681,80 @@
     runError = '';
   }
 
-  async function addPhotoDocEntryFromFile(file) {
-    if (!(file instanceof Blob)) return;
-    if (!String(file.type || '').toLowerCase().startsWith('image/')) {
-      runError = 'Bitte eine Bilddatei auswählen.';
-      return;
-    }
+  async function buildPhotoDocEntryFromFile(file, index = 0) {
+    if (!(file instanceof Blob)) return null;
+    if (!String(file.type || '').toLowerCase().startsWith('image/')) return null;
+
+    const compressed = await compressPhotoDocImage(file, {
+      maxWidthOrHeight: 1900,
+      quality: 0.78
+    });
+    return normalizeRunPhotoDocEntry(
+      {
+        id: `photo_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 8)}`,
+        createdAt: new Date().toISOString(),
+        photoBlob: compressed instanceof Blob ? compressed : file
+      },
+      index
+    );
+  }
+
+  async function addPhotoDocEntriesFromFiles(files = []) {
+    const candidates = [...files].filter((file) => file instanceof Blob);
+    if (candidates.length === 0) return;
 
     runError = '';
     runInfo = '';
-    try {
-      const compressed = await compressPhotoDocImage(file, {
-        maxWidthOrHeight: 1900,
-        quality: 0.78
-      });
-      const entry = normalizeRunPhotoDocEntry(
-        {
-          id: `photo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          createdAt: new Date().toISOString(),
-          photoBlob: compressed instanceof Blob ? compressed : file
-        },
-        0
-      );
-      if (!entry) {
-        runError = 'Bild konnte nicht hinzugefügt werden.';
-        return;
-      }
 
-      updateRunPhotoDoc(
-        {
-          ...runPhotoDoc,
-          entries: [...(runPhotoDoc.entries || []), entry]
-        },
-        { refreshPreview: true, persistImmediately: true }
-      );
+    const addedEntries = [];
+    let skipped = 0;
+
+    for (let index = 0; index < candidates.length; index += 1) {
+      const file = candidates[index];
+      try {
+        const entry = await buildPhotoDocEntryFromFile(file, index);
+        if (entry) {
+          addedEntries.push(entry);
+        } else {
+          skipped += 1;
+        }
+      } catch {
+        skipped += 1;
+      }
+    }
+
+    if (addedEntries.length === 0) {
+      runError =
+        skipped > 0
+          ? 'Keine der ausgewählten Dateien konnte als Bild hinzugefügt werden.'
+          : 'Bitte mindestens eine Bilddatei auswählen.';
+      return;
+    }
+
+    updateRunPhotoDoc(
+      {
+        ...runPhotoDoc,
+        entries: [...(runPhotoDoc.entries || []), ...addedEntries]
+      },
+      { refreshPreview: true, persistImmediately: true }
+    );
+
+    if (skipped > 0) {
+      runInfo = `${addedEntries.length} Bild(er) hinzugefügt, ${skipped} übersprungen.`;
+    } else if (addedEntries.length === 1) {
       runInfo = 'Bild zur Fotodoku hinzugefügt.';
-    } catch (error) {
-      runError = error?.message || 'Bild konnte nicht verarbeitet werden.';
+    } else {
+      runInfo = `${addedEntries.length} Bilder zur Fotodoku hinzugefügt.`;
     }
   }
 
   async function handlePhotoDocAddInput(event) {
     const input = event.currentTarget;
     if (!(input instanceof HTMLInputElement)) return;
-    const file = input.files?.[0] || null;
+    const files = input.files ? [...input.files] : [];
     input.value = '';
-    if (!file) return;
-    await addPhotoDocEntryFromFile(file);
+    if (files.length === 0) return;
+    await addPhotoDocEntriesFromFiles(files);
   }
 
   async function handlePhotoDocReplaceInput(event, entryId) {
@@ -900,7 +943,7 @@
 
     if (!changed) return;
     runValues = nextValues;
-    renderRunPreview();
+    scheduleRunLivePdfPreview();
     scheduleRunAutosave();
   }
 
@@ -933,7 +976,7 @@
 
     if (!changed) return;
     runValues = nextValues;
-    renderRunPreview();
+    scheduleRunLivePdfPreview();
     scheduleRunAutosave();
   }
 
@@ -1127,7 +1170,7 @@
     if (!changed) return false;
     runValues = nextValues;
     void syncRunSectionInputs();
-    renderRunPreview();
+    scheduleRunLivePdfPreview();
     scheduleRunAutosave();
     return true;
   }
@@ -1404,7 +1447,16 @@
       .slice(0, 1);
 
     builtinTemplateId = String(templates[0]?.templateId || '').trim();
+    homeSetupModel = builtinTemplateId ? await getSetupModel(builtinTemplateId) : null;
     runs = builtinTemplateId ? await listRuns(builtinTemplateId) : [];
+    if (
+      homeSelectedProjectKey &&
+      !listProjectsFromRuns(runs, homeSetupModel).some((entry) => entry.projectKey === homeSelectedProjectKey)
+    ) {
+      homeSelectedProjectKey = null;
+      homeExpandedYearKeys = [];
+      homeExpandedWeekKeys = [];
+    }
     const availableRunIds = new Set(runs.map((run) => String(run?.runId || '').trim()).filter(Boolean));
     selectedHomeRunIds = selectedHomeRunIds.filter((runId) => availableRunIds.has(String(runId || '').trim()));
     if (!homeSelectionMode) selectedHomeRunIds = [];
@@ -1419,132 +1471,30 @@
     return String(value || '').trim();
   }
 
-  function parseUtcDateParts(year, month, day) {
-    const y = Number(year);
-    const m = Number(month);
-    const d = Number(day);
-    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
-    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
-
-    const date = new Date(Date.UTC(y, m - 1, d));
-    if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return null;
-    return date;
+  function selectHomeProject(projectKey) {
+    const normalized = String(projectKey || '').trim();
+    if (!normalized) return;
+    homeSelectedProjectKey = normalized;
+    homeExpandedYearKeys = [];
+    homeExpandedWeekKeys = [];
+    homeError = '';
+    homeInfo = '';
   }
 
-  function parseBtbDateValue(value) {
-    const raw = String(value || '').trim();
-    if (!raw) return null;
+  function clearHomeProjectSelection() {
+    homeSelectedProjectKey = null;
+    homeExpandedYearKeys = [];
+    homeExpandedWeekKeys = [];
+  }
 
-    const dmy = raw.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})$/);
-    if (dmy) {
-      const day = Number(dmy[1]);
-      const month = Number(dmy[2]);
-      const yearToken = Number(dmy[3]);
-      const year = dmy[3].length === 2 ? 2000 + yearToken : yearToken;
-      return parseUtcDateParts(year, month, day);
+  function toggleHomeYearGroup(year) {
+    const normalizedYear = Number(year);
+    if (!Number.isFinite(normalizedYear)) return;
+    if (homeExpandedYearKeys.includes(normalizedYear)) {
+      homeExpandedYearKeys = homeExpandedYearKeys.filter((entry) => entry !== normalizedYear);
+    } else {
+      homeExpandedYearKeys = [...homeExpandedYearKeys, normalizedYear];
     }
-
-    const ymd = raw.match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/);
-    if (ymd) {
-      return parseUtcDateParts(ymd[1], ymd[2], ymd[3]);
-    }
-
-    const parsed = new Date(raw);
-    if (Number.isNaN(parsed.getTime())) return null;
-    return parseUtcDateParts(parsed.getFullYear(), parsed.getMonth() + 1, parsed.getDate());
-  }
-
-  function btbDateFromRunValues(values = {}) {
-    const entries = Object.entries(values || {}).filter(([, value]) => String(value ?? '').trim().length > 0);
-    if (entries.length === 0) return null;
-
-    const keyPatterns = [/^Date1$/i, /^field:date1(?:-|$)/i, /date1/i];
-    for (const pattern of keyPatterns) {
-      for (const [key, value] of entries) {
-        if (!pattern.test(String(key || '').trim())) continue;
-        const parsed = parseBtbDateValue(value);
-        if (parsed) return parsed;
-      }
-    }
-    return null;
-  }
-
-  function btbDateFromRunTitle(title = '') {
-    const match = String(title || '').match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
-    if (!match) return null;
-    return parseUtcDateParts(match[1], match[2], match[3]);
-  }
-
-  function btbDateForRun(run) {
-    const fromValues = btbDateFromRunValues(run?.values || {});
-    if (fromValues) return fromValues;
-    return btbDateFromRunTitle(run?.title || '');
-  }
-
-  function isoWeekMeta(date) {
-    const target = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-    const weekday = target.getUTCDay() || 7;
-    target.setUTCDate(target.getUTCDate() + 4 - weekday);
-    const weekYear = target.getUTCFullYear();
-    const yearStart = new Date(Date.UTC(weekYear, 0, 1));
-    const weekNumber = Math.ceil((((target - yearStart) / DAY_MS) + 1) / 7);
-    return {
-      weekYear,
-      weekNumber
-    };
-  }
-
-  function buildHomeRunWeekGroups(runList = []) {
-    const groupMap = new Map();
-    const rows = Array.isArray(runList) ? runList : [];
-
-    for (const run of rows) {
-      const btbDate = btbDateForRun(run);
-      let weekKey = 'week:unknown';
-      let weekLabel = 'Ohne BTB-Datum';
-      let weekYear = null;
-      let weekNumber = null;
-
-      if (btbDate) {
-        const meta = isoWeekMeta(btbDate);
-        weekYear = meta.weekYear;
-        weekNumber = meta.weekNumber;
-        weekKey = `week:${weekYear}-${String(weekNumber).padStart(2, '0')}`;
-        weekLabel = `KW ${String(weekNumber).padStart(2, '0')}`;
-      }
-
-      if (!groupMap.has(weekKey)) {
-        groupMap.set(weekKey, {
-          weekKey,
-          weekLabel,
-          weekYear,
-          weekNumber,
-          items: []
-        });
-      }
-      groupMap.get(weekKey).items.push({ run, btbDate });
-    }
-
-    return [...groupMap.values()]
-      .sort((a, b) => {
-        const aKnown = a.weekYear != null && a.weekNumber != null;
-        const bKnown = b.weekYear != null && b.weekNumber != null;
-        if (aKnown !== bKnown) return aKnown ? -1 : 1;
-        if (!aKnown && !bKnown) return 0;
-        if (a.weekYear !== b.weekYear) return Number(b.weekYear) - Number(a.weekYear);
-        return Number(b.weekNumber) - Number(a.weekNumber);
-      })
-      .map((group) => ({
-        ...group,
-        runs: group.items
-          .sort((a, b) => {
-            const aTime = a.btbDate ? a.btbDate.getTime() : Number.NEGATIVE_INFINITY;
-            const bTime = b.btbDate ? b.btbDate.getTime() : Number.NEGATIVE_INFINITY;
-            if (aTime !== bTime) return bTime - aTime;
-            return String(b.run?.updatedAt || '').localeCompare(String(a.run?.updatedAt || ''));
-          })
-          .map((entry) => entry.run)
-      }));
   }
 
   async function renameRunEntry(runLike, { scope = 'home' } = {}) {
@@ -2110,194 +2060,10 @@
     return null;
   }
 
-  function runPreviewMarkerFromFieldLike(fieldLike, mode = 'context') {
-    const resolved = fieldFromRegistry(fieldLike);
-    if (!resolved) return null;
-    const rect = Array.isArray(resolved.rect)
-      ? resolved.rect.slice(0, 4)
-      : Array.isArray(fieldLike?.rect)
-        ? fieldLike.rect.slice(0, 4)
-        : null;
-    if (!rect) return null;
-    return {
-      fieldId: String(resolved.fieldId || fieldLike?.fieldId || '').trim(),
-      fieldName: String(resolved.labelCandidate || fieldLike?.label || resolved.fieldName || fieldLike?.fieldName || '').trim(),
-      page: Number(resolved.page || fieldLike?.page || runPreviewTarget?.page || 1),
-      rect,
-      mode
-    };
-  }
-
-  function buildRunPreviewMarkers() {
-    const targetPage = Number(runPreviewTarget?.page || 1);
-    const markers = [];
-
-    if (activeSection?.kind === 'single') {
-      for (const field of activeSection.fields || []) {
-        const marker = runPreviewMarkerFromFieldLike(field, 'context');
-        if (marker) markers.push(marker);
-      }
-    }
-
-    if (activeSection?.kind === 'table') {
-      const rows = visibleRowsForSection(activeSection, runValues);
-      for (const row of rows) {
-        for (const cell of row.cells || []) {
-          const marker = runPreviewMarkerFromFieldLike(cell, 'context');
-          if (marker) markers.push(marker);
-        }
-      }
-    }
-
-    if (runFocusedFieldId) {
-      const focused = setupFieldById.get(String(runFocusedFieldId || '').trim());
-      const marker = runPreviewMarkerFromFieldLike(
-        focused || {
-          fieldId: runFocusedFieldId,
-          page: targetPage,
-          rect: Array.isArray(runPreviewTarget?.rect) ? runPreviewTarget.rect.slice(0, 4) : null
-        },
-        'active'
-      );
-      if (marker) markers.push(marker);
-    } else if (Array.isArray(runPreviewTarget?.rect) && runPreviewTarget.rect.length >= 4) {
-      markers.push({
-        fieldId: '',
-        fieldName: '',
-        page: targetPage,
-        rect: runPreviewTarget.rect.slice(0, 4),
-        mode: 'active'
-      });
-    }
-
-    return dedupePreviewMarkers(markers);
-  }
-
-  function buildRunPreviewValueOverlays() {
-    const overlays = [];
-    const addOverlay = (fieldLike, valueKey) => {
-      if (!fieldLike || !valueKey) return;
-      const marker = runPreviewMarkerFromFieldLike(fieldLike, 'context');
-      if (!marker) return;
-
-      const resolved = fieldFromRegistry(fieldLike) || fieldLike;
-      const type = String(fieldLike?.type || resolved?.type || 'text').toLowerCase();
-      const rawValue = runValues[String(valueKey)];
-
-      if (type === 'checkbox') {
-        if (rawValue !== true) return;
-      } else if (!String(rawValue ?? '').trim()) {
-        return;
-      }
-
-      overlays.push({
-        fieldId: marker.fieldId,
-        fieldName: String(resolved?.fieldName || fieldLike?.fieldName || '').trim(),
-        tableId: String(fieldLike?.tableId || resolved?.tableId || '').trim(),
-        columnId: String(fieldLike?.columnId || resolved?.columnId || '').trim(),
-        page: marker.page,
-        rect: marker.rect.slice(0, 4),
-        type,
-        value: rawValue
-      });
-    };
-
-    for (const section of runSections || []) {
-      if (section?.kind === 'single') {
-        for (const field of section.fields || []) {
-          addOverlay(field, inputKeyForField(field));
-        }
-        continue;
-      }
-
-      if (section?.kind === 'table') {
-        const rows = visibleRowsForSection(section, runValues);
-        for (const row of rows) {
-          for (const cell of row.cells || []) {
-            addOverlay(cell, inputKeyForCell(cell));
-          }
-        }
-      }
-    }
-
-    return overlays;
-  }
-
   function focusRunPreview(fieldLike) {
     const resolved = fieldFromRegistry(fieldLike);
     if (!resolved) return;
-    const rect = Array.isArray(resolved.rect)
-      ? resolved.rect.slice(0, 4)
-      : Array.isArray(fieldLike?.rect)
-        ? fieldLike.rect.slice(0, 4)
-        : null;
-    runPreviewTarget = {
-      page: Number(resolved.page || fieldLike?.page || 1),
-      rect
-    };
     runFocusedFieldId = String(resolved.fieldId || fieldLike?.fieldId || '').trim();
-    renderRunPreview();
-  }
-
-  async function renderRunPreview() {
-    if (!runCanvas || !runPreviewDoc) return;
-    const token = ++runPreviewToken;
-    const payload = {
-      pdfJsDoc: runPreviewDoc,
-      pageNumber: runPreviewTarget?.page || 1,
-      rect: runPreviewTarget?.rect || null,
-      highlights: runPreviewMarkers,
-      valueOverlays: buildRunPreviewValueOverlays(),
-      activeFieldId: runFocusedFieldId,
-      canvas: runCanvas,
-      maxWidth: runPreviewMaxWidth
-    };
-
-    runPreviewQueue = runPreviewQueue
-      .catch(() => {})
-      .then(async () => {
-        if (token !== runPreviewToken) return;
-        try {
-          await renderFieldPreview(payload);
-        } catch {
-          // Ignore canvas race conditions.
-        }
-      });
-
-    await runPreviewQueue;
-  }
-
-  function bindRunPreviewPane(node) {
-    if (typeof ResizeObserver === 'undefined') {
-      return;
-    }
-
-    const updateWidth = () => {
-      const width = Math.floor(node.getBoundingClientRect().width || 0);
-      if (!(width > 0)) return;
-      const next = Math.max(240, Math.min(width, 860));
-      if (Math.abs(next - runPreviewMaxWidth) < 8) return;
-      runPreviewMaxWidth = next;
-      renderRunPreview();
-    };
-
-    runPreviewResizeObserver?.disconnect();
-    runPreviewResizeObserver = new ResizeObserver(updateWidth);
-    runPreviewResizeObserver.observe(node);
-    updateWidth();
-
-    return {
-      destroy() {
-        runPreviewResizeObserver?.disconnect();
-        runPreviewResizeObserver = null;
-      }
-    };
-  }
-
-  $: if (view === 'run' && runCanvas && runPreviewDoc) {
-    runPreviewMarkers.length;
-    runPreviewMaxWidth;
-    renderRunPreview();
   }
 
   function findTable(tableId) {
@@ -2750,7 +2516,10 @@
     runAutosave = 'Bereit';
     runReviewExpanded = false;
     runFinishDialogOpen = false;
-    runPreviewDocBusy = false;
+    showRunPreview = false;
+    runPreviewPdfBytes = null;
+    runPreviewError = '';
+    runPreviewLoading = false;
     clearPhotoDocObjectUrls();
     if (runAutosaveTimer) {
       clearTimeout(runAutosaveTimer);
@@ -2785,22 +2554,13 @@
     activeSectionIndex = Math.max(0, Math.min(Number(run.sectionIndex || 0), Math.max(orderedSections.length - 1, 0)));
     runSectionRenderNonce = 0;
     runExports = await listExports(run.runId);
-    runPreviewDoc = null;
-    runPreviewPageCount = 1;
-    runPreviewTarget = { page: 1, rect: null };
     runFocusedFieldId = '';
     view = 'run';
     await syncRunSectionInputs();
 
-    try {
-      await refreshRunPreviewDocument();
-      const section = orderedSections[activeSectionIndex] || null;
-      const first = firstFieldInRunSection(section, runValues);
-      if (first) focusRunPreview(first);
-      await renderRunPreview();
-    } catch (error) {
-      runError = error?.message || 'Run-Vorschau konnte nicht geladen werden.';
-    }
+    const section = orderedSections[activeSectionIndex] || null;
+    const first = firstFieldInRunSection(section, runValues);
+    if (first) focusRunPreview(first);
   }
 
   async function persistRunAutosave() {
@@ -2849,7 +2609,7 @@
       ...runValues,
       [normalizedKey]: value
     };
-    renderRunPreview();
+    scheduleRunLivePdfPreview();
     scheduleRunAutosave();
   }
 
@@ -3047,7 +2807,6 @@
       focusRunPreview(first);
     } else {
       runFocusedFieldId = '';
-      renderRunPreview();
     }
     scheduleRunAutosave();
     syncRunSectionInputs();
@@ -3063,7 +2822,6 @@
       focusRunPreview(first);
     } else {
       runFocusedFieldId = '';
-      renderRunPreview();
     }
     scheduleRunAutosave();
     syncRunSectionInputs();
@@ -3219,10 +2977,10 @@
     activeSectionIndex = 0;
     runExports = [];
     runReviewExpanded = false;
-    runPreviewDoc = null;
-    runPreviewPageCount = 1;
-    runPreviewDocBusy = false;
-    runPreviewTarget = { page: 1, rect: null };
+    showRunPreview = false;
+    runPreviewPdfBytes = null;
+    runPreviewError = '';
+    runPreviewLoading = false;
     runFocusedFieldId = '';
     runPhotoDoc = createEmptyRunPhotoDoc();
     photoDocEditorOpen = false;
@@ -3345,65 +3103,113 @@
           {/if}
         </div>
         <div class="home-runs-scroll">
-          <div class="home-week-groups">
-            {#each homeRunWeekGroups as weekGroup (weekGroup.weekKey)}
-              {@const weekExpanded = homeExpandedWeekKeySet.has(weekGroup.weekKey)}
-              <section class="home-week-group">
+          {#if !homeSelectedProjectKey}
+            <p class="meta home-project-list-hint">Projekt wählen, um Bautagebücher nach Kalenderwoche zu sehen.</p>
+            <div class="home-project-list">
+              {#each homeProjectOptions as project (project.projectKey)}
                 <button
                   type="button"
-                  class="home-week-toggle"
-                  aria-expanded={weekExpanded}
-                  on:click={() => toggleHomeWeekGroup(weekGroup.weekKey)}
+                  class="template-card home-project-card"
+                  on:click={() => selectHomeProject(project.projectKey)}
                 >
-                  <span class="home-week-toggle-main">
-                    <strong>{weekGroup.weekLabel}</strong>
-                    {#if weekGroup.weekYear != null}
-                      <small>{weekGroup.weekYear}</small>
-                    {/if}
-                  </span>
-                  <span class="home-week-toggle-side">
-                    <span class="meta">{weekGroup.runs.length} BTB</span>
-                    <span class="home-week-chevron">{weekExpanded ? 'v' : '>'}</span>
-                  </span>
-                </button>
-
-                {#if weekExpanded}
-                  <div class="home-week-body">
-                    <div class="template-list">
-                      {#each weekGroup.runs as run}
-                        {@const runId = String(run?.runId || '').trim()}
-                        {@const runSelected = homeSelectionMode && selectedHomeRunIdSet.has(runId)}
-                        {@const runPulsing = homeRunSelectionPulseIdSet.has(runId)}
-                        <article
-                          class="template-card"
-                          class:template-card--home-selectable={homeSelectionMode}
-                          class:selected-run={runSelected}
-                          class:selected-run-pulse={runPulsing}
-                          role={homeSelectionMode ? 'button' : undefined}
-                          aria-pressed={homeSelectionMode ? runSelected : undefined}
-                          on:click={(event) => handleHomeRunCardClick(event, runId)}
-                          on:keydown={(event) => handleHomeRunCardKeydown(event, runId)}
-                        >
-                          <div>
-                            <h3>{run.title}</h3>
-                            <div class="meta">Status: {run.status === 'completed' ? 'Abgeschlossen' : 'In Arbeit'}</div>
-                            <div class="meta">Zuletzt geändert: {new Date(run.updatedAt).toLocaleString('de-DE')}</div>
-                            {#if runSelected}
-                              <span class="home-run-selection-pill">Ausgewählt</span>
-                            {/if}
-                          </div>
-                          <div class="row">
-                            <button type="button" class="primary" on:click|stopPropagation={() => openRun(run.runId)}>Öffnen</button>
-                            <button type="button" on:click|stopPropagation={() => renameRunEntry(run, { scope: 'home' })}>Umbenennen</button>
-                          </div>
-                        </article>
-                      {/each}
+                  <div class="home-project-card-main">
+                    <span class="home-project-icon" aria-hidden="true">P</span>
+                    <div>
+                      <h3>{project.projectLabel}</h3>
+                      <div class="meta">{formatRunCount(project.runCount)}</div>
                     </div>
                   </div>
-                {/if}
-              </section>
-            {/each}
-          </div>
+                  <span class="home-week-chevron" aria-hidden="true">&gt;</span>
+                </button>
+              {/each}
+            </div>
+          {:else if homeProjectTree}
+            <div class="row start home-project-back-row">
+              <button type="button" on:click={clearHomeProjectSelection}>← Alle Projekte</button>
+            </div>
+            <section class="home-project-banner">
+              <span class="meta">Projekt</span>
+              <strong>{formatGroupLabel(homeProjectTree.projectLabel, homeProjectTree.runCount)}</strong>
+            </section>
+            <div class="home-week-groups">
+              {#each homeProjectTree.years as yearGroup (yearGroup.year)}
+                {@const yearExpanded = homeExpandedYearKeySet.has(yearGroup.year)}
+                <section class="home-year-group">
+                  <button
+                    type="button"
+                    class="home-week-toggle"
+                    aria-expanded={yearExpanded}
+                    on:click={() => toggleHomeYearGroup(yearGroup.year)}
+                  >
+                    <span class="home-week-toggle-main">
+                      <strong>{formatGroupLabel(yearGroup.year > 0 ? String(yearGroup.year) : 'Ohne Jahr', yearGroup.runCount)}</strong>
+                    </span>
+                    <span class="home-week-toggle-side">
+                      <span class="home-week-chevron">{yearExpanded ? 'v' : '>'}</span>
+                    </span>
+                  </button>
+                  {#if yearExpanded}
+                    <div class="home-year-body">
+                      {#each yearGroup.weeks as weekGroup (weekGroup.weekKey)}
+                        {@const weekExpanded = homeExpandedWeekKeySet.has(weekGroup.weekKey)}
+                        <section class="home-week-group">
+                          <button
+                            type="button"
+                            class="home-week-toggle"
+                            aria-expanded={weekExpanded}
+                            on:click={() => toggleHomeWeekGroup(weekGroup.weekKey)}
+                          >
+                            <span class="home-week-toggle-main">
+                              <strong>{formatGroupLabel(weekGroup.weekLabel, weekGroup.runCount)}</strong>
+                              <small>{weekGroup.dateRangeLabel}</small>
+                            </span>
+                            <span class="home-week-toggle-side">
+                              <span class="home-week-chevron">{weekExpanded ? 'v' : '>'}</span>
+                            </span>
+                          </button>
+
+                          {#if weekExpanded}
+                            <div class="home-week-body">
+                              <div class="template-list">
+                                {#each weekGroup.runs as run}
+                                  {@const runId = String(run?.runId || '').trim()}
+                                  {@const runSelected = homeSelectionMode && selectedHomeRunIdSet.has(runId)}
+                                  {@const runPulsing = homeRunSelectionPulseIdSet.has(runId)}
+                                  <article
+                                    class="template-card"
+                                    class:template-card--home-selectable={homeSelectionMode}
+                                    class:selected-run={runSelected}
+                                    class:selected-run-pulse={runPulsing}
+                                    role={homeSelectionMode ? 'button' : undefined}
+                                    aria-pressed={homeSelectionMode ? runSelected : undefined}
+                                    on:click={(event) => handleHomeRunCardClick(event, runId)}
+                                    on:keydown={(event) => handleHomeRunCardKeydown(event, runId)}
+                                  >
+                                    <div>
+                                      <h3>{run.title}</h3>
+                                      <div class="meta">Status: {run.status === 'completed' ? 'Abgeschlossen' : 'In Arbeit'}</div>
+                                      <div class="meta">Zuletzt geändert: {new Date(run.updatedAt).toLocaleString('de-DE')}</div>
+                                      {#if runSelected}
+                                        <span class="home-run-selection-pill">Ausgewählt</span>
+                                      {/if}
+                                    </div>
+                                    <div class="row">
+                                      <button type="button" class="primary" on:click|stopPropagation={() => openRun(run.runId)}>Öffnen</button>
+                                      <button type="button" on:click|stopPropagation={() => renameRunEntry(run, { scope: 'home' })}>Umbenennen</button>
+                                    </div>
+                                  </article>
+                                {/each}
+                              </div>
+                            </div>
+                          {/if}
+                        </section>
+                      {/each}
+                    </div>
+                  {/if}
+                </section>
+              {/each}
+            </div>
+          {/if}
         </div>
       {/if}
     </section>
@@ -4045,8 +3851,8 @@
                         <div class="photo-doc-editor">
                           <div class="row start photo-doc-toolbar">
                             <label class="button-like">
-                              Bild hinzufügen
-                              <input type="file" accept="image/*" on:change={handlePhotoDocAddInput} />
+                              Bilder hinzufügen
+                              <input type="file" accept="image/*" multiple on:change={handlePhotoDocAddInput} />
                             </label>
                             <button type="button" on:click={savePhotoDocEditor}>Speichern</button>
                             <button type="button" on:click={() => (photoDocEditorOpen = false)}>Fertig</button>
@@ -4097,8 +3903,11 @@
               {/key}
             {/if}
 
-            <div class="row end">
+            <div class="row between run-footer">
               <button type="button" on:click={() => moveSection(-1)} disabled={activeSectionIndex === 0}>Zurück</button>
+              <button type="button" class="run-footer-preview" on:click={() => toggleRunPreview()}>
+                {showRunPreview ? 'Vorschau aus' : 'Vorschau ein'}
+              </button>
               {#if runSections.length > 0 && activeSectionIndex >= runSections.length - 1}
                 <button
                   type="button"
@@ -4115,35 +3924,31 @@
               {/if}
             </div>
           </div>
-
-          <div class="panel-soft run-preview-pane" use:bindRunPreviewPane>
-            <div class="run-preview-head">
-              <h3>Live-Vorschau</h3>
-              <div class="row run-preview-nav">
-                <button
-                  type="button"
-                  on:click={() => moveRunPreviewPage(-1)}
-                  disabled={!runPreviewDoc || runPreviewTarget?.page <= 1 || runPreviewDocBusy}
-                >
-                  Zurück
-                </button>
-                <span class="meta">Seite {runPreviewTarget?.page || 1} / {runPreviewPageCount}</span>
-                <button
-                  type="button"
-                  on:click={() => moveRunPreviewPage(1)}
-                  disabled={!runPreviewDoc || runPreviewTarget?.page >= runPreviewPageCount || runPreviewDocBusy}
-                >
-                  Weiter
-                </button>
-              </div>
-            </div>
-            {#if runPreviewDocBusy}
-              <p class="meta run-preview-loading">Vorschau wird aktualisiert ...</p>
-            {/if}
-            <canvas bind:this={runCanvas}></canvas>
-          </div>
         </div>
       </div>
+
+      {#if showRunPreview}
+        <button
+          type="button"
+          class="run-preview-overlay-backdrop"
+          aria-label="Vorschau schließen"
+          on:click={() => toggleRunPreview(false)}
+        ></button>
+        <div class="run-preview-overlay" role="dialog" aria-modal="true" aria-labelledby="run-live-preview-title">
+          <div class="run-preview-overlay-header">
+            <h3 id="run-live-preview-title">Live-PDF-Vorschau</h3>
+            <button type="button" class="run-preview-overlay-close" on:click={() => toggleRunPreview(false)}>Schließen</button>
+          </div>
+          <div class="run-preview-overlay-body">
+            <ScrollablePdfPreview
+              pdfBytes={runPreviewPdfBytes}
+              reloadKey={runPreviewRevision}
+              loading={runPreviewLoading}
+              error={runPreviewError}
+            />
+          </div>
+        </div>
+      {/if}
 
       {#if runExports.length > 0}
         <div class="export-list">
@@ -4215,40 +4020,52 @@
   .page {
     max-width: 1240px;
     margin: 0 auto;
-    padding: 32px 20px 80px;
+    padding: 16px 16px 48px;
   }
 
   .hero {
-    align-items: flex-start;
+    align-items: center;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
     display: flex;
     justify-content: space-between;
     gap: 16px;
-    margin-bottom: 24px;
+    margin-bottom: 16px;
+    min-height: 52px;
+    padding: 12px 16px;
   }
 
   .eyebrow {
     color: var(--muted);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
-    letter-spacing: 0.14em;
-    margin: 0 0 6px;
-    text-transform: uppercase;
+    letter-spacing: 0;
+    margin: 0 0 2px;
+    text-transform: none;
   }
 
   h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    line-height: 28px;
     margin: 0;
-    font-size: clamp(32px, 5vw, 48px);
-    letter-spacing: -0.02em;
   }
 
   h2 {
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 24px;
     margin: 0;
-    font-size: 24px;
   }
 
   h3 {
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 22px;
     margin: 0;
-    font-size: 18px;
   }
 
   h4 {
@@ -4264,35 +4081,34 @@
 
   .toolbox-link {
     align-self: center;
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    color: var(--ink);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-button);
+    color: var(--accent);
     display: inline-flex;
-    padding: 8px 14px;
-    text-decoration: none;
     font-weight: 600;
-    transition: all 130ms ease;
+    min-height: var(--touch);
+    padding: 8px 4px;
+    text-decoration: none;
   }
 
   .toolbox-link:hover {
-    border-color: var(--accent);
-    transform: translateY(-1px);
+    color: var(--accent-pressed);
   }
 
   .panel {
-    background: var(--panel);
+    background: var(--panel-elevated);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     box-shadow: var(--shadow);
-    margin-top: 16px;
-    padding: 18px;
+    margin-top: 12px;
+    padding: 16px;
   }
 
   .panel-soft {
-    background: var(--panel-soft);
+    background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius);
     padding: 12px;
   }
 
@@ -4309,29 +4125,39 @@
   }
 
   .field > span {
-    color: var(--muted);
+    color: var(--ink);
     font-size: 13px;
     font-weight: 600;
+    line-height: 18px;
   }
 
   input,
   select,
-  button {
+  button,
+  textarea {
     font: inherit;
   }
 
   input:not([type='checkbox']):not([type='radio']),
-  select {
-    background: #fffefb;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 9px 10px;
+  select,
+  textarea {
+    background: var(--panel-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-input);
+    color: var(--ink);
+    min-height: 52px;
+    padding: 12px 16px;
+  }
+
+  textarea {
+    min-height: 96px;
   }
 
   input:not([type='checkbox']):not([type='radio']):focus,
-  select:focus {
+  select:focus,
+  textarea:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(211, 84, 60, 0.15);
+    box-shadow: 0 0 0 3px var(--badge-bg);
     outline: none;
   }
 
@@ -4362,25 +4188,28 @@
   }
 
   button {
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-button);
+    color: var(--ink);
     cursor: pointer;
-    font-weight: 600;
-    padding: 8px 12px;
-    transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+    font-weight: 700;
+    min-height: var(--touch);
+    padding: 12px 20px;
   }
 
   button:hover {
-    background: #fff6ec;
-    border-color: var(--accent);
-    box-shadow: 0 8px 18px rgba(23, 21, 18, 0.08);
-    transform: translateY(-1px);
+    background: var(--panel-elevated);
+  }
+
+  button:active:not(:disabled) {
+    opacity: 0.9;
+    transform: scale(0.98);
   }
 
   button:disabled {
     cursor: not-allowed;
-    opacity: 0.55;
+    opacity: 0.5;
     transform: none;
   }
 
@@ -4391,30 +4220,27 @@
   }
 
   .primary:hover {
-    background: #be4a34;
-    border-color: #be4a34;
+    background: var(--accent-pressed);
+    border-color: var(--accent-pressed);
   }
 
   .button-like {
     align-items: center;
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-button);
+    color: var(--ink);
     cursor: pointer;
     display: inline-flex;
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 16px;
+    font-weight: 700;
     gap: 6px;
-    min-height: 36px;
-    padding: 8px 12px;
-    transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+    min-height: var(--touch);
+    padding: 12px 20px;
   }
 
   .button-like:hover {
-    background: #fff6ec;
-    border-color: var(--accent);
-    box-shadow: 0 8px 18px rgba(23, 21, 18, 0.08);
-    transform: translateY(-1px);
+    background: var(--panel-elevated);
   }
 
   .button-like input[type='file'] {
@@ -4422,13 +4248,14 @@
   }
 
   .danger {
-    background: #fff5f5;
-    border-color: #f3c8c8;
-    color: #9f1c1c;
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
   }
 
   .danger:hover {
-    border-color: #e07272;
+    background: #8a241e;
+    border-color: #8a241e;
   }
 
   .row,
@@ -4466,21 +4293,21 @@
 
   .notice {
     border: 1px solid;
-    border-radius: 10px;
-    margin-top: 10px;
-    padding: 10px 12px;
+    border-radius: var(--radius);
+    margin-top: 12px;
+    padding: 12px 16px;
   }
 
   .notice.ok {
-    background: #edf8f1;
-    border-color: #bcdcc6;
-    color: #135c32;
+    background: rgba(47, 107, 69, 0.1);
+    border-color: rgba(47, 107, 69, 0.28);
+    color: var(--success);
   }
 
   .notice.error {
-    background: #fff3f2;
-    border-color: #f3c6c1;
-    color: #8d1d17;
+    background: rgba(161, 44, 36, 0.08);
+    border-color: rgba(161, 44, 36, 0.28);
+    color: var(--danger);
   }
 
   .restore-actions {
@@ -4515,7 +4342,7 @@
   .dialog-panel {
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius);
     box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
     left: 50%;
     max-width: min(520px, calc(100vw - 24px));
@@ -4549,6 +4376,68 @@
     gap: 10px;
   }
 
+  .home-project-list-hint {
+    margin: 0 0 10px;
+  }
+
+  .home-project-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .home-project-card {
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+  }
+
+  .home-project-card-main {
+    align-items: center;
+    display: flex;
+    flex: 1;
+    gap: 12px;
+  }
+
+  .home-project-icon {
+    align-items: center;
+    background: var(--badge-bg);
+    border-radius: var(--radius);
+    color: var(--accent);
+    display: inline-flex;
+    font-size: 14px;
+    font-weight: 800;
+    height: 44px;
+    justify-content: center;
+    width: 44px;
+  }
+
+  .home-project-back-row {
+    margin-bottom: 10px;
+  }
+
+  .home-project-banner {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: grid;
+    gap: 4px;
+    margin-bottom: 10px;
+    padding: 12px;
+  }
+
+  .home-year-group {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px;
+  }
+
+  .home-year-body {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
   .home-week-groups {
     display: grid;
     gap: 10px;
@@ -4561,9 +4450,9 @@
   }
 
   .home-week-group {
-    background: #fffefb;
+    background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius);
     padding: 10px;
   }
 
@@ -4606,13 +4495,14 @@
 
   .template-card {
     align-items: center;
-    background: #fffefb;
+    background: var(--panel-elevated);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
     display: flex;
-    gap: 10px;
+    gap: 12px;
     justify-content: space-between;
-    padding: 12px;
+    padding: 16px;
     position: relative;
   }
 
@@ -4623,12 +4513,12 @@
   }
 
   .template-card--home-selectable:hover {
-    border-color: rgba(211, 84, 60, 0.35);
+    border-color: var(--accent);
     transform: translateY(-1px);
   }
 
   .template-card--home-selectable:focus-visible {
-    outline: 2px solid rgba(211, 84, 60, 0.4);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 
@@ -4643,7 +4533,7 @@
   .template-card.selected-run {
     border-color: rgba(211, 84, 60, 0.45);
     box-shadow: 0 0 0 2px rgba(211, 84, 60, 0.14);
-    background: #fff9f5;
+    background: var(--panel);
   }
 
   .template-card.selected-run h3 {
@@ -4736,7 +4626,7 @@
   }
 
   .setup-nav {
-    background: #fffefb;
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 10px;
     display: grid;
@@ -4776,7 +4666,7 @@
   }
 
   .setup-nav-item.active {
-    background: #fff0e5;
+    background: var(--badge-bg);
     border-color: var(--accent);
   }
 
@@ -4798,9 +4688,9 @@
   }
 
   .section-card {
-    background: #fffefb;
+    background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius);
     display: grid;
     gap: 10px;
     margin-top: 10px;
@@ -4822,9 +4712,9 @@
   }
 
   .setup-field-card {
-    background: #fff8ef;
+    background: var(--panel);
     border: 1px solid #ecdcc9;
-    border-radius: 12px;
+    border-radius: var(--radius);
     padding: 10px;
     padding-top: 36px;
     position: relative;
@@ -4832,7 +4722,7 @@
 
   .setup-field-card:hover,
   .setup-field-card:focus-within {
-    background: #fffefb;
+    background: var(--panel);
     border-color: #d9a07c;
     box-shadow: 0 0 0 2px rgba(211, 84, 60, 0.13);
   }
@@ -5049,9 +4939,9 @@
 
   .run-nav {
     align-self: start;
-    background: #fff7ee;
+    background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius);
     display: grid;
     gap: 6px;
     max-height: 70vh;
@@ -5070,7 +4960,7 @@
   }
 
   .nav-item.active {
-    background: #fff0e5;
+    background: var(--badge-bg);
     border-color: var(--accent);
   }
 
@@ -5093,23 +4983,90 @@
   }
 
   .dot.todo {
-    background: #c7b8a4;
+    background: var(--border-strong);
   }
 
   .dot.progress {
-    background: #d88a2d;
+    background: var(--warning);
   }
 
   .dot.done {
-    background: #368657;
+    background: var(--success);
   }
 
   .run-workbench {
     align-items: start;
     display: grid;
     gap: 10px;
-    grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.85fr);
+    grid-template-columns: minmax(0, 1fr);
     min-width: 0;
+  }
+
+  .run-footer {
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .run-footer-preview {
+    flex: 1;
+    justify-content: center;
+    max-width: 220px;
+    min-width: 140px;
+  }
+
+  .run-preview-overlay-backdrop {
+    background: var(--overlay);
+    border: 0;
+    inset: 0;
+    position: fixed;
+    z-index: 40;
+  }
+
+  .run-preview-overlay {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    inset: 12px 8px 12px;
+    max-width: 960px;
+    overflow: hidden;
+    position: fixed;
+    z-index: 41;
+    margin: 0 auto;
+    left: 0;
+    right: 0;
+  }
+
+  .run-preview-overlay-header {
+    align-items: center;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    min-height: 48px;
+    padding: 0 12px;
+  }
+
+  .run-preview-overlay-header h3 {
+    font-size: 15px;
+    margin: 0;
+  }
+
+  .run-preview-overlay-close {
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .run-preview-overlay-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    padding: 8px;
   }
 
   .run-workbench > * {
@@ -5117,9 +5074,9 @@
   }
 
   .run-main {
-    background: #fffefb;
+    background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius);
     padding: 12px;
   }
 
@@ -5224,14 +5181,14 @@
   }
 
   .run-row-card {
-    background: #fffaf3;
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 10px;
   }
 
   .run-row-card--detail {
-    background: #fff7ed;
+    background: var(--badge-bg);
   }
 
   .run-row-head {
@@ -5313,7 +5270,7 @@
   }
 
   .photo-doc-editor {
-    background: #fff8ef;
+    background: var(--panel);
     border: 1px solid #ecdcc9;
     border-radius: 10px;
     display: grid;

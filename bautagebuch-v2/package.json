@@ -7,10 +7,11 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node src/lib/pdf-text-fit.test.js && node src/lib/pdf-text-fit-export.test.js",
+    "test": "node src/lib/pdf-text-fit.test.js && node src/lib/pdf-text-fit-export.test.js && node src/lib/group-runs-by-calendar.test.js",
     "deploy": "npm run build && npx gh-pages -d build --dotfiles --no-history"
   },
   "dependencies": {
+    "@fontsource/space-grotesk": "^5.2.8",
     "dexie": "4.0.7",
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "4.8.69"
