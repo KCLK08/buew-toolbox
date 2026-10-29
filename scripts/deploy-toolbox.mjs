@@ -36,7 +36,7 @@ mkdirSync(join(workDir, 'bautagebuch'), { recursive: true });
 cpSync('bautagebuch-v2/build', join(workDir, 'bautagebuch'), { recursive: true });
 
 execSync('git add -A', { cwd: workDir, stdio: 'inherit' });
-execSync('git commit -m "deploy: remove TB-Assistent, keep SiteReport and Bautagebuch"', {
+execSync('git commit -m "deploy: Bautagebuch PWA and SiteReport"', {
   cwd: workDir,
   stdio: 'inherit'
 });
