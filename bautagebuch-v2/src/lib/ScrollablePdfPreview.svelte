@@ -11,21 +11,25 @@
   const PDF_PREVIEW_LOAD_ERROR = 'PDF Vorschau konnte nicht geladen werden';
   const MAX_CANVAS_PIXELS = 12_000_000;
 
-  /** @type {HTMLDivElement | null} */
-  let viewportEl = null;
-  /** @type {HTMLDivElement | null} */
-  let wrapEl = null;
+  const nodes = { viewport: null, wrap: null };
+  const gesture = { scale: 1, startDistance: 0, startScale: 1 };
   let rendering = false;
   let renderError = '';
-  let pinchScale = 1;
-  let pinchStartDistance = 0;
-  let pinchStartScale = 1;
   let renderToken = 0;
+  let renderedStamp = '';
+
+  function applyPinchScale() {
+    const wrap = nodes.wrap;
+    if (!wrap) return;
+    wrap.style.transform = `scale(${gesture.scale})`;
+    wrap.style.transformOrigin = 'center top';
+  }
 
   function resetPinchZoom() {
-    pinchScale = 1;
-    pinchStartDistance = 0;
-    if (wrapEl) wrapEl.style.transform = 'scale(1)';
+    gesture.scale = 1;
+    gesture.startDistance = 0;
+    gesture.startScale = 1;
+    applyPinchScale();
   }
 
   function touchDistance(touches) {
@@ -34,28 +38,22 @@
     return Math.hypot(dx, dy);
   }
 
-  function applyPinchScale() {
-    if (!wrapEl) return;
-    wrapEl.style.transform = `scale(${pinchScale})`;
-    wrapEl.style.transformOrigin = 'center top';
-  }
-
   function bindPinch(node) {
     const onTouchStart = (event) => {
       if (event.touches.length === 2) {
-        pinchStartDistance = touchDistance(event.touches);
-        pinchStartScale = pinchScale;
+        gesture.startDistance = touchDistance(event.touches);
+        gesture.startScale = gesture.scale;
       }
     };
     const onTouchMove = (event) => {
-      if (event.touches.length !== 2 || pinchStartDistance <= 0) return;
+      if (event.touches.length !== 2 || gesture.startDistance <= 0) return;
       event.preventDefault();
-      const ratio = touchDistance(event.touches) / pinchStartDistance;
-      pinchScale = Math.min(4, Math.max(1, pinchStartScale * ratio));
+      const ratio = touchDistance(event.touches) / gesture.startDistance;
+      gesture.scale = Math.min(4, Math.max(1, gesture.startScale * ratio));
       applyPinchScale();
     };
     const onTouchEnd = () => {
-      if (pinchScale <= 1.01) resetPinchZoom();
+      if (gesture.scale <= 1.01) resetPinchZoom();
     };
     node.addEventListener('touchstart', onTouchStart, { passive: true });
     node.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -69,16 +67,52 @@
     };
   }
 
-  async function renderPages(bytes, revision) {
-    void revision;
-    const token = ++renderToken;
-    renderError = '';
-    resetPinchZoom();
+  function mountViewport(node) {
+    nodes.viewport = node;
+    requestRender(pdfBytes, reloadKey);
+    return {
+      destroy() {
+        if (nodes.viewport === node) nodes.viewport = null;
+      }
+    };
+  }
 
-    if (!viewportEl || !wrapEl) return;
+  function mountWrap(node) {
+    nodes.wrap = node;
+    requestRender(pdfBytes, reloadKey);
+    return {
+      destroy() {
+        if (nodes.wrap === node) nodes.wrap = null;
+      }
+    };
+  }
+
+  function previewStamp(bytes, revision) {
+    if (!bytes || bytes.length === 0) return `empty:${revision}`;
+    const last = bytes.length - 1;
+    return `${revision}:${bytes.length}:${bytes[0] || 0}:${bytes[last >> 1] || 0}:${bytes[last] || 0}`;
+  }
+
+  function requestRender(bytes, revision) {
+    if (!nodes.viewport || !nodes.wrap) return;
+    void renderPages(bytes, revision);
+  }
+
+  async function renderPages(bytes, revision) {
+    const stamp = previewStamp(bytes, revision);
+    if (stamp === renderedStamp && nodes.wrap?.childElementCount) return;
+
+    const token = ++renderToken;
+    const wrap = nodes.wrap;
+    const viewport = nodes.viewport;
+    renderError = '';
+    if (!viewport || !wrap) return;
+
     if (!bytes || bytes.length === 0) {
-      wrapEl.replaceChildren();
+      wrap.replaceChildren();
+      renderedStamp = stamp;
       rendering = false;
+      resetPinchZoom();
       return;
     }
 
@@ -87,30 +121,29 @@
       const copy = bytes instanceof Uint8Array ? bytes.slice() : new Uint8Array(bytes);
       const blob = new Blob([copy], { type: 'application/pdf' });
       const doc = await loadPdfPreviewDocument(blob);
-      if (token !== renderToken || !wrapEl) return;
+      if (token !== renderToken || nodes.wrap !== wrap) return;
 
-      wrapEl.replaceChildren();
+      wrap.replaceChildren();
       const dpr = Math.min(window.devicePixelRatio || 1, 3);
-      const maxCssWidth = Math.max(240, (viewportEl?.clientWidth || window.innerWidth || 860) - 16);
+      const maxCssWidth = Math.max(240, (viewport.clientWidth || window.innerWidth || 860) - 16);
 
       for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
-        if (token !== renderToken || !wrapEl) return;
+        if (token !== renderToken || nodes.wrap !== wrap) return;
         const page = await doc.getPage(pageNumber);
         const baseViewport = page.getViewport({ scale: 1 });
         const fitScale = maxCssWidth / baseViewport.width;
-        const viewportScale = Math.min(fitScale, 2.6);
-        let pixelScale = viewportScale * dpr;
+        let pixelScale = Math.min(fitScale, 2.6) * dpr;
         const pixelArea = baseViewport.width * baseViewport.height * pixelScale * pixelScale;
         if (pixelArea > MAX_CANVAS_PIXELS) {
           pixelScale = Math.sqrt(MAX_CANVAS_PIXELS / (baseViewport.width * baseViewport.height));
         }
 
-        const viewport = page.getViewport({ scale: pixelScale });
+        const pageViewport = page.getViewport({ scale: pixelScale });
         const canvas = document.createElement('canvas');
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        canvas.style.width = `${Math.ceil(viewport.width / dpr)}px`;
-        canvas.style.height = `${Math.ceil(viewport.height / dpr)}px`;
+        canvas.width = Math.ceil(pageViewport.width);
+        canvas.height = Math.ceil(pageViewport.height);
+        canvas.style.width = `${Math.ceil(pageViewport.width / dpr)}px`;
+        canvas.style.height = `${Math.ceil(pageViewport.height / dpr)}px`;
 
         const context = canvas.getContext('2d');
         if (!context) continue;
@@ -118,30 +151,32 @@
         const sheet = document.createElement('div');
         sheet.className = 'page-sheet';
         sheet.appendChild(canvas);
-        wrapEl.appendChild(sheet);
+        wrap.appendChild(sheet);
 
-        await page.render({ canvasContext: context, viewport }).promise;
+        await page.render({ canvasContext: context, viewport: pageViewport }).promise;
       }
+
+      if (token !== renderToken) return;
+      renderedStamp = stamp;
+      resetPinchZoom();
     } catch (renderFailure) {
       if (token !== renderToken) return;
       console.error('PDF preview render failed', renderFailure);
       renderError = PDF_PREVIEW_LOAD_ERROR;
-      wrapEl?.replaceChildren();
+      wrap.replaceChildren();
+      renderedStamp = '';
     } finally {
       if (token === renderToken) rendering = false;
     }
   }
 
-  $: if (viewportEl && wrapEl) {
-    void renderPages(pdfBytes, reloadKey);
-  }
+  $: requestRender(pdfBytes, reloadKey);
 
   onDestroy(() => {
     renderToken += 1;
   });
 
   $: displayError = error || renderError;
-  $: showInitialLoader = !displayError && (loading || rendering) && (!pdfBytes || pdfBytes.length === 0 || rendering);
 </script>
 
 <div class="scrollable-pdf-preview">
@@ -152,8 +187,8 @@
       <p class="meta">{loading ? 'Live-PDF wird vorbereitet…' : 'Noch keine Live-Vorschau verfügbar.'}</p>
     </div>
   {:else}
-    <div class="preview-viewport" bind:this={viewportEl} use:bindPinch>
-      <div class="preview-wrap" bind:this={wrapEl}></div>
+    <div class="preview-viewport" use:mountViewport use:bindPinch>
+      <div class="preview-wrap" use:mountWrap></div>
     </div>
     <p class="zoom-hint">Scrollen · Zwei Finger zum Zoomen</p>
     {#if loading || rendering}
@@ -200,6 +235,7 @@
     flex: 1;
     min-height: 0;
     overflow: auto;
+    touch-action: pan-x pan-y;
     -webkit-overflow-scrolling: touch;
     width: 100%;
   }
