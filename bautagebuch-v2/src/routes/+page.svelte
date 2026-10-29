@@ -50,6 +50,7 @@
     listProjectsFromRuns
   } from '$lib/btb-filter';
   import { formatRunCount } from '$lib/group-runs-by-calendar';
+  import ScrollablePdfPreview from '$lib/ScrollablePdfPreview.svelte';
 
   const MAX_PDF_SIZE = 40 * 1024 * 1024;
   const TABLE_ROW_COUNT_KEY_PREFIX = '__tableRows:';
@@ -100,6 +101,7 @@
   const MAX_RUN_TEXTAREA_HEIGHT = 168;
   const PHOTO_DOC_SECTION_ID = 'photo-doc';
   const PHOTO_DOC_ENABLED_RUN_KEY = '__photoDoc:enabled';
+  const RUN_PREVIEW_DEBOUNCE_MS = 350;
   const RUN_FINISH_EXPORT_MODE_BTB = 'btb_only';
   const RUN_FINISH_EXPORT_MODE_PHOTO = 'photo_doc_only';
   const RUN_FINISH_EXPORT_MODE_MERGED = 'btb_with_photo_doc';
@@ -165,17 +167,13 @@
   let runAutosaveTimer = null;
   let runSectionRenderNonce = 0;
   let runReviewExpanded = false;
-  let runCanvas;
-  let runPreviewDoc = null;
-  let runPreviewPageCount = 1;
-  let runPreviewDocBusy = false;
-  let runPreviewDocToken = 0;
-  let runPreviewTarget = { page: 1, rect: null };
+  let showRunPreview = false;
+  let runPreviewPdfBytes = null;
+  let runPreviewLoading = false;
+  let runPreviewError = '';
+  let runPreviewRevision = 0;
+  let runPreviewDebounceTimer = null;
   let runFocusedFieldId = '';
-  let runPreviewToken = 0;
-  let runPreviewQueue = Promise.resolve();
-  let runPreviewMaxWidth = 680;
-  let runPreviewResizeObserver = null;
   let runFinishDialogOpen = false;
   let runFinishExportMode = RUN_FINISH_EXPORT_MODE_MERGED;
   let weatherSyncBusy = false;
@@ -240,21 +238,10 @@
     (section) => runSectionProgress(section, runValues) === 'done'
   ).length;
   $: runCompletionPercent = runSections.length > 0 ? Math.round((doneSectionsCount / runSections.length) * 100) : 0;
-  $: runPreviewMarkers = buildRunPreviewMarkers();
-  $: if (runPreviewDoc) {
-    runPreviewPageCount = Math.max(1, Number(runPreviewDoc?.numPages || 1));
-  }
-  $: if (view === 'run' && runPreviewDoc) {
-    const current = Number(runPreviewTarget?.page || 1);
-    const normalized = Math.max(1, Math.min(current, runPreviewPageCount));
-    if (normalized !== current) {
-      runPreviewTarget = {
-        page: normalized,
-        rect: null
-      };
-      runFocusedFieldId = '';
-      renderRunPreview();
-    }
+  $: if (view === 'run' && showRunPreview) {
+    runValues;
+    runPhotoDoc;
+    scheduleRunLivePdfPreview();
   }
   $: syncPhotoDocObjectUrls(runPhotoDoc?.entries || []);
   $: selectedHomeRunCount = selectedHomeRunIds.length;
@@ -413,8 +400,10 @@
     }
     clearPhotoDocObjectUrls();
     detachSetupFieldDragListeners();
-    runPreviewResizeObserver?.disconnect();
-    runPreviewResizeObserver = null;
+    if (runPreviewDebounceTimer) {
+      clearTimeout(runPreviewDebounceTimer);
+      runPreviewDebounceTimer = null;
+    }
   });
 
   function nowLabel() {
@@ -606,58 +595,52 @@
     return sectionProgressState(section, values, sectionRunOptions(section, values));
   }
 
-  async function refreshRunPreviewDocument() {
-    if (!runTemplate?.pdfBlob) return;
-    runPreviewDocBusy = true;
-    const token = ++runPreviewDocToken;
-    const currentPage = Number(runPreviewTarget?.page || 1);
+  function scheduleRunLivePdfPreview() {
+    if (!showRunPreview || view !== 'run') return;
+    if (runPreviewDebounceTimer) clearTimeout(runPreviewDebounceTimer);
+    runPreviewDebounceTimer = setTimeout(() => {
+      runPreviewDebounceTimer = null;
+      void refreshRunLivePdfPreview();
+    }, RUN_PREVIEW_DEBOUNCE_MS);
+  }
 
+  async function refreshRunLivePdfPreview() {
+    if (!showRunPreview || !activeRun || !runTemplate?.pdfBlob || !runModel) return;
+    runPreviewLoading = true;
+    runPreviewError = '';
     try {
-      const baseBytes = new Uint8Array(await runTemplate.pdfBlob.arrayBuffer());
-      const merged = await mergeBtbWithPhotoDoc({
-        btbPdfBytes: baseBytes,
-        photoDocEnabled: isPhotoDocEnabled(),
-        photoEntries: runPhotoDoc.entries
+      await flushRunAutosave();
+      const bytes = await buildFinalPdfBytes({
+        templateBlob: runTemplate.pdfBlob,
+        setupModel: runModel,
+        runValues
       });
-      const previewBlob = new Blob([merged.bytes], { type: 'application/pdf' });
-
-      const doc = await loadPdfPreviewDocument(previewBlob);
-      if (token !== runPreviewDocToken) return;
-      runPreviewDoc = doc;
-      runPreviewPageCount = Math.max(1, Number(doc?.numPages || 1));
-
-      const normalizedPage = Math.max(1, Math.min(currentPage, runPreviewPageCount));
-      if (normalizedPage !== Number(runPreviewTarget?.page || 1)) {
-        runPreviewTarget = { page: normalizedPage, rect: null };
-        runFocusedFieldId = '';
-      }
-
-      await renderRunPreview();
+      runPreviewPdfBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      runPreviewRevision += 1;
     } catch (error) {
-      if (token !== runPreviewDocToken) return;
-      runError = error?.message || 'Run-Vorschau konnte nicht geladen werden.';
+      runPreviewError = error?.message || 'Vorschau fehlgeschlagen.';
     } finally {
-      if (token === runPreviewDocToken) {
-        runPreviewDocBusy = false;
-      }
+      runPreviewLoading = false;
     }
   }
 
-  function setRunPreviewPage(page) {
-    const max = Math.max(1, Number(runPreviewPageCount || 1));
-    const next = Math.max(1, Math.min(Number(page || 1), max));
-    if (next === Number(runPreviewTarget?.page || 1)) return;
-    runPreviewTarget = {
-      page: next,
-      rect: null
-    };
-    runFocusedFieldId = '';
-    renderRunPreview();
-  }
-
-  function moveRunPreviewPage(delta) {
-    const current = Number(runPreviewTarget?.page || 1);
-    setRunPreviewPage(current + Number(delta || 0));
+  function toggleRunPreview(force) {
+    const next = typeof force === 'boolean' ? force : !showRunPreview;
+    if (next === showRunPreview) return;
+    showRunPreview = next;
+    if (!showRunPreview) {
+      runPreviewPdfBytes = null;
+      runPreviewError = '';
+      runPreviewLoading = false;
+      if (runPreviewDebounceTimer) {
+        clearTimeout(runPreviewDebounceTimer);
+        runPreviewDebounceTimer = null;
+      }
+      return;
+    }
+    if (!runPreviewPdfBytes) {
+      void refreshRunLivePdfPreview();
+    }
   }
 
   function updateRunPhotoDoc(nextPhotoDoc, { refreshPreview = false, persistImmediately = false } = {}) {
@@ -673,7 +656,7 @@
       scheduleRunAutosave();
     }
     if (refreshPreview) {
-      void refreshRunPreviewDocument();
+      scheduleRunLivePdfPreview();
     }
   }
 
@@ -960,7 +943,7 @@
 
     if (!changed) return;
     runValues = nextValues;
-    renderRunPreview();
+    scheduleRunLivePdfPreview();
     scheduleRunAutosave();
   }
 
@@ -993,7 +976,7 @@
 
     if (!changed) return;
     runValues = nextValues;
-    renderRunPreview();
+    scheduleRunLivePdfPreview();
     scheduleRunAutosave();
   }
 
@@ -1187,7 +1170,7 @@
     if (!changed) return false;
     runValues = nextValues;
     void syncRunSectionInputs();
-    renderRunPreview();
+    scheduleRunLivePdfPreview();
     scheduleRunAutosave();
     return true;
   }
@@ -2077,194 +2060,10 @@
     return null;
   }
 
-  function runPreviewMarkerFromFieldLike(fieldLike, mode = 'context') {
-    const resolved = fieldFromRegistry(fieldLike);
-    if (!resolved) return null;
-    const rect = Array.isArray(resolved.rect)
-      ? resolved.rect.slice(0, 4)
-      : Array.isArray(fieldLike?.rect)
-        ? fieldLike.rect.slice(0, 4)
-        : null;
-    if (!rect) return null;
-    return {
-      fieldId: String(resolved.fieldId || fieldLike?.fieldId || '').trim(),
-      fieldName: String(resolved.labelCandidate || fieldLike?.label || resolved.fieldName || fieldLike?.fieldName || '').trim(),
-      page: Number(resolved.page || fieldLike?.page || runPreviewTarget?.page || 1),
-      rect,
-      mode
-    };
-  }
-
-  function buildRunPreviewMarkers() {
-    const targetPage = Number(runPreviewTarget?.page || 1);
-    const markers = [];
-
-    if (activeSection?.kind === 'single') {
-      for (const field of activeSection.fields || []) {
-        const marker = runPreviewMarkerFromFieldLike(field, 'context');
-        if (marker) markers.push(marker);
-      }
-    }
-
-    if (activeSection?.kind === 'table') {
-      const rows = visibleRowsForSection(activeSection, runValues);
-      for (const row of rows) {
-        for (const cell of row.cells || []) {
-          const marker = runPreviewMarkerFromFieldLike(cell, 'context');
-          if (marker) markers.push(marker);
-        }
-      }
-    }
-
-    if (runFocusedFieldId) {
-      const focused = setupFieldById.get(String(runFocusedFieldId || '').trim());
-      const marker = runPreviewMarkerFromFieldLike(
-        focused || {
-          fieldId: runFocusedFieldId,
-          page: targetPage,
-          rect: Array.isArray(runPreviewTarget?.rect) ? runPreviewTarget.rect.slice(0, 4) : null
-        },
-        'active'
-      );
-      if (marker) markers.push(marker);
-    } else if (Array.isArray(runPreviewTarget?.rect) && runPreviewTarget.rect.length >= 4) {
-      markers.push({
-        fieldId: '',
-        fieldName: '',
-        page: targetPage,
-        rect: runPreviewTarget.rect.slice(0, 4),
-        mode: 'active'
-      });
-    }
-
-    return dedupePreviewMarkers(markers);
-  }
-
-  function buildRunPreviewValueOverlays() {
-    const overlays = [];
-    const addOverlay = (fieldLike, valueKey) => {
-      if (!fieldLike || !valueKey) return;
-      const marker = runPreviewMarkerFromFieldLike(fieldLike, 'context');
-      if (!marker) return;
-
-      const resolved = fieldFromRegistry(fieldLike) || fieldLike;
-      const type = String(fieldLike?.type || resolved?.type || 'text').toLowerCase();
-      const rawValue = runValues[String(valueKey)];
-
-      if (type === 'checkbox') {
-        if (rawValue !== true) return;
-      } else if (!String(rawValue ?? '').trim()) {
-        return;
-      }
-
-      overlays.push({
-        fieldId: marker.fieldId,
-        fieldName: String(resolved?.fieldName || fieldLike?.fieldName || '').trim(),
-        tableId: String(fieldLike?.tableId || resolved?.tableId || '').trim(),
-        columnId: String(fieldLike?.columnId || resolved?.columnId || '').trim(),
-        page: marker.page,
-        rect: marker.rect.slice(0, 4),
-        type,
-        value: rawValue
-      });
-    };
-
-    for (const section of runSections || []) {
-      if (section?.kind === 'single') {
-        for (const field of section.fields || []) {
-          addOverlay(field, inputKeyForField(field));
-        }
-        continue;
-      }
-
-      if (section?.kind === 'table') {
-        const rows = visibleRowsForSection(section, runValues);
-        for (const row of rows) {
-          for (const cell of row.cells || []) {
-            addOverlay(cell, inputKeyForCell(cell));
-          }
-        }
-      }
-    }
-
-    return overlays;
-  }
-
   function focusRunPreview(fieldLike) {
     const resolved = fieldFromRegistry(fieldLike);
     if (!resolved) return;
-    const rect = Array.isArray(resolved.rect)
-      ? resolved.rect.slice(0, 4)
-      : Array.isArray(fieldLike?.rect)
-        ? fieldLike.rect.slice(0, 4)
-        : null;
-    runPreviewTarget = {
-      page: Number(resolved.page || fieldLike?.page || 1),
-      rect
-    };
     runFocusedFieldId = String(resolved.fieldId || fieldLike?.fieldId || '').trim();
-    renderRunPreview();
-  }
-
-  async function renderRunPreview() {
-    if (!runCanvas || !runPreviewDoc) return;
-    const token = ++runPreviewToken;
-    const payload = {
-      pdfJsDoc: runPreviewDoc,
-      pageNumber: runPreviewTarget?.page || 1,
-      rect: runPreviewTarget?.rect || null,
-      highlights: runPreviewMarkers,
-      valueOverlays: buildRunPreviewValueOverlays(),
-      activeFieldId: runFocusedFieldId,
-      canvas: runCanvas,
-      maxWidth: runPreviewMaxWidth
-    };
-
-    runPreviewQueue = runPreviewQueue
-      .catch(() => {})
-      .then(async () => {
-        if (token !== runPreviewToken) return;
-        try {
-          await renderFieldPreview(payload);
-        } catch {
-          // Ignore canvas race conditions.
-        }
-      });
-
-    await runPreviewQueue;
-  }
-
-  function bindRunPreviewPane(node) {
-    if (typeof ResizeObserver === 'undefined') {
-      return;
-    }
-
-    const updateWidth = () => {
-      const width = Math.floor(node.getBoundingClientRect().width || 0);
-      if (!(width > 0)) return;
-      const next = Math.max(240, Math.min(width, 860));
-      if (Math.abs(next - runPreviewMaxWidth) < 8) return;
-      runPreviewMaxWidth = next;
-      renderRunPreview();
-    };
-
-    runPreviewResizeObserver?.disconnect();
-    runPreviewResizeObserver = new ResizeObserver(updateWidth);
-    runPreviewResizeObserver.observe(node);
-    updateWidth();
-
-    return {
-      destroy() {
-        runPreviewResizeObserver?.disconnect();
-        runPreviewResizeObserver = null;
-      }
-    };
-  }
-
-  $: if (view === 'run' && runCanvas && runPreviewDoc) {
-    runPreviewMarkers.length;
-    runPreviewMaxWidth;
-    renderRunPreview();
   }
 
   function findTable(tableId) {
@@ -2717,7 +2516,10 @@
     runAutosave = 'Bereit';
     runReviewExpanded = false;
     runFinishDialogOpen = false;
-    runPreviewDocBusy = false;
+    showRunPreview = false;
+    runPreviewPdfBytes = null;
+    runPreviewError = '';
+    runPreviewLoading = false;
     clearPhotoDocObjectUrls();
     if (runAutosaveTimer) {
       clearTimeout(runAutosaveTimer);
@@ -2752,22 +2554,13 @@
     activeSectionIndex = Math.max(0, Math.min(Number(run.sectionIndex || 0), Math.max(orderedSections.length - 1, 0)));
     runSectionRenderNonce = 0;
     runExports = await listExports(run.runId);
-    runPreviewDoc = null;
-    runPreviewPageCount = 1;
-    runPreviewTarget = { page: 1, rect: null };
     runFocusedFieldId = '';
     view = 'run';
     await syncRunSectionInputs();
 
-    try {
-      await refreshRunPreviewDocument();
-      const section = orderedSections[activeSectionIndex] || null;
-      const first = firstFieldInRunSection(section, runValues);
-      if (first) focusRunPreview(first);
-      await renderRunPreview();
-    } catch (error) {
-      runError = error?.message || 'Run-Vorschau konnte nicht geladen werden.';
-    }
+    const section = orderedSections[activeSectionIndex] || null;
+    const first = firstFieldInRunSection(section, runValues);
+    if (first) focusRunPreview(first);
   }
 
   async function persistRunAutosave() {
@@ -2816,7 +2609,7 @@
       ...runValues,
       [normalizedKey]: value
     };
-    renderRunPreview();
+    scheduleRunLivePdfPreview();
     scheduleRunAutosave();
   }
 
@@ -3014,7 +2807,6 @@
       focusRunPreview(first);
     } else {
       runFocusedFieldId = '';
-      renderRunPreview();
     }
     scheduleRunAutosave();
     syncRunSectionInputs();
@@ -3030,7 +2822,6 @@
       focusRunPreview(first);
     } else {
       runFocusedFieldId = '';
-      renderRunPreview();
     }
     scheduleRunAutosave();
     syncRunSectionInputs();
@@ -3186,10 +2977,10 @@
     activeSectionIndex = 0;
     runExports = [];
     runReviewExpanded = false;
-    runPreviewDoc = null;
-    runPreviewPageCount = 1;
-    runPreviewDocBusy = false;
-    runPreviewTarget = { page: 1, rect: null };
+    showRunPreview = false;
+    runPreviewPdfBytes = null;
+    runPreviewError = '';
+    runPreviewLoading = false;
     runFocusedFieldId = '';
     runPhotoDoc = createEmptyRunPhotoDoc();
     photoDocEditorOpen = false;
@@ -4112,8 +3903,11 @@
               {/key}
             {/if}
 
-            <div class="row end">
+            <div class="row between run-footer">
               <button type="button" on:click={() => moveSection(-1)} disabled={activeSectionIndex === 0}>Zurück</button>
+              <button type="button" class="run-footer-preview" on:click={() => toggleRunPreview()}>
+                {showRunPreview ? 'Vorschau aus' : 'Vorschau ein'}
+              </button>
               {#if runSections.length > 0 && activeSectionIndex >= runSections.length - 1}
                 <button
                   type="button"
@@ -4130,35 +3924,31 @@
               {/if}
             </div>
           </div>
-
-          <div class="panel-soft run-preview-pane" use:bindRunPreviewPane>
-            <div class="run-preview-head">
-              <h3>Live-Vorschau</h3>
-              <div class="row run-preview-nav">
-                <button
-                  type="button"
-                  on:click={() => moveRunPreviewPage(-1)}
-                  disabled={!runPreviewDoc || runPreviewTarget?.page <= 1 || runPreviewDocBusy}
-                >
-                  Zurück
-                </button>
-                <span class="meta">Seite {runPreviewTarget?.page || 1} / {runPreviewPageCount}</span>
-                <button
-                  type="button"
-                  on:click={() => moveRunPreviewPage(1)}
-                  disabled={!runPreviewDoc || runPreviewTarget?.page >= runPreviewPageCount || runPreviewDocBusy}
-                >
-                  Weiter
-                </button>
-              </div>
-            </div>
-            {#if runPreviewDocBusy}
-              <p class="meta run-preview-loading">Vorschau wird aktualisiert ...</p>
-            {/if}
-            <canvas bind:this={runCanvas}></canvas>
-          </div>
         </div>
       </div>
+
+      {#if showRunPreview}
+        <button
+          type="button"
+          class="run-preview-overlay-backdrop"
+          aria-label="Vorschau schließen"
+          on:click={() => toggleRunPreview(false)}
+        ></button>
+        <div class="run-preview-overlay" role="dialog" aria-modal="true" aria-labelledby="run-live-preview-title">
+          <div class="run-preview-overlay-header">
+            <h3 id="run-live-preview-title">Live-PDF-Vorschau</h3>
+            <button type="button" class="run-preview-overlay-close" on:click={() => toggleRunPreview(false)}>Schließen</button>
+          </div>
+          <div class="run-preview-overlay-body">
+            <ScrollablePdfPreview
+              pdfBytes={runPreviewPdfBytes}
+              reloadKey={runPreviewRevision}
+              loading={runPreviewLoading}
+              error={runPreviewError}
+            />
+          </div>
+        </div>
+      {/if}
 
       {#if runExports.length > 0}
         <div class="export-list">
@@ -5185,8 +4975,75 @@
     align-items: start;
     display: grid;
     gap: 10px;
-    grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.85fr);
+    grid-template-columns: minmax(0, 1fr);
     min-width: 0;
+  }
+
+  .run-footer {
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .run-footer-preview {
+    flex: 1;
+    justify-content: center;
+    max-width: 220px;
+    min-width: 140px;
+  }
+
+  .run-preview-overlay-backdrop {
+    background: rgba(26, 25, 22, 0.42);
+    border: 0;
+    inset: 0;
+    position: fixed;
+    z-index: 40;
+  }
+
+  .run-preview-overlay {
+    background: #fffefb;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    inset: 12px 8px 12px;
+    max-width: 960px;
+    overflow: hidden;
+    position: fixed;
+    z-index: 41;
+    margin: 0 auto;
+    left: 0;
+    right: 0;
+  }
+
+  .run-preview-overlay-header {
+    align-items: center;
+    background: #fff7ee;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    min-height: 48px;
+    padding: 0 12px;
+  }
+
+  .run-preview-overlay-header h3 {
+    font-size: 15px;
+    margin: 0;
+  }
+
+  .run-preview-overlay-close {
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .run-preview-overlay-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    padding: 8px;
   }
 
   .run-workbench > * {
