@@ -11,6 +11,7 @@
     "deploy": "npm run build && npx gh-pages -d build --dotfiles --no-history"
   },
   "dependencies": {
+    "@fontsource/space-grotesk": "^5.2.8",
     "dexie": "4.0.7",
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "4.8.69"
