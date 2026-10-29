@@ -1,7 +1,6 @@
 <script>
-  import { onDestroy, onMount } from 'svelte';
-  import { buildSimplePdfPreviewHtml, PDF_PREVIEW_LOAD_ERROR } from '$lib/pdf-preview-html.js';
-  import { loadPdfPreviewAssets } from '$lib/pdf-preview-assets.js';
+  import { onDestroy } from 'svelte';
+  import { loadPdfPreviewDocument } from '$lib/pdf-scan.js';
 
   /** @type {Uint8Array | null} */
   export let pdfBytes = null;
@@ -9,127 +8,182 @@
   export let loading = false;
   export let error = '';
 
-  let html = null;
-  let readBusy = false;
-  let renderError = '';
-  let ready = false;
-  /** @type {HTMLIFrameElement | null} */
-  let iframeEl = null;
+  const PDF_PREVIEW_LOAD_ERROR = 'PDF Vorschau konnte nicht geladen werden';
+  const MAX_CANVAS_PIXELS = 12_000_000;
 
-  function uint8ToBase64(bytes) {
-    const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    let binary = '';
-    const chunkSize = 0x8000;
-    for (let offset = 0; offset < view.length; offset += chunkSize) {
-      binary += String.fromCharCode(...view.subarray(offset, offset + chunkSize));
-    }
-    return btoa(binary);
+  /** @type {HTMLDivElement | null} */
+  let viewportEl = null;
+  /** @type {HTMLDivElement | null} */
+  let wrapEl = null;
+  let rendering = false;
+  let renderError = '';
+  let pinchScale = 1;
+  let pinchStartDistance = 0;
+  let pinchStartScale = 1;
+  let renderToken = 0;
+
+  function resetPinchZoom() {
+    pinchScale = 1;
+    pinchStartDistance = 0;
+    if (wrapEl) wrapEl.style.transform = 'scale(1)';
   }
 
-  async function rebuildHtml(bytes, revision) {
+  function touchDistance(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.hypot(dx, dy);
+  }
+
+  function applyPinchScale() {
+    if (!wrapEl) return;
+    wrapEl.style.transform = `scale(${pinchScale})`;
+    wrapEl.style.transformOrigin = 'center top';
+  }
+
+  function bindPinch(node) {
+    const onTouchStart = (event) => {
+      if (event.touches.length === 2) {
+        pinchStartDistance = touchDistance(event.touches);
+        pinchStartScale = pinchScale;
+      }
+    };
+    const onTouchMove = (event) => {
+      if (event.touches.length !== 2 || pinchStartDistance <= 0) return;
+      event.preventDefault();
+      const ratio = touchDistance(event.touches) / pinchStartDistance;
+      pinchScale = Math.min(4, Math.max(1, pinchStartScale * ratio));
+      applyPinchScale();
+    };
+    const onTouchEnd = () => {
+      if (pinchScale <= 1.01) resetPinchZoom();
+    };
+    node.addEventListener('touchstart', onTouchStart, { passive: true });
+    node.addEventListener('touchmove', onTouchMove, { passive: false });
+    node.addEventListener('touchend', onTouchEnd, { passive: true });
+    return {
+      destroy() {
+        node.removeEventListener('touchstart', onTouchStart);
+        node.removeEventListener('touchmove', onTouchMove);
+        node.removeEventListener('touchend', onTouchEnd);
+      }
+    };
+  }
+
+  async function renderPages(bytes, revision) {
     void revision;
+    const token = ++renderToken;
+    renderError = '';
+    resetPinchZoom();
+
+    if (!viewportEl || !wrapEl) return;
     if (!bytes || bytes.length === 0) {
-      html = null;
-      renderError = '';
-      ready = false;
+      wrapEl.replaceChildren();
+      rendering = false;
       return;
     }
 
-    readBusy = true;
-    renderError = '';
-    ready = false;
+    rendering = true;
     try {
-      const assets = await loadPdfPreviewAssets();
-      const base64 = uint8ToBase64(bytes);
-      html = buildSimplePdfPreviewHtml({ base64, ...assets });
-    } catch (readError) {
-      console.error('PDF preview setup failed', readError);
-      html = null;
-      renderError = PDF_PREVIEW_LOAD_ERROR;
-    } finally {
-      readBusy = false;
-    }
-  }
+      const copy = bytes instanceof Uint8Array ? bytes.slice() : new Uint8Array(bytes);
+      const blob = new Blob([copy], { type: 'application/pdf' });
+      const doc = await loadPdfPreviewDocument(blob);
+      if (token !== renderToken || !wrapEl) return;
 
-  $: void rebuildHtml(pdfBytes, reloadKey);
+      wrapEl.replaceChildren();
+      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+      const maxCssWidth = Math.max(240, (viewportEl?.clientWidth || window.innerWidth || 860) - 16);
 
-  function onWindowMessage(event) {
-    if (!iframeEl?.contentWindow || event.source !== iframeEl.contentWindow) return;
-    try {
-      const payload = JSON.parse(String(event.data || ''));
-      if (payload?.type !== 'state') return;
-      if (payload.error) {
-        renderError = PDF_PREVIEW_LOAD_ERROR;
-        ready = false;
-        return;
+      for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
+        if (token !== renderToken || !wrapEl) return;
+        const page = await doc.getPage(pageNumber);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const fitScale = maxCssWidth / baseViewport.width;
+        const viewportScale = Math.min(fitScale, 2.6);
+        let pixelScale = viewportScale * dpr;
+        const pixelArea = baseViewport.width * baseViewport.height * pixelScale * pixelScale;
+        if (pixelArea > MAX_CANVAS_PIXELS) {
+          pixelScale = Math.sqrt(MAX_CANVAS_PIXELS / (baseViewport.width * baseViewport.height));
+        }
+
+        const viewport = page.getViewport({ scale: pixelScale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        canvas.style.width = `${Math.ceil(viewport.width / dpr)}px`;
+        canvas.style.height = `${Math.ceil(viewport.height / dpr)}px`;
+
+        const context = canvas.getContext('2d');
+        if (!context) continue;
+
+        const sheet = document.createElement('div');
+        sheet.className = 'page-sheet';
+        sheet.appendChild(canvas);
+        wrapEl.appendChild(sheet);
+
+        await page.render({ canvasContext: context, viewport }).promise;
       }
-      renderError = '';
-      ready = Boolean(payload.ready);
-    } catch (messageError) {
-      console.error('PDF preview message parse failed', messageError);
+    } catch (renderFailure) {
+      if (token !== renderToken) return;
+      console.error('PDF preview render failed', renderFailure);
       renderError = PDF_PREVIEW_LOAD_ERROR;
-      ready = false;
+      wrapEl?.replaceChildren();
+    } finally {
+      if (token === renderToken) rendering = false;
     }
   }
 
-  onMount(() => {
-    window.addEventListener('message', onWindowMessage);
-  });
+  $: if (viewportEl && wrapEl) {
+    void renderPages(pdfBytes, reloadKey);
+  }
 
   onDestroy(() => {
-    window.removeEventListener('message', onWindowMessage);
+    renderToken += 1;
   });
 
   $: displayError = error || renderError;
-  $: showInitialLoader = !html && (loading || readBusy || !pdfBytes?.length);
-  $: showUpdateOverlay = Boolean(html) && (loading || readBusy);
+  $: showInitialLoader = !displayError && (loading || rendering) && (!pdfBytes || pdfBytes.length === 0 || rendering);
 </script>
 
 <div class="scrollable-pdf-preview">
-  {#if displayError && !html}
+  {#if displayError && (!pdfBytes || pdfBytes.length === 0)}
     <p class="preview-state preview-state--error">{displayError}</p>
-  {:else if showInitialLoader}
+  {:else if !pdfBytes || pdfBytes.length === 0}
     <div class="preview-state">
-      <p class="meta">Live-PDF wird vorbereitet…</p>
+      <p class="meta">{loading ? 'Live-PDF wird vorbereitet…' : 'Noch keine Live-Vorschau verfügbar.'}</p>
     </div>
-  {:else if !html}
-    <p class="preview-state meta">Noch keine Live-Vorschau verfügbar.</p>
   {:else}
-    <div class="preview-frame-wrap">
-      <iframe bind:this={iframeEl} title="Live-PDF-Vorschau" srcdoc={html} class="preview-frame"></iframe>
-      {#if showUpdateOverlay}
-        <div class="preview-overlay" aria-hidden="true">
-          <p class="meta">Aktualisiere…</p>
-        </div>
-      {/if}
-      {#if displayError}
-        <div class="preview-overlay preview-overlay--error">
-          <p>{displayError}</p>
-        </div>
-      {/if}
-      {#if !ready && !displayError && !showUpdateOverlay}
-        <div class="preview-overlay" aria-hidden="true">
-          <p class="meta">Rendert…</p>
-        </div>
-      {/if}
+    <div class="preview-viewport" bind:this={viewportEl} use:bindPinch>
+      <div class="preview-wrap" bind:this={wrapEl}></div>
     </div>
+    <p class="zoom-hint">Scrollen · Zwei Finger zum Zoomen</p>
+    {#if loading || rendering}
+      <div class="preview-overlay" aria-hidden="true">
+        <p class="meta">{loading ? 'Aktualisiere…' : 'Rendert…'}</p>
+      </div>
+    {/if}
+    {#if displayError}
+      <div class="preview-overlay preview-overlay--error">
+        <p>{displayError}</p>
+      </div>
+    {/if}
   {/if}
 </div>
 
 <style>
   .scrollable-pdf-preview {
+    background: #f2f0eb;
     display: flex;
     flex: 1;
     flex-direction: column;
+    height: 100%;
     min-height: 0;
+    position: relative;
     width: 100%;
   }
 
   .preview-state {
     align-items: center;
-    background: #fffefb;
-    border: 1px solid var(--border, #ddd4c8);
-    border-radius: 12px;
+    background: #f2f0eb;
     display: flex;
     flex: 1;
     justify-content: center;
@@ -142,22 +196,51 @@
     color: #8b3a32;
   }
 
-  .preview-frame-wrap {
-    border: 1px solid var(--border, #ddd4c8);
-    border-radius: 12px;
+  .preview-viewport {
     flex: 1;
     min-height: 0;
-    overflow: hidden;
-    position: relative;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
   }
 
-  .preview-frame {
-    background: #f2f0eb;
-    border: 0;
-    display: block;
-    height: 100%;
-    min-height: 320px;
+  .preview-wrap {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 8px 0 16px;
+    transform-origin: center top;
     width: 100%;
+  }
+
+  :global(.scrollable-pdf-preview .page-sheet) {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+  }
+
+  :global(.scrollable-pdf-preview canvas) {
+    background: #fff;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+    display: block;
+    height: auto;
+    max-width: 100%;
+  }
+
+  .zoom-hint {
+    background: rgba(255, 255, 255, 0.88);
+    border-radius: 8px;
+    bottom: 8px;
+    color: #666;
+    font-size: 11px;
+    line-height: 1.3;
+    margin: 0;
+    opacity: 0.85;
+    padding: 4px 8px;
+    pointer-events: none;
+    position: absolute;
+    right: 8px;
   }
 
   .preview-overlay {
