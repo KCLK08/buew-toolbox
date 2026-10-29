@@ -698,53 +698,80 @@
     runError = '';
   }
 
-  async function addPhotoDocEntryFromFile(file) {
-    if (!(file instanceof Blob)) return;
-    if (!String(file.type || '').toLowerCase().startsWith('image/')) {
-      runError = 'Bitte eine Bilddatei auswählen.';
-      return;
-    }
+  async function buildPhotoDocEntryFromFile(file, index = 0) {
+    if (!(file instanceof Blob)) return null;
+    if (!String(file.type || '').toLowerCase().startsWith('image/')) return null;
+
+    const compressed = await compressPhotoDocImage(file, {
+      maxWidthOrHeight: 1900,
+      quality: 0.78
+    });
+    return normalizeRunPhotoDocEntry(
+      {
+        id: `photo_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 8)}`,
+        createdAt: new Date().toISOString(),
+        photoBlob: compressed instanceof Blob ? compressed : file
+      },
+      index
+    );
+  }
+
+  async function addPhotoDocEntriesFromFiles(files = []) {
+    const candidates = [...files].filter((file) => file instanceof Blob);
+    if (candidates.length === 0) return;
 
     runError = '';
     runInfo = '';
-    try {
-      const compressed = await compressPhotoDocImage(file, {
-        maxWidthOrHeight: 1900,
-        quality: 0.78
-      });
-      const entry = normalizeRunPhotoDocEntry(
-        {
-          id: `photo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          createdAt: new Date().toISOString(),
-          photoBlob: compressed instanceof Blob ? compressed : file
-        },
-        0
-      );
-      if (!entry) {
-        runError = 'Bild konnte nicht hinzugefügt werden.';
-        return;
-      }
 
-      updateRunPhotoDoc(
-        {
-          ...runPhotoDoc,
-          entries: [...(runPhotoDoc.entries || []), entry]
-        },
-        { refreshPreview: true, persistImmediately: true }
-      );
+    const addedEntries = [];
+    let skipped = 0;
+
+    for (let index = 0; index < candidates.length; index += 1) {
+      const file = candidates[index];
+      try {
+        const entry = await buildPhotoDocEntryFromFile(file, index);
+        if (entry) {
+          addedEntries.push(entry);
+        } else {
+          skipped += 1;
+        }
+      } catch {
+        skipped += 1;
+      }
+    }
+
+    if (addedEntries.length === 0) {
+      runError =
+        skipped > 0
+          ? 'Keine der ausgewählten Dateien konnte als Bild hinzugefügt werden.'
+          : 'Bitte mindestens eine Bilddatei auswählen.';
+      return;
+    }
+
+    updateRunPhotoDoc(
+      {
+        ...runPhotoDoc,
+        entries: [...(runPhotoDoc.entries || []), ...addedEntries]
+      },
+      { refreshPreview: true, persistImmediately: true }
+    );
+
+    if (skipped > 0) {
+      runInfo = `${addedEntries.length} Bild(er) hinzugefügt, ${skipped} übersprungen.`;
+    } else if (addedEntries.length === 1) {
       runInfo = 'Bild zur Fotodoku hinzugefügt.';
-    } catch (error) {
-      runError = error?.message || 'Bild konnte nicht verarbeitet werden.';
+    } else {
+      runInfo = `${addedEntries.length} Bilder zur Fotodoku hinzugefügt.`;
     }
   }
 
   async function handlePhotoDocAddInput(event) {
     const input = event.currentTarget;
     if (!(input instanceof HTMLInputElement)) return;
-    const file = input.files?.[0] || null;
+    const files = input.files ? [...input.files] : [];
     input.value = '';
-    if (!file) return;
-    await addPhotoDocEntryFromFile(file);
+    if (files.length === 0) return;
+    await addPhotoDocEntriesFromFiles(files);
   }
 
   async function handlePhotoDocReplaceInput(event, entryId) {
@@ -4033,8 +4060,8 @@
                         <div class="photo-doc-editor">
                           <div class="row start photo-doc-toolbar">
                             <label class="button-like">
-                              Bild hinzufügen
-                              <input type="file" accept="image/*" on:change={handlePhotoDocAddInput} />
+                              Bilder hinzufügen
+                              <input type="file" accept="image/*" multiple on:change={handlePhotoDocAddInput} />
                             </label>
                             <button type="button" on:click={savePhotoDocEditor}>Speichern</button>
                             <button type="button" on:click={() => (photoDocEditorOpen = false)}>Fertig</button>
