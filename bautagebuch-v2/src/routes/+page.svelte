@@ -107,6 +107,7 @@
   const RUN_FINISH_EXPORT_MODE_MERGED = 'btb_with_photo_doc';
 
   let view = 'home';
+  let homeTab = 'start';
   let templates = [];
   let runs = [];
   let newRunNameInput = '';
@@ -2991,19 +2992,15 @@
   }
 </script>
 
-<div class="page">
-  <header class="hero">
-    <div>
-      <p class="eyebrow">BÜW-Toolbox</p>
-      <h1>Bautagebuch</h1>
-      <p class="sub">
-        Speziell für die feste Vorlage-eBTB gebaut: kein Template-Wechsel, klare Schrittführung und direkter PDF-Export.
-      </p>
-    </div>
-    {#if view === 'home'}
-      <a class="toolbox-link" href="/buew-toolbox/">Zur Toolbox</a>
-    {/if}
-  </header>
+<div class="page" class:page-home={view === 'home'}>
+  {#if view !== 'home'}
+    <header class="hero">
+      <div>
+        <p class="eyebrow">BÜW-Toolbox</p>
+        <h1>Bautagebuch</h1>
+      </div>
+    </header>
+  {/if}
 
   {#if view === 'home'}
     {#if pendingRestoreOffer}
@@ -3029,97 +3026,239 @@
       <div class="notice error">{homeError}</div>
     {/if}
 
-    <section class="panel">
-      <h2>Neues BTB</h2>
-      {#if templates.length === 0}
-        <p class="muted">Startbereich wird vorbereitet ...</p>
-      {:else}
-        <div class="template-list">
-          <article class="template-card template-card--new-run">
-            <div>
-              <p class="meta home-new-run-hint">BTB-Name vergeben und direkt starten.</p>
-              <label class="field home-run-name-field">
-                <span>Name für neues BTB *</span>
-                <input
-                  value={newRunNameInput}
-                  placeholder="z. B. Strecke Nord"
-                  on:input={(event) => {
-                    newRunNameInput = event.currentTarget.value;
-                    homeError = '';
-                  }}
-                />
-                <small class="meta">Namenskonvention: {buildRunTitleByConvention(newRunNameInput)}</small>
-              </label>
-              <div class="row start">
-                <button
-                  type="button"
-                  class="primary"
-                  on:click={() => startNewRun(templates[0].templateId)}
-                  disabled={templates[0].status !== 'ready' || !normalizeRunNameInput(newRunNameInput)}
-                >
-                  Neues BTB starten
-                </button>
-              </div>
-              {#if templates[0].status !== 'ready'}
-                <small class="meta">Vorlage wird noch vorbereitet.</small>
-              {/if}
-            </div>
-          </article>
+    {#if homeTab === 'start'}
+      <header class="home-hero">
+        <div class="home-hero-copy">
+          <p class="home-hero-brand">
+            <span class="home-hero-brand-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+                <rect x="3" y="7" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.8" />
+                <path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V7M3 12h18" stroke="currentColor" stroke-width="1.8" />
+              </svg>
+            </span>
+            BÜW-Toolbox
+          </p>
+          <h1>Bautagebuch</h1>
+          <a class="home-toolbox-btn" href="/buew-toolbox/">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            Zur Toolbox
+          </a>
         </div>
-        <div class="row start home-setup-actions">
-          <button type="button" on:click={() => openSetup(templates[0].templateId)}>Setup öffnen</button>
+        <div class="home-hero-art" aria-hidden="true">
+          <svg viewBox="0 0 168 132" width="148" height="116">
+            <defs>
+              <linearGradient id="homeHeroSky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#f8f1e6" />
+                <stop offset="1" stop-color="#f3e4d2" />
+              </linearGradient>
+            </defs>
+            <rect x="8" y="6" width="152" height="120" rx="22" fill="url(#homeHeroSky)" />
+            <g stroke="#8aa0b5" stroke-width="2" stroke-linecap="round" fill="none">
+              <path d="M30 98V44M30 50h34M60 50v10" />
+              <path d="M132 100V38M104 46h32M108 46v10" />
+            </g>
+            <g transform="rotate(-8 86 78)">
+              <rect x="46" y="48" width="74" height="56" rx="6" fill="#fff" stroke="#e4ddd2" />
+              <path d="M56 62h42M56 72h36M56 82h28" stroke="#c5d4e4" stroke-width="2" stroke-linecap="round" />
+            </g>
+            <path d="M58 64c0-13 10-22 24-22s24 9 24 22v2H58v-2z" fill="#f2c14e" />
+            <rect x="50" y="64" width="64" height="8" rx="4" fill="#e2b03a" />
+            <rect x="78" y="46" width="8" height="6" rx="2" fill="#d7a227" />
+            <g transform="rotate(32 124 96)">
+              <rect x="120" y="78" width="7" height="34" rx="2" fill="#e7b15a" />
+              <path d="M120 112l3.5 8 3.5-8z" fill="#3d342c" />
+            </g>
+            <rect x="112" y="16" width="42" height="28" rx="8" fill="#e4533c" />
+            <text x="133" y="35" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">PDF</text>
+          </svg>
         </div>
-      {/if}
-    </section>
+      </header>
 
-    <section class="panel">
-      <h2>BTB</h2>
+      <section class="panel home-card">
+        <div class="home-card-head">
+          <span class="home-card-icon home-card-icon--create" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+              <path d="M7 4h8.2L19 7.8V19a1.5 1.5 0 0 1-1.5 1.5H7A1.5 1.5 0 0 1 5.5 19V5.5A1.5 1.5 0 0 1 7 4z" stroke="currentColor" stroke-width="1.7" />
+              <path d="M15 4.5V8h3.5M8 12h7M8 16h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </span>
+          <div class="home-card-copy">
+            <h2>Neues BTB</h2>
+            <p>BTB-Name vergeben und direkt starten.</p>
+          </div>
+        </div>
+        {#if templates.length === 0}
+          <p class="muted">Startbereich wird vorbereitet ...</p>
+        {:else}
+          <label class="field home-run-name-field">
+            <span>Name für neues BTB *</span>
+            <span class="home-name-input">
+              <input
+                value={newRunNameInput}
+                placeholder="z. B. Strecke Nord"
+                on:input={(event) => {
+                  newRunNameInput = event.currentTarget.value;
+                  homeError = '';
+                }}
+              />
+              <svg class="home-name-pencil" viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+                <path d="M4 20h4L19 9l-4-4L4 16v4z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+                <path d="M13 7l4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+              </svg>
+            </span>
+          </label>
+          <p class="home-convention">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
+              <rect x="3.5" y="5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.8" />
+              <path d="M3.5 10h17M8 3.5V7M16 3.5V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+            <span>Namenskonvention: {buildRunTitleByConvention(newRunNameInput)}</span>
+          </p>
+          <button type="button" class="home-cta" on:click={() => startNewRun(templates[0].templateId)}>
+            <span class="home-cta-label">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+              </svg>
+              Neues BTB starten
+            </span>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+              <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          {#if templates[0].status !== 'ready'}
+            <small class="meta">Vorlage wird noch vorbereitet.</small>
+          {/if}
+          <button type="button" class="home-row-link" on:click={() => openSetup(templates[0].templateId)}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
+              <path d="M10.2 3.2h3.6l.5 2.1a6.8 6.8 0 0 1 1.8 1l2-1 2.5 2.5-1 2a6.8 6.8 0 0 1 1 1.8l2.1.5v3.6l-2.1.5a6.8 6.8 0 0 1-1 1.8l1 2-2.5 2.5-2-1a6.8 6.8 0 0 1-1.8 1l-.5 2.1h-3.6l-.5-2.1a6.8 6.8 0 0 1-1.8-1l-2 1-2.5-2.5 1-2a6.8 6.8 0 0 1-1-1.8l-2.1-.5V9.6l2.1-.5a6.8 6.8 0 0 1 1-1.8l-1-2 2.5-2.5 2 1a6.8 6.8 0 0 1 1.8-1l.5-2.1z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+              <circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.5" />
+            </svg>
+            <span>Setup öffnen</span>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+              <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        {/if}
+      </section>
+
+      <section class="panel home-card">
+        <div class="home-card-head">
+          <span class="home-card-icon home-card-icon--list" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+              <rect x="4" y="3.5" width="16" height="17" rx="2" stroke="currentColor" stroke-width="1.7" />
+              <path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+            </svg>
+          </span>
+          <div class="home-card-copy">
+            <h2>BTB</h2>
+            <p>Projekt wählen, um Bautagebücher nach Kalenderwoche zu sehen.</p>
+          </div>
+        </div>
+        {#if runs.length === 0}
+          <p class="muted">Noch keine BTB vorhanden.</p>
+        {:else}
+          <div class="home-project-list">
+            {#each homeProjectOptions as project (project.projectKey)}
+              <button
+                type="button"
+                class="home-project-card"
+                on:click={() => {
+                  selectHomeProject(project.projectKey);
+                  homeTab = 'btb';
+                }}
+              >
+                <span class="home-project-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+                    <path d="M4 20h16M6.5 20V6.2L12 4l5.5 2.2V20" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+                    <path d="M10 20v-4.2h4V20M9 9.2h.01M12 9.2h.01M15 9.2h.01M9 12.4h.01M12 12.4h.01M15 12.4h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </span>
+                <span class="home-project-copy">
+                  <span class="home-project-title">{project.projectLabel}</span>
+                  <span class="home-project-meta">{formatRunCount(project.runCount)}</span>
+                </span>
+                <span class="home-chevron" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                    <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </section>
+    {:else}
+    <section class="panel home-card">
+      <div class="home-card-head">
+        <span class="home-card-icon home-card-icon--list" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+            <rect x="4" y="3.5" width="16" height="17" rx="2" stroke="currentColor" stroke-width="1.7" />
+            <path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+          </svg>
+        </span>
+        <div class="home-card-copy">
+          <h2>BTB</h2>
+          <p>
+            {homeSelectedProjectKey
+              ? 'Jahr und Kalenderwoche aufklappen.'
+              : 'Projekt wählen, um Bautagebücher nach Kalenderwoche zu sehen.'}
+          </p>
+        </div>
+        {#if runs.length > 0}
+          <button type="button" class="home-text-action" on:click={toggleHomeSelectionMode}>
+            {homeSelectionMode ? 'Fertig' : 'Auswählen'}
+          </button>
+        {/if}
+      </div>
       {#if runs.length === 0}
         <p class="muted">Noch keine BTB vorhanden.</p>
       {:else}
-        <div class="row between home-run-select-actions">
-          <button type="button" on:click={toggleHomeSelectionMode}>
-            {homeSelectionMode ? 'Auswahl beenden' : 'Auswählen'}
-          </button>
-          {#if homeSelectionMode}
-            <div class="row home-run-selection-summary">
-              <span class="meta">Ausgewählt: <strong>{selectedHomeRunCount}</strong></span>
-              <button
-                type="button"
-                on:click={selectAllHomeRuns}
-                disabled={selectableHomeRunIds.length === 0 || allHomeRunsSelected}
-              >
-                Alle auswählen
-              </button>
-              <button
-                type="button"
-                class="danger"
-                on:click={deleteSelectedHomeRuns}
-                disabled={homeRunDeleteBusy || selectedHomeRunCount === 0}
-              >
-                {homeRunDeleteBusy ? 'Löscht...' : 'Ausgewählte BTB löschen'}
-              </button>
-            </div>
-          {/if}
-        </div>
+        {#if homeSelectionMode}
+          <div class="row home-run-selection-summary home-run-select-actions">
+            <span class="meta">Ausgewählt: <strong>{selectedHomeRunCount}</strong></span>
+            <button
+              type="button"
+              on:click={selectAllHomeRuns}
+              disabled={selectableHomeRunIds.length === 0 || allHomeRunsSelected}
+            >
+              Alle auswählen
+            </button>
+            <button
+              type="button"
+              class="danger"
+              on:click={deleteSelectedHomeRuns}
+              disabled={homeRunDeleteBusy || selectedHomeRunCount === 0}
+            >
+              {homeRunDeleteBusy ? 'Löscht...' : 'Ausgewählte BTB löschen'}
+            </button>
+          </div>
+        {/if}
         <div class="home-runs-scroll">
           {#if !homeSelectedProjectKey}
-            <p class="meta home-project-list-hint">Projekt wählen, um Bautagebücher nach Kalenderwoche zu sehen.</p>
             <div class="home-project-list">
               {#each homeProjectOptions as project (project.projectKey)}
                 <button
                   type="button"
-                  class="template-card home-project-card"
+                  class="home-project-card"
                   on:click={() => selectHomeProject(project.projectKey)}
                 >
-                  <div class="home-project-card-main">
-                    <span class="home-project-icon" aria-hidden="true">P</span>
-                    <div>
-                      <h3>{project.projectLabel}</h3>
-                      <div class="meta">{formatRunCount(project.runCount)}</div>
-                    </div>
-                  </div>
-                  <span class="home-week-chevron" aria-hidden="true">&gt;</span>
+                  <span class="home-project-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+                      <path d="M4 20h16M6.5 20V6.2L12 4l5.5 2.2V20" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+                      <path d="M10 20v-4.2h4V20M9 9.2h.01M12 9.2h.01M15 9.2h.01M9 12.4h.01M12 12.4h.01M15 12.4h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </span>
+                  <span class="home-project-copy">
+                    <span class="home-project-title">{project.projectLabel}</span>
+                    <span class="home-project-meta">{formatRunCount(project.runCount)}</span>
+                  </span>
+                  <span class="home-chevron" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                      <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </span>
                 </button>
               {/each}
             </div>
@@ -3144,8 +3283,10 @@
                     <span class="home-week-toggle-main">
                       <strong>{formatGroupLabel(yearGroup.year > 0 ? String(yearGroup.year) : 'Ohne Jahr', yearGroup.runCount)}</strong>
                     </span>
-                    <span class="home-week-toggle-side">
-                      <span class="home-week-chevron">{yearExpanded ? 'v' : '>'}</span>
+                    <span class="home-chevron" class:is-open={yearExpanded} aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                        <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
                     </span>
                   </button>
                   {#if yearExpanded}
@@ -3163,8 +3304,10 @@
                               <strong>{formatGroupLabel(weekGroup.weekLabel, weekGroup.runCount)}</strong>
                               <small>{weekGroup.dateRangeLabel}</small>
                             </span>
-                            <span class="home-week-toggle-side">
-                              <span class="home-week-chevron">{weekExpanded ? 'v' : '>'}</span>
+                            <span class="home-chevron" class:is-open={weekExpanded} aria-hidden="true">
+                              <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                                <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                              </svg>
                             </span>
                           </button>
 
@@ -3213,6 +3356,35 @@
         </div>
       {/if}
     </section>
+    {/if}
+
+    <nav class="home-tabbar" aria-label="Bereiche">
+      <button
+        type="button"
+        class="home-tab"
+        class:is-active={homeTab === 'start'}
+        aria-current={homeTab === 'start' ? 'page' : undefined}
+        on:click={() => (homeTab = 'start')}
+      >
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
+          <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+        </svg>
+        Start
+      </button>
+      <button
+        type="button"
+        class="home-tab"
+        class:is-active={homeTab === 'btb'}
+        aria-current={homeTab === 'btb' ? 'page' : undefined}
+        on:click={() => (homeTab = 'btb')}
+      >
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
+          <rect x="5" y="3.5" width="14" height="17" rx="2" stroke="currentColor" stroke-width="1.8" />
+          <path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+        BTB
+      </button>
+    </nav>
   {/if}
 
   {#if view === 'setup' && setupModelDraft}
@@ -4023,6 +4195,11 @@
     padding: 16px 16px 48px;
   }
 
+  .page.page-home {
+    max-width: 480px;
+    padding: calc(12px + env(safe-area-inset-top)) 12px calc(96px + env(safe-area-inset-bottom));
+  }
+
   .hero {
     align-items: center;
     background: var(--panel);
@@ -4079,21 +4256,294 @@
     max-width: 860px;
   }
 
-  .toolbox-link {
-    align-self: center;
-    background: transparent;
-    border: 0;
-    border-radius: var(--radius-button);
-    color: var(--accent);
+  .home-hero {
+    align-items: center;
+    background: linear-gradient(180deg, #fffdf9 0%, #fff7ee 100%);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    box-shadow: var(--shadow);
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) 132px;
+    margin-bottom: 14px;
+    padding: 16px 12px 16px 16px;
+  }
+
+  .home-hero-copy {
+    display: grid;
+    gap: 10px;
+    justify-items: start;
+    min-width: 0;
+  }
+
+  .home-hero-brand {
+    align-items: center;
+    color: var(--muted);
     display: inline-flex;
+    font-size: 13px;
     font-weight: 600;
-    min-height: var(--touch);
-    padding: 8px 4px;
+    gap: 6px;
+    margin: 0;
+  }
+
+  .home-hero-brand-icon {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--accent-2);
+    display: inline-flex;
+    height: 26px;
+    justify-content: center;
+    width: 26px;
+  }
+
+  .home-hero h1 {
+    font-size: 28px;
+    letter-spacing: -0.4px;
+    line-height: 32px;
+  }
+
+  .home-hero-art {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .home-hero-art svg {
+    display: block;
+    height: auto;
+    max-width: 100%;
+  }
+
+  a.home-toolbox-btn {
+    align-items: center;
+    background: #e4533c;
+    border-radius: 14px;
+    color: #fff;
+    display: inline-flex;
+    font-size: 14px;
+    font-weight: 700;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 14px;
     text-decoration: none;
   }
 
-  .toolbox-link:hover {
+  a.home-toolbox-btn:hover {
+    background: #d24732;
+  }
+
+  .home-card {
+    border-radius: 22px;
+    padding: 16px;
+  }
+
+  .home-card-head {
+    align-items: flex-start;
+    display: flex;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .home-card-copy {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .home-card-copy h2 {
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .home-card-copy p {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.35;
+    margin: 2px 0 0;
+  }
+
+  .home-card-icon {
+    align-items: center;
+    border-radius: 14px;
+    display: inline-flex;
+    flex: 0 0 44px;
+    height: 44px;
+    justify-content: center;
+    width: 44px;
+  }
+
+  .home-card-icon--create {
+    background: #e7eefc;
+    color: #3b6fd6;
+  }
+
+  .home-card-icon--list {
+    background: #efe7fb;
+    color: #7a4fd0;
+  }
+
+  .home-name-input {
+    display: block;
+    position: relative;
+  }
+
+  .home-name-input input {
+    padding-right: 42px;
+    width: 100%;
+  }
+
+  .home-name-pencil {
+    color: var(--muted);
+    pointer-events: none;
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .home-convention {
+    align-items: flex-start;
+    color: var(--muted);
+    display: flex;
+    font-size: 13px;
+    font-weight: 600;
+    gap: 8px;
+    line-height: 1.35;
+    margin: 10px 0 14px;
+  }
+
+  .home-convention svg {
+    flex: 0 0 16px;
+    margin-top: 1px;
+  }
+
+  button.home-cta {
+    align-items: center;
+    background: #e4533c;
+    border: none;
+    border-radius: 16px;
+    color: #fff;
+    display: flex;
+    justify-content: space-between;
+    min-height: 52px;
+    padding: 0 16px;
+    width: 100%;
+  }
+
+  button.home-cta:hover {
+    background: #d24732;
+  }
+
+  button.home-cta:active:not(:disabled) {
+    transform: none;
+  }
+
+  .home-cta-label {
+    align-items: center;
+    display: inline-flex;
+    font-size: 16px;
+    font-weight: 700;
+    gap: 8px;
+  }
+
+  button.home-row-link {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    color: var(--ink);
+    display: flex;
+    font-weight: 600;
+    gap: 10px;
+    margin-top: 10px;
+    min-height: 52px;
+    padding: 0 14px;
+    width: 100%;
+  }
+
+  button.home-row-link:hover {
+    background: #fff;
+    border-color: #d8cfc4;
+  }
+
+  button.home-row-link:active:not(:disabled) {
+    transform: none;
+  }
+
+  button.home-row-link span {
+    flex: 1;
+    text-align: left;
+  }
+
+  button.home-row-link svg:first-child {
+    color: var(--muted);
+  }
+
+  button.home-row-link svg:last-child {
+    color: #8a837a;
+  }
+
+  button.home-text-action {
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    flex: 0 0 auto;
+    font-size: 13px;
+    font-weight: 700;
+    min-height: 32px;
+    padding: 4px 0 4px 8px;
+  }
+
+  button.home-text-action:hover {
+    background: transparent;
     color: var(--accent-pressed);
+  }
+
+  button.home-text-action:active:not(:disabled) {
+    transform: none;
+  }
+
+  .home-tabbar {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    bottom: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    left: 50%;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    position: fixed;
+    transform: translateX(-50%);
+    width: min(480px, 100%);
+    z-index: 30;
+  }
+
+  button.home-tab {
+    align-items: center;
+    background: transparent;
+    border: none;
+    border-radius: 12px;
+    color: #8a837a;
+    display: flex;
+    flex-direction: column;
+    font-size: 11px;
+    font-weight: 600;
+    gap: 2px;
+    justify-content: center;
+    min-height: 52px;
+    padding: 4px 8px;
+  }
+
+  button.home-tab:hover {
+    background: transparent;
+  }
+
+  button.home-tab:active:not(:disabled) {
+    transform: none;
+  }
+
+  button.home-tab.is-active {
+    color: #e4533c;
   }
 
   .panel {
@@ -4382,33 +4832,85 @@
 
   .home-project-list {
     display: grid;
-    gap: 10px;
+    gap: 12px;
   }
 
-  .home-project-card {
+  button.home-project-card {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: none;
     cursor: pointer;
+    display: flex;
+    gap: 12px;
+    min-height: 76px;
+    padding: 14px 12px 14px 14px;
     text-align: left;
     width: 100%;
   }
 
-  .home-project-card-main {
-    align-items: center;
-    display: flex;
+  button.home-project-card:hover {
+    background: #fff;
+    border-color: #d8cfc4;
+  }
+
+  button.home-project-card:active:not(:disabled) {
+    transform: none;
+  }
+
+  .home-project-copy {
+    display: grid;
     flex: 1;
-    gap: 12px;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .home-project-title {
+    color: var(--ink);
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+
+  .home-project-meta {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
   }
 
   .home-project-icon {
     align-items: center;
     background: var(--badge-bg);
-    border-radius: var(--radius);
+    border-radius: 12px;
     color: var(--accent);
     display: inline-flex;
-    font-size: 14px;
-    font-weight: 800;
+    flex: 0 0 44px;
     height: 44px;
     justify-content: center;
     width: 44px;
+  }
+
+  .home-chevron {
+    align-items: center;
+    color: var(--muted);
+    display: inline-flex;
+    flex: 0 0 28px;
+    height: 28px;
+    justify-content: center;
+    margin-left: auto;
+    transition: transform 160ms ease;
+    width: 28px;
+  }
+
+  .home-chevron.is-open {
+    transform: rotate(90deg);
+  }
+
+  .home-chevron svg {
+    display: block;
   }
 
   .home-project-back-row {
@@ -4429,13 +4931,14 @@
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 10px;
+    overflow: hidden;
+    padding: 0;
   }
 
   .home-year-body {
     display: grid;
     gap: 10px;
-    margin-top: 10px;
+    padding: 10px;
   }
 
   .home-week-groups {
@@ -4450,24 +4953,50 @@
   }
 
   .home-week-group {
-    background: var(--panel);
+    background: var(--panel-elevated);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 10px;
+    border-radius: 14px;
+    overflow: hidden;
+    padding: 0;
   }
 
-  .home-week-toggle {
+  button.home-week-toggle {
     align-items: center;
+    background: transparent;
+    border: none;
+    border-radius: 0;
     display: flex;
+    gap: 12px;
     justify-content: space-between;
+    min-height: 52px;
+    padding: 12px 12px 12px 14px;
     text-align: left;
     width: 100%;
   }
 
+  button.home-week-toggle:hover {
+    background: rgba(26, 25, 22, 0.03);
+  }
+
+  button.home-week-toggle:active:not(:disabled) {
+    transform: none;
+  }
+
+  button.home-week-toggle[aria-expanded='true'] {
+    border-bottom: 1px solid var(--border);
+  }
+
   .home-week-toggle-main {
-    align-items: baseline;
-    display: inline-flex;
-    gap: 8px;
+    display: grid;
+    flex: 1;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .home-week-toggle-main strong {
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.3;
   }
 
   .home-week-toggle-main small {
@@ -4476,21 +5005,8 @@
     font-weight: 600;
   }
 
-  .home-week-toggle-side {
-    align-items: center;
-    display: inline-flex;
-    gap: 8px;
-  }
-
-  .home-week-chevron {
-    font-family: monospace;
-    font-size: 14px;
-    font-weight: 700;
-    width: 10px;
-  }
-
   .home-week-body {
-    margin-top: 10px;
+    padding: 10px;
   }
 
   .template-card {
@@ -5455,17 +5971,6 @@
 
     .title-row .row button {
       flex: 1 1 160px;
-    }
-
-    .home-week-toggle {
-      align-items: flex-start;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .home-week-toggle-side {
-      justify-content: space-between;
-      width: 100%;
     }
 
     .home-runs-scroll {
