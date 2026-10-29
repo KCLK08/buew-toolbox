@@ -3109,17 +3109,24 @@
               {#each homeProjectOptions as project (project.projectKey)}
                 <button
                   type="button"
-                  class="template-card home-project-card"
+                  class="home-project-card"
                   on:click={() => selectHomeProject(project.projectKey)}
                 >
-                  <div class="home-project-card-main">
-                    <span class="home-project-icon" aria-hidden="true">P</span>
-                    <div>
-                      <h3>{project.projectLabel}</h3>
-                      <div class="meta">{formatRunCount(project.runCount)}</div>
-                    </div>
-                  </div>
-                  <span class="home-week-chevron" aria-hidden="true">&gt;</span>
+                  <span class="home-project-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+                      <path d="M4 20h16M6.5 20V6.2L12 4l5.5 2.2V20" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+                      <path d="M10 20v-4.2h4V20M9 9.2h.01M12 9.2h.01M15 9.2h.01M9 12.4h.01M12 12.4h.01M15 12.4h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </span>
+                  <span class="home-project-copy">
+                    <span class="home-project-title">{project.projectLabel}</span>
+                    <span class="home-project-meta">{formatRunCount(project.runCount)}</span>
+                  </span>
+                  <span class="home-chevron" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                      <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </span>
                 </button>
               {/each}
             </div>
@@ -3144,8 +3151,10 @@
                     <span class="home-week-toggle-main">
                       <strong>{formatGroupLabel(yearGroup.year > 0 ? String(yearGroup.year) : 'Ohne Jahr', yearGroup.runCount)}</strong>
                     </span>
-                    <span class="home-week-toggle-side">
-                      <span class="home-week-chevron">{yearExpanded ? 'v' : '>'}</span>
+                    <span class="home-chevron" class:is-open={yearExpanded} aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                        <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
                     </span>
                   </button>
                   {#if yearExpanded}
@@ -3163,8 +3172,10 @@
                               <strong>{formatGroupLabel(weekGroup.weekLabel, weekGroup.runCount)}</strong>
                               <small>{weekGroup.dateRangeLabel}</small>
                             </span>
-                            <span class="home-week-toggle-side">
-                              <span class="home-week-chevron">{weekExpanded ? 'v' : '>'}</span>
+                            <span class="home-chevron" class:is-open={weekExpanded} aria-hidden="true">
+                              <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                                <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                              </svg>
                             </span>
                           </button>
 
@@ -4382,33 +4393,85 @@
 
   .home-project-list {
     display: grid;
-    gap: 10px;
+    gap: 12px;
   }
 
-  .home-project-card {
+  button.home-project-card {
+    align-items: center;
+    background: var(--panel-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
     cursor: pointer;
+    display: flex;
+    gap: 12px;
+    min-height: 76px;
+    padding: 14px 12px 14px 14px;
     text-align: left;
     width: 100%;
   }
 
-  .home-project-card-main {
-    align-items: center;
-    display: flex;
+  button.home-project-card:hover {
+    background: #fff;
+    border-color: #d8cfc4;
+  }
+
+  button.home-project-card:active:not(:disabled) {
+    transform: none;
+  }
+
+  .home-project-copy {
+    display: grid;
     flex: 1;
-    gap: 12px;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .home-project-title {
+    color: var(--ink);
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+
+  .home-project-meta {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
   }
 
   .home-project-icon {
     align-items: center;
     background: var(--badge-bg);
-    border-radius: var(--radius);
+    border-radius: 12px;
     color: var(--accent);
     display: inline-flex;
-    font-size: 14px;
-    font-weight: 800;
+    flex: 0 0 44px;
     height: 44px;
     justify-content: center;
     width: 44px;
+  }
+
+  .home-chevron {
+    align-items: center;
+    color: var(--muted);
+    display: inline-flex;
+    flex: 0 0 28px;
+    height: 28px;
+    justify-content: center;
+    margin-left: auto;
+    transition: transform 160ms ease;
+    width: 28px;
+  }
+
+  .home-chevron.is-open {
+    transform: rotate(90deg);
+  }
+
+  .home-chevron svg {
+    display: block;
   }
 
   .home-project-back-row {
@@ -4429,13 +4492,14 @@
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 10px;
+    overflow: hidden;
+    padding: 0;
   }
 
   .home-year-body {
     display: grid;
     gap: 10px;
-    margin-top: 10px;
+    padding: 10px;
   }
 
   .home-week-groups {
@@ -4450,24 +4514,50 @@
   }
 
   .home-week-group {
-    background: var(--panel);
+    background: var(--panel-elevated);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 10px;
+    border-radius: 14px;
+    overflow: hidden;
+    padding: 0;
   }
 
-  .home-week-toggle {
+  button.home-week-toggle {
     align-items: center;
+    background: transparent;
+    border: none;
+    border-radius: 0;
     display: flex;
+    gap: 12px;
     justify-content: space-between;
+    min-height: 52px;
+    padding: 12px 12px 12px 14px;
     text-align: left;
     width: 100%;
   }
 
+  button.home-week-toggle:hover {
+    background: rgba(26, 25, 22, 0.03);
+  }
+
+  button.home-week-toggle:active:not(:disabled) {
+    transform: none;
+  }
+
+  button.home-week-toggle[aria-expanded='true'] {
+    border-bottom: 1px solid var(--border);
+  }
+
   .home-week-toggle-main {
-    align-items: baseline;
-    display: inline-flex;
-    gap: 8px;
+    display: grid;
+    flex: 1;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .home-week-toggle-main strong {
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.3;
   }
 
   .home-week-toggle-main small {
@@ -4476,21 +4566,8 @@
     font-weight: 600;
   }
 
-  .home-week-toggle-side {
-    align-items: center;
-    display: inline-flex;
-    gap: 8px;
-  }
-
-  .home-week-chevron {
-    font-family: monospace;
-    font-size: 14px;
-    font-weight: 700;
-    width: 10px;
-  }
-
   .home-week-body {
-    margin-top: 10px;
+    padding: 10px;
   }
 
   .template-card {
@@ -5455,17 +5532,6 @@
 
     .title-row .row button {
       flex: 1 1 160px;
-    }
-
-    .home-week-toggle {
-      align-items: flex-start;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .home-week-toggle-side {
-      justify-content: space-between;
-      width: 100%;
     }
 
     .home-runs-scroll {
