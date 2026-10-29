@@ -3468,7 +3468,7 @@
   {/if}
 
   {#if view === 'run' && activeRun && runModel}
-    <section class="panel">
+    <section class="panel run-screen">
       <div class="title-row">
         <div>
           <h2>{activeRun.title}</h2>
@@ -3902,27 +3902,6 @@
                 {/if}
               {/key}
             {/if}
-
-            <div class="row between run-footer">
-              <button type="button" on:click={() => moveSection(-1)} disabled={activeSectionIndex === 0}>Zurück</button>
-              <button type="button" class="run-footer-preview" on:click={() => toggleRunPreview()}>
-                {showRunPreview ? 'Vorschau aus' : 'Vorschau ein'}
-              </button>
-              {#if runSections.length > 0 && activeSectionIndex >= runSections.length - 1}
-                <button
-                  type="button"
-                  class="primary"
-                  on:click={openRunFinishDialog}
-                  disabled={runSections.length === 0 || totalMissingRequired > 0}
-                >
-                  Abschließen
-                </button>
-              {:else}
-                <button type="button" class="primary" on:click={() => moveSection(1)} disabled={runSections.length === 0}>
-                  Weiter
-                </button>
-              {/if}
-            </div>
           </div>
         </div>
       </div>
@@ -3960,6 +3939,27 @@
           </div>
         </div>
       {/if}
+
+      <div class="run-action-bar" role="toolbar" aria-label="BTB Navigation">
+        <button type="button" on:click={() => moveSection(-1)} disabled={activeSectionIndex === 0}>Zurück</button>
+        <button type="button" class="run-footer-preview" on:click={() => toggleRunPreview()}>
+          {showRunPreview ? 'Vorschau aus' : 'Vorschau ein'}
+        </button>
+        {#if runSections.length > 0 && activeSectionIndex >= runSections.length - 1}
+          <button
+            type="button"
+            class="primary"
+            on:click={openRunFinishDialog}
+            disabled={runSections.length === 0 || totalMissingRequired > 0}
+          >
+            Abschließen
+          </button>
+        {:else}
+          <button type="button" class="primary" on:click={() => moveSection(1)} disabled={runSections.length === 0}>
+            Weiter
+          </button>
+        {/if}
+      </div>
 
       {#if runFinishDialogOpen}
         <button type="button" class="dialog-backdrop" aria-label="Dialog schließen" on:click={closeRunFinishDialog}></button>
@@ -4331,7 +4331,7 @@
     margin: 0;
     padding: 0;
     position: fixed;
-    z-index: 40;
+    z-index: 60;
   }
 
   .dialog-backdrop:hover {
@@ -4351,7 +4351,7 @@
     top: 50%;
     transform: translate(-50%, -50%);
     width: 100%;
-    z-index: 41;
+    z-index: 61;
   }
 
   .dialog-panel p {
@@ -5002,25 +5002,51 @@
     min-width: 0;
   }
 
-  .run-footer {
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 12px;
+  .run-screen {
+    margin-bottom: calc(72px + env(safe-area-inset-bottom));
   }
 
-  .run-footer-preview {
+  .run-action-bar {
+    align-items: center;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    bottom: 0;
+    display: flex;
+    gap: 6px;
+    left: 0;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+    position: fixed;
+    right: 0;
+    z-index: 45;
+  }
+
+  .run-action-bar button {
     flex: 1;
-    justify-content: center;
-    max-width: 220px;
-    min-width: 140px;
+    font-size: 14px;
+    min-height: 42px;
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 10px;
+  }
+
+  .run-action-bar .run-footer-preview {
+    background: transparent;
+    border-color: transparent;
+    flex: 1.2;
+  }
+
+  .run-action-bar .run-footer-preview:hover {
+    background: var(--badge-bg);
   }
 
   .run-preview-overlay-backdrop {
     background: var(--overlay);
     border: 0;
-    inset: 0;
+    bottom: calc(58px + env(safe-area-inset-bottom));
+    left: 0;
     position: fixed;
+    right: 0;
+    top: 0;
     z-index: 40;
   }
 
@@ -5028,16 +5054,17 @@
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--radius);
+    bottom: calc(66px + env(safe-area-inset-bottom));
     display: flex;
     flex-direction: column;
-    inset: 12px 8px 12px;
+    left: 8px;
     max-width: 960px;
     overflow: hidden;
     position: fixed;
+    right: 8px;
+    top: 8px;
     z-index: 41;
     margin: 0 auto;
-    left: 0;
-    right: 0;
   }
 
   .run-preview-overlay-header {
